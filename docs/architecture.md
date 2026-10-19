@@ -4,7 +4,7 @@
 
 ## 1. 产品定位
 
-Stocks 是面向单一 Owner、以美股为主要市场的个人投资情报与研究系统。系统自动收集多来源信息，将其沉淀为可检索、可追溯的情报，并允许通过可配置任务和多模型 Agent 完成筛选、验证、研究及报告生成，为人工投资决策提供参考。
+Stocks 是面向单一 Owner、以美股为主要市场的个人投资情报与研究系统。系统按关注的股票、行业和宏观政策主题持续采集市场情绪、财经资讯、政策法规、公司披露及结构化金融数据，形成可检索、可追溯的情报积累；独立的研究任务再按设定周期或手动需要综合多来源资料，生成支持人工投资决策的研究报告。**产品交付的是阶段性综合研判，不是对每一篇新闻生成解读。**
 
 核心目标：
 
@@ -26,6 +26,8 @@ Stocks 是面向单一 Owner、以美股为主要市场的个人投资情报与�
 8. **只做最小充分的调度与回退**。顺序步骤、简单条件、明确的按证券 fan-out 和触发器满足原型，不引入动态 DAG、模型评分路由或多 Agent 自主协商。
 9. **证券身份与金融数据是一等公民**。公司、证券、交易代码分开管理；结构化行情和财务数据不强行转换为 Document。
 10. **自动分类不依赖人工确认**。文档即使没有直接证券关联，也能通过宏观、政策、行业、事件与主题标签进入检索和研究；主题相关性与证券事实关联必须区分。
+11. **持续采集与综合研究独立运行**。采集任务持续更新情报，轻量分类与实体解析不等于研究报告；研究默认按时间窗口定期/手动执行，事件触发深度分析仅在明确配置时运行。
+12. **围绕 Research Scope 采集**。优先获取与自选股、关注行业、宏观及金融政策相关的资料，不将全市场无差别归档作为目标；同时避免仅按 Ticker 过滤而漏掉间接影响研究标的的市场事件。
 
 ## 3. 概念与职责
 
@@ -49,31 +51,32 @@ Stocks 是面向单一 Owner、以美股为主要市场的个人投资情报与�
 
 ## 4. 数据与执行的关系
 
-基本流程：
+**默认执行模式：持续采集 → 情报沉淀 → 周期性综合研究。** 采集与研究是两个独立的 Task，Repository 是共享数据基础；二者不应形成“每收一篇新闻就调用研究模型”的同步链路。
 
 ~~~text
-                 Task（配置触发和执行步骤）
-                         |
-          +--------------+---------------+
-          |                              |
-    Connector Steps                   Agent Steps
-    RSS / HTTP API / Web             生成 / 判断 / 研究
-          |                              |
-          v                         Repository Tools
-    Intelligence Repository <------ Remote MCP Tools
-          |                              |
-          +---------- 证据持久化 <--------+
-                         |
-                 结构化结论与报告
+采集任务（依 Source 更新周期独立调度）
+  RSS / HTTP API / Web
+    → Research Scope：上游筛选 + 本地相关性过滤
+    → 原始内容快照、标准化记录、去重
+    → 轻量分类、实体解析、来源/时间关联
+    → Intelligence Repository（持续积累）
+                    |
+                    | 读取指定研究范围、时间窗口和历史结论
+                    v
+研究任务（按日/周定时，或手动触发）
+    → 汇总资讯、市场情绪、宏观/政策、行业、行情和财务事实
+    → 跨来源对照、识别变化与冲突、证据验证
+    → 结构化 Findings 与综合研究报告
 ~~~
 
-- 采集 Task 获取信息后可直接入库、结束；不会因为不存在分析 Task 而停止。
-- 分析 Task 从 Repository 按发行主体或证券、行业、宏观主题、政策类别、事件类型、时间、可信度和检索条件选择输入；行情和财务等结构化数据通过同一 Repository 查询接口提供。
-- 文档后处理既可以确认直接提及的 Issuer/Security，也可以独立生成主题、行业和宏观标签。无直接证券关联不代表无需研究；相关性标签只用于发现候选研究方向，不自动生成直接证券事实关联。
-- 一个 Task 可以按证券范围拆分为多个独立 Task Run；具体规则见第 8 节。
-- Agent 可以按需调用 Repository 只读工具或远程 MCP 工具补证；新获得的资料经统一入库流程登记来源，再供结论引用。
-- 多个研究 Task 能消费同一批资料并独立产出结论。研究结果也允许成为后续研究的输入。
-- 模型输出本身不等于事实；只有具备具体证据链接的事实陈述才能作为已核实内容呈现。
+- 采集任务获取信息、持久化并完成必要的相关性判断、分类与实体消歧后即可结束，**不要求对每条记录进行投资研判**。分类可使用规则或低成本 Decision Model，但仅生成可复用的元数据。
+- 数据在数据库和独立 S3 对象存储中持续累积；研究任务从 Repository 按证券、行业、宏观主题、政策类别、市场情绪、时间窗口和证据可靠性组合查询输入，而不是只阅读最新的一篇资料。
+- 采集故障不阻塞研究读取现有资料；研究 Agent、模型额度或报告生成故障也不阻塞新数据继续采集。研究报告必须说明资料覆盖区间、数据更新状态和已知缺失，不能把暂时未采集到数据解释为没有市场变化。
+- 报告从多个维度识别**一段时间发生的变化**，可与历史报告/结构化结论比较；既不只是新闻标题列表，也不是逐篇正文的改写。
+- 一个 Task 可以按证券范围产生多个独立 Task Run；Repository 同时支持不绑定具体证券的宏观与行业研究。
+- Agent 可以根据明确授权调用 Repository 只读工具或远程 MCP Tool 补证；新证据先按来源与时间边界统一登记，再允许报告引用。
+- 事件触发的研究保留为**显式启用的可选模式**，用于指定重要事件或特定策略；系统默认不对每次 `on_entities_resolved` / `on_document_classified` 触发研究报告。
+- 模型文本和新闻观点本身不是已经核实的投资事实。报告中的关键事实、数值和结论分别引用 Document、结构化金融数据和核查记录。
 
 ## 5. Source 与 Connector 设计
 
@@ -116,6 +119,26 @@ DocumentCandidate 至少提供：上游 ID 或 URL、标题、正文/摘要、�
 - storage_ref：远程对象存储中的原文/快照引用。
 
 多个渠道转载同一原报道，仍可保存多个原始 Document，但证据核实不能将它们统计为独立证据。
+
+### 5.3 Research Scope 与有界采集
+
+Research Scope 定义“**值得采集和后续研究的内容范围**”，与 Source（从哪里获取）、Connector（如何获取）及 Strategy（如何研究）分离。一个 Scope 可以由 Watchlist、行业、宏观主题、金融/监管政策主题构成；它不要求每篇资料都直接提到某个股票代码。
+
+| Scope 内容 | 示例 | 采集原则 |
+| --- | --- | --- |
+| 关注证券 | Watchlist 内的 Security / Issuer | 有精确证券/公司 ID 的 API 优先按上游参数查询 |
+| 关注行业 | 半导体、能源、银行业 | 采集产业链、竞争格局、供应链及影响该行业的政策 |
+| 宏观与市场 | 利率、通胀、就业、流动性、波动率 | 采集可观察的指标、官方发布以及相关金融资讯 |
+| 金融政策与法规 | 货币政策、监管、出口管制 | 不要求公告直接提及 Watchlist 证券 |
+
+**采集两层过滤：**
+
+1. **上游过滤**：HTTP API 能按发行主体、时间、事件类型或主题查询时直接限定范围；RSS 优先订阅对应行业/市场频道，并按发布时间或源游标增量获取。不能假设每个 RSS 提供按股票和关键词查询能力。
+2. **本地相关性过滤**：对于上游不能缩小范围的条目，先看标题、摘要、元数据、已知规则；必要时再用配置的低成本分类模型判断是否属于 Scope。优先在下载全文、生成 Embedding 和深度研究之前完成过滤；无关条目仅保留采集游标、幂等和过滤统计所需信息，不必作为正式情报文档沉淀。
+
+过滤应**适度宽松**：不能只匹配 Ticker；与关注行业、公司经营环境、宏观政策间接相关的内容也属于研究候选。判断不确定且潜在影响较大时，可保留为待分类情报，而不是悄悄丢弃。每个 Source 的抓取数量、筛除数量、失败和最后成功采集时间应可查看，以便发现筛选过严导致的数据盲区。
+
+采集范围从 Research Scope 读取，不在每个 Connector 内重复维护一套投资偏好。Source 的访问权限、实际 API 查询能力及频率限制仍独立生效。
 
 ## 6. Intelligence Repository 与存储
 
@@ -200,7 +223,7 @@ DocumentCandidate 至少提供：上游 ID 或 URL、标题、正文/摘要、�
 
 ### 6.4 自动分类、标签与关联边界
 
-分类属于 Document 的独立、可复用情报属性；不要求文档必须识别出直接证券关联。宏观经济、行业政策、市场制度、行业动态、企业披露等资料，即使 `confirmed_security_ids=[]`，也应可以完成分类、检索、触发相应主题研究。
+分类属于 Document 的独立、可复用情报属性，是采集后的轻量整理，不是要求逐篇生成分析报告；不要求文档必须识别出直接证券关联。宏观经济、行业政策、市场制度、行业动态、企业披露等资料，即使 `confirmed_security_ids=[]`，也应可以完成分类、检索、触发相应主题研究。
 
 **统一分类结果由 Stocks 定义，与模型厂商无关：**
 
@@ -238,6 +261,16 @@ document_classification:
 ~~~
 
 此处 `direct_security_ids` 是从独立的已确认 `document_entities` 查询得到的阅读视图字段，**不由分类模型直接决定**；真实持久化时由分类记录与实体关联组合展示。该文档没有直接提及的证券，仍然可以被宏观、行业研究 Task 使用。模型所输出的“可能影响”标签只代表待研究的主题关联，绝非确定的股票涨跌判断或投资建议。
+
+### 6.4.1 市场情绪的数据含义
+
+市场情绪是综合研究的一个输入维度，而不是一条新闻的“乐观/悲观”标签或模型自报的全市场分数。
+
+- **可观察指标**：波动率、成交量、资金流、期权/调查等可获得的情绪相关数据，以结构化金融指标形式记录数值、单位、市场/证券范围、时间与来源。指标的解释依赖研究策略，不将任何单个指标直接定义为“市场情绪真值”。
+- **信息叙事/观点**：媒体、研究机构、企业及政策发布的信息可按主题和可选的情绪倾向归类，保留原始出处与发布时间。模型给出的倾向属于来源文本的分类结果，不能自动代表整体投资者观点。
+- **阶段性研判**：报告可以综合指标变化和多来源信息，得出带有证据、时间范围及不确定性的市场氛围判断；数据样本偏差、转载和观点分歧需要明确说明，不将新闻条数简单当作市场情绪统计。
+
+可配置的分类模型只负责必要标签及相关性判断；“市场情绪如何变化、对哪些研究范围有意义”由定期研究任务在多源上下文中形成，而非每篇文档单独生成研究结论。
 
 ### 6.5 结构化金融数据与时间语义
 
@@ -321,7 +354,7 @@ Task 属性：
 | steps | 有序步骤及参数/上游结果引用 |
 | enabled | 是否参与触发 |
 
-最小步骤执行种类：Connector 获取、Repository 持久化/查询、Agent 调用、授权 Tool 调用、结构化分析保存及报告渲染。
+最小步骤执行种类：Connector 获取、Repository 持久化/查询、Agent 调用、授权 Tool 调用、结构化分析保存及报告渲染。**默认 Task 定时执行采集、独立执行轻量分类/实体解析，并按日或周执行综合研究；单篇触发研究的 Task 必须单独启用。**
 
 步骤按配置顺序执行；when 仅允许基于已执行步骤的结构化字段或状态判断，不使用自由 Python 表达式或通用 DAG。满足条件才执行；条件不满足为 SKIPPED，不是 FAILED。
 
@@ -377,6 +410,14 @@ TaskEvent 可以是 PostgreSQL 任务/事件表的一个类型，不需要部署
 - 分类触发器的可选过滤字段使用 `category_in[]`、`topic_any[]`、`industry_any[]`、`region_any[]`：同一字段多值为“任一匹配”，不同字段同时配置时必须全部满足；不配置过滤字段表示对所有完成分类的文档生效。过滤只基于已保存的分类结果，不能以模型预测代替明确触发条件。
 - 重新解析只在已确认关联**实质改变**时发布新修订事件。新增证券产生新的研究范围；撤销或改正旧关联须在 Repository 中保留更正信息，并标记依赖旧关联的研究需要重估。与旧修订输入相同的重试不得产生重复触发。
 
+#### 触发事件不等于启动深度研究
+
+`on_new_documents`、`on_entities_resolved`、`on_document_classified` 首先表示有一批可被查询的新情报或元数据。它们支持安排必要的后处理或显式启用的特定任务，但**不会自动要求生成单篇分析或报告**。
+
+- 默认研究周期由独立 Task 的 `schedule` 或 `manual` 决定，研究任务查询已存储的多篇文档和多类金融数据。
+- 如果启用某个事件驱动研究 Task，其过滤条件、研究目标和输出仍需明确配置；没有配置不产生研究 Run。
+- 研究任务失败不回滚已持久化情报，也不阻止后续采集。报告生成应能使用现有有效数据，同时明确数据覆盖不足和尚未完成的分类/采集状态。
+
 #### 主题/行业任务与证券任务的边界
 
 - `on_entities_resolved` 适合分析被资料**直接确认涉及**的证券，可按 `security_id` 扇出。
@@ -394,9 +435,9 @@ TaskEvent 可以是 PostgreSQL 任务/事件表的一个类型，不需要部署
 
 **示例：** 一份公告入库后先得到 `pending`，此时不会触发“按 NVDA 研究”；解析完成并确认 NVDA 才产生证券级 Run。若 Worker 恰好在事件提交后宕机，恢复时仍能领取同一事件，但唯一约束保证不会再建第二个 NVDA Run。若后来更正该公告实际关联另一只股票，新的解析修订保留纠正记录，并据此创建新证券的研究 Run。
 
-### 8.2 任务配置示例
+### 8.2 默认采集、综合研究与可选即时研究示例
 
-下列任务分别展示纯采集、按确认证券触发、按分类主题触发，以及按 Watchlist 展开的定时研究：
+Task 的研究窗口必须在 Run 创建时确定并记录 `window_start`（包含）、`window_end`（不包含）、`as_of`（研究资料可获知的截止时点）；Repository 查询仅返回该时点前可获取的资料。研究可引用窗口外的历史背景与之前的 Analysis，但应标明其不是窗口内新增信息。
 
 ~~~yaml
 tasks:
@@ -411,56 +452,60 @@ tasks:
         use: repository.ingest
         input: fetch.items
 
-  event_research:
-    type: analysis
-    strategy: event_driven
-    trigger: {kind: on_entities_resolved}
-    scope: {from: trigger.security_ids, for_each: security}
+  daily_market_report:
+    type: report
+    trigger: {kind: schedule, cron: "0 9 * * 1-5", timezone: America/New_York}
+    window: {lookback: 1d}
     steps:
-      - id: judge
-        use: agent.event_judge
-        input: {document_ids: trigger.document_ids, security_id: run.security_id}
-      - id: analyze
-        use: agent.researcher
-        input: {document_ids: trigger.document_ids, security_id: run.security_id}
-        when: {step: judge, field: should_analyze, equals: true}
-      - id: save
-        use: repository.save_analysis
-        input: analyze.output
-        when: {step: analyze, status: succeeded}
-
-  macro_policy_research:
-    type: analysis
-    trigger: {kind: on_document_classified, category_in: [macro, policy]}
-    steps:
-      - id: judge
-        use: agent.topic_judge
-        input: trigger.classification_ref
-      - id: analyze
-        use: agent.topic_researcher
-        input: trigger.document_ids
-        when: {step: judge, field: should_analyze, equals: true}
-      - id: save
-        use: repository.save_analysis
-        input: analyze.output
-        when: {step: analyze, status: succeeded}
-
-  daily_watchlist_research:
-    type: analysis
-    strategy: long_term
-    trigger: {kind: schedule, cron: "0 8 * * 1-5", timezone: America/New_York}
-    scope: {from: watchlist, for_each: security, max_items: 50}
-    execution: {max_concurrency: 3}
-    steps:
+      - id: context
+        use: repository.search
+        with:
+          scope: research_scope
+          window: run.window
+          include: [documents, events, market_data, previous_analyses]
       - id: research
-        use: agent.researcher
-        input: run.security_id
+        use: agent.market_researcher
+        input: context.output
       - id: save
         use: repository.save_analysis
         input: research.output
+      - id: report
+        use: repository.render_report
+        input: save.output
+
+  weekly_watchlist_research:
+    type: analysis
+    strategy: long_term
+    trigger: {kind: schedule, cron: "0 9 * * 6", timezone: America/New_York}
+    window: {lookback: 7d}
+    scope: {from: watchlist, for_each: security, max_items: 50}
+    execution: {max_concurrency: 3}
+    steps:
+      - id: context
+        use: repository.search
+        with: {security: run.security_id, window: run.window}
+      - id: research
+        use: agent.researcher
+        input: context.output
+      - id: save
+        use: repository.save_analysis
+        input: research.output
+
+  important_event_research:
+    enabled: false
+    type: analysis
+    trigger: {kind: on_document_classified, category_in: [policy]}
+    steps:
+      - id: judge
+        use: agent.event_judge
+        input: trigger.classification_ref
+      - id: research
+        use: agent.researcher
+        input: trigger.document_ids
+        when: {step: judge, field: should_analyze, equals: true}
 ~~~
 
-配置文件提供人可读的任务定义，数据库保存运行时快照和事件，不让 Task 引擎依赖某个投资风格、模型厂商或上游来源。
+这里的 `financial_news`、Agent ID 和周期是**配置示例**，并非预设的真实数据源或固定业务策略。采集数据与研究报告都通过独立 Task 执行；`important_event_research` 默认关闭，说明事件驱动深度研判不是每篇资料的必经步骤。配置文件提供人可读定义，数据库记录执行时的配置、时间范围、实际输入与结果快照。
 
 ## 9. Agent、HTTP 模型与回退
 
@@ -493,6 +538,10 @@ Tool 与 Connector 处于不同边界：
 分析结果以结构化记录优先，Markdown 报告为其展现形式。单条 Finding 至少包含：claim、kind（fact/inference/opinion 等）、verification_status、支持和反面 evidence_refs、关键假设、时间边界与来源说明。
 
 每次 Analysis 保存 Task Run、Agent/模型、实际提示词版本或哈希、输入文档与金融数值版本引用、输出 Finding、生成时间和用量。Report 引用 Analysis，可被其他研究任务检索，而不是把报告正文当作无法拆分的唯一数据。
+
+**综合报告契约：** 报告应覆盖明确时间窗口和 Research Scope，综合呈现市场情绪及其指标、重大财经资讯、宏观/行业发展、政策法规变化、重点公司与金融数据、与上次研究相比的新变化、存在分歧的证据以及尚未证实的风险。重点是跨来源综合判断，而不是按每篇新闻逐条复述。报告可根据策略只选择其中适用的维度，但必须保存输入数据/资料的范围、采集新鲜度、关键来源引用和明确的不确定性。如果某维度数据缺失，应标为未覆盖或资料不足，不能默认为没有变化。
+
+市场情绪相关结论必须区分可观察指标、媒体/机构观点和模型的综合推断；样本不足或同源转载较多时不能宣称市场整体共识。研究任务可引用历史报告对比判断变化，不影响持续采集任务。
 
 
 ### 11.1 独立核查、记录契约与状态聚合
@@ -562,19 +611,27 @@ V0 采用响应式单人研究工作台，不开发 UI 组件库，不制作图�
 
 主要视图：
 
-- Overview：采集概况、重要事件、任务执行与近期研究；展示超时未解析的 pending 数量和 failed 数量，并提供定位入口。
+- Overview：持续采集覆盖情况、近期重要事件、市场情绪与综合研究报告、任务执行情况；展示超时未解析的 pending 数量和 failed 数量，并提供定位入口。
 - Intelligence：来源、股票、**类别、主题标签、行业、地域**、时间、信任级别与全文/语义检索；支持筛选无已确认证券及未解决实体提及的文档，但不要求人工逐篇确认。
 - Tasks：任务名称、类型、可选策略、上次执行、状态和手动触发。
-- Research：报告、结构化结论、证据来源与历史观点。
+- Research：按日/周或自定义窗口查看综合研究报告、市场情绪变化、结构化结论、证据来源与历史观点；不是逐篇新闻解读列表。
 - Runs：任务执行步骤、模型调用、费用、错误与回退信息；可查看积压/失败文档的来源、采集时间、最近尝试、错误和重试状态。
 
 第一版的来源、模型、Agent、策略、任务和工具均以 YAML/Markdown/.env 管理；Web 只提供必要的查看与触发能力，不重复开发配置编辑系统。
 
 ## 14. 原型验证目标与边界
 
-原型应完整覆盖一条从“真实来源 → 采集 → S3/数据库持久化 → 检索 → 可选研究 → 保存证据与报告 → Web 查看”的端到端路径，且允许纯采集任务独立运行。
+原型应完整覆盖“关注范围内的真实来源 → 持续采集和轻量分类 → S3/数据库情报沉淀 → 独立定时/手动综合研究 → 保存证据和报告 → Web 查看”的端到端路径。纯采集任务可以长期独立运行，无需每篇资料生成分析；定时研究也可以在采集源暂时不可用时使用已有数据并说明覆盖不足。
 
 验证重点：增量幂等、原始证据及转载关系追溯、异步实体解析后的证券级触发、独立自动分类后的主题/行业级触发、无证券文档依然可研究、直接事实关联与主题相关性分离、证券身份与历史代码 as-of 消歧、结构化金融数据的时点正确性、按证券独立 Task Run 的并发和故障隔离、保守事件归并、核查状态确定性聚合、任务/Agent 解耦、简单主备回退、外部内容隔离、配置扩展成本、可观察模型消耗、ARM + Docker 部署可用性。
+
+### 综合研究与采集验收场景
+
+- **独立执行**：连续采集 100 篇符合 Research Scope 的资讯，形成 100 条可查资料，但不自动创建 100 份研究报告；定时研究任务按指定窗口读取全部相关文档、指标和历史结论，生成一份综合报告。
+- **故障隔离**：研究 Agent 不可用时，采集、去重、分类继续运行；某 RSS/API 暂停更新时，研究仍能使用已保存数据，报告必须显示来源数据过期或覆盖缺失。
+- **相关性边界**：一则没有 NVDA 字样的半导体出口政策仍可因行业/政策 Scope 被保留；无关 RSS 条目不会进入全文提取和深度处理，且过滤计数可查。
+- **情绪证据**：日报综合客观市场指标和不同发布者的资讯，标明“指标变化”和“模型归纳观点”的区别，不得以重复转载的新闻数量伪装市场整体情绪。
+- **事件研究不是默认**：文档完成实体解析或分类后，不会自动调用研究 Agent；只有显式启用的事件研究 Task 才能因该事件创建研究 Run。
 
 ### 一致性验收场景
 
