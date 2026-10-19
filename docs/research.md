@@ -4,7 +4,7 @@
 
 ## 统一取材：Evidence Selection 与 Evidence Package
 
-**一套取材逻辑服务所有研究范围，不按市场/行业/个股分别建设取材引擎。** `repository.select_evidence` 是现有 Task 中可配置的 Repository 步骤：先寻找本次可研究的新增变化，再查询必要历史背景，整理可复查的 Evidence Package 交给 Research Agent。这里的 “Evidence Selection” 表示执行能力，“Evidence Package” 表示本次结果快照；**都不代表新微服务、全局 Agent 或持久化材料副本**。
+**一套取材逻辑服务所有研究范围，不按市场/行业/个股分别建设取材引擎。Repository First 是默认取材规则**：先检索已保存的 Document 原文、分类、按需抽取结果、已有结构化指标和历史分析；如果所需数据已具备且在研究时点适用，就直接使用，不重复调用外部 API。`repository.select_evidence` 是现有 Task 中可配置的 Repository 步骤：先寻找本次可研究的新增变化，再查询必要历史背景，整理可复查的 Evidence Package 交给 Research Agent。这里的 “Evidence Selection” 表示执行能力，“Evidence Package” 表示本次结果快照；**都不代表新微服务、全局 Agent 或持久化材料副本**。
 
 ### 取材请求与研究维度
 
@@ -84,7 +84,7 @@ evidence_package:
 
 ### Agent 补充检索与故障边界
 
-- 研究 Agent 可以通过现有已授权的 Repository 只读 Tool 提出补充查询，用来核对关键事实、查找反例、补齐缺少的历史背景。新查到的资料按相同 `as_of`、权限、引用和 Token/调用预算约束加入本次 `research_inputs`；不回写为 Document 的“已研究”状态，也不覆盖原始证据包快照。
+- 研究 Agent **先**通过 Repository 的只读检索补齐问题；已有可用材料不能因为方便而默认重查外部。只有关键事实缺失、不够新、来源冲突或确需交叉核实时，才在 Task 明确授权下调用外部 Tool。新获得的有复用价值的原文或结构化响应经统一 Source/Repository 流程登记、留存原始证据与时间，生成可追溯引用，再按相同 `as_of`、权限和预算约束加入本次 `research_inputs`；不得把新资料标记为 Document 的“已研究”状态，也不得覆盖原始证据包快照。
 - 模型不应通过重新搜索任意外部网站绕过研究截止时点。必要的远程 Tool 补证仍走可信来源登记；若该资料在 `as_of` 后才公开，不能作为该历史研究时点的已知事实。
 - 取材失败与无候选不同：检索超时、分类积压、数据源断更、候选扫描不完或版本无法确定时，分别记录原因和受影响维度。可配置 Task 是否允许“带明确覆盖不足的报告”；不满足 Task 成功条件就不能推进[研究窗口与任务示例](execution.md)的研究游标。
 - Evidence Package 在下游 Agent 失败时保持可复查，重试默认沿用同一 Run 已保存的输入、版本和选择规则；明确发起的新研究 Run 才按新的 `as_of` 检索更新的资料。

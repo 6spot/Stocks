@@ -231,9 +231,9 @@ Provider 定义 protocol、HTTP endpoint、认证方式、默认超时等。**�
 Tool 与 Connector 处于不同边界：
 
 - Connector 为常规采集 Task 提供重复、增量的数据获取。
-- Tool 用于 Agent 或显式 Task 步骤中的按需查询、补充和交叉验证。
+- Tool 用于 Agent 或显式 Task 步骤中的按需查询、补充和交叉验证；研究**先查询 Repository**，只在现有数据不足、过期、存在冲突或需要核实时访问外部来源，不能默认每份报告重新调用行情、财务和宏观 API。
 - MCP 仅支持远程 Streamable HTTP；不实现 stdio 客户端。
 - MCP 的工具发现、调用和结果解析由通用客户端负责。外部服务作为配置项，不为每个工具提供商实现一套底层框架。
 - MCP 搜索供应商属于“发现/查询渠道”，其返回网页的真正 Publisher 是原网站，不因搜索服务本身而提升可信等级。
-- 如研究产生新的证据，先经过统一 Source/Document 入库与来源记录，再由 Analysis 引用。
+- 研究从外部取得有复用价值的新证据时，必须先按数据类型走统一 Source/Repository 入库、原始响应/文档留存及来源记录，再由 Analysis 引用；不能仅使用一次性 Tool 返回文本却不保存。没有新数据时直接复用现有 Repository 引用。
 - 工具调用由 Stocks 授权后执行，模型只能提出结构化请求。
