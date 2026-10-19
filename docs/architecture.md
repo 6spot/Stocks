@@ -155,34 +155,34 @@ DocumentCandidate 至少提供：上游 ID 或 URL、标题、正文/摘要、�
 
 ### 6.3 发行主体、证券身份与消歧
 
-**永久身份不能依赖股票代码。** Issuer（公司或发行主体）使用内部 \`issuer_id\`；Security（具体证券，如不同股类或 ADR）使用内部 \`security_id\`，同一 Issuer 可以关联多种 Security。Ticker、交易所代码、CIK、FIGI 等均是有来源和适用范围的外部标识，而非内部主键。Watchlist 保存 \`security_id\`；公司层面研究通过 \`issuer_id\` 聚合相关证券。
+**永久身份不能依赖股票代码。** Issuer（公司或发行主体）使用内部 `issuer_id`；Security（具体证券，如不同股类或 ADR）使用内部 `security_id`，同一 Issuer 可以关联多种 Security。Ticker、交易所代码、CIK、FIGI 等均是有来源和适用范围的外部标识，而非内部主键。Watchlist 保存 `security_id`；公司层面研究通过 `issuer_id` 聚合相关证券。
 
 **历史身份字段与约束：**
 
 | 记录 | 关键字段 | 约束与语义 |
 | --- | --- | --- |
-| \`issuers\` | \`issuer_id\`、名称、外部身份引用 | 公司改名不重建内部 ID；公司合并或实体变化保留关系历史 |
-| \`securities\` | \`security_id\`、\`issuer_id\`、证券类别 | 股票类别、ADR 等不因为公司相同就合并 |
-| \`security_identifiers\` | \`security_id\`、\`type\`（ticker/FIGI 等）、\`value\`、\`exchange\`、\`valid_from\`、\`valid_to\`、\`source_ref\` | 有效期采用 \`[valid_from, valid_to)\`，允许空上界；同一命名空间、交易场所和时间点出现多个候选时不得猜测 |
-| \`entity_mentions\` | \`mention_id\`、\`document_id\`、原文词语、位置或文本引用、识别到的实体类型、\`reference_time\`、\`time_basis\`、\`status\` | 每处提及可独立消歧；\`unresolved\` 必须可查询 |
-| \`document_entities\` | \`document_id\`、\`issuer_id\` 或 \`security_id\`、\`resolution_status\`、\`resolved_as_of\`、\`method\`、\`evidence_ref\`、\`resolution_revision\` | 支持多对多关系；只有 \`confirmed\` 的 \`security_id\` 能驱动证券级任务 |
-| \`documents\` | \`entity_resolution_status\`、\`entity_resolution_revision\`、\`entity_resolved_at\`、错误信息（失败时） | 文档完整入库与实体解析相互独立；初始状态为 \`pending\` |
+| `issuers` | `issuer_id`、名称、外部身份引用 | 公司改名不重建内部 ID；公司合并或实体变化保留关系历史 |
+| `securities` | `security_id`、`issuer_id`、证券类别 | 股票类别、ADR 等不因为公司相同就合并 |
+| `security_identifiers` | `security_id`、`type`（ticker/FIGI 等）、`value`、`exchange`、`valid_from`、`valid_to`、`source_ref` | 有效期采用 `[valid_from, valid_to)`，允许空上界；同一命名空间、交易场所和时间点出现多个候选时不得猜测 |
+| `entity_mentions` | `mention_id`、`document_id`、原文词语、位置或文本引用、识别到的实体类型、`reference_time`、`time_basis`、`status` | 每处提及可独立消歧；`unresolved` 必须可查询 |
+| `document_entities` | `document_id`、`issuer_id` 或 `security_id`、`resolution_status`、`resolved_as_of`、`method`、`evidence_ref`、`resolution_revision` | 支持多对多关系；只有 `confirmed` 的 `security_id` 能驱动证券级任务 |
+| `documents` | `entity_resolution_status`、`entity_resolution_revision`、`entity_resolved_at`、错误信息（失败时） | 文档完整入库与实体解析相互独立；初始状态为 `pending` |
 
 以上列出要求保留的**数据语义和字段契约**；具体索引、主键类型或部分辅助字段的物理拆分由数据库实现决定，不得丢失历史时间和确认依据。
 
 **实体解析时点（as-of）规则：**
 
-1. 一个提及若明确指代某个历史时间，以该提及的 \`reference_time\` 为准，并保存原文依据（例如“该公司在 2023 年仍使用代码 X”）；否则默认使用文档的 \`published_at\`。
-2. 选择在解析时点有效的标识，即 \`valid_from <= reference_time < valid_to\`（空上界视为持续有效），结合交易所、证券类别和原文上下文进行匹配；优先采用可核对的身份标识。
-3. 不能用当前 Ticker 映射替代历史匹配，也不能用采集时间 \`collected_at\` 充当文章的历史指代时间。若缺少可靠时点或匹配不唯一，保存 unresolved 与候选依据，不创建猜测性的已确认关系。
-4. 解析结果应记录采用的 \`resolved_as_of\`、\`time_basis\`（explicit_mention / document_published）、匹配方法与来源依据。新规则重新解析只修正当前关联，不覆盖原文或抹去历史解析结果。
+1. 一个提及若明确指代某个历史时间，以该提及的 `reference_time` 为准，并保存原文依据（例如“该公司在 2023 年仍使用代码 X”）；否则默认使用文档的 `published_at`。
+2. 选择在解析时点有效的标识，即 `valid_from <= reference_time < valid_to`（空上界视为持续有效），结合交易所、证券类别和原文上下文进行匹配；优先采用可核对的身份标识。
+3. 不能用当前 Ticker 映射替代历史匹配，也不能用采集时间 `collected_at` 充当文章的历史指代时间。若缺少可靠时点或匹配不唯一，保存 unresolved 与候选依据，不创建猜测性的已确认关系。
+4. 解析结果应记录采用的 `resolved_as_of`、`time_basis`（explicit_mention / document_published）、匹配方法与来源依据。新规则重新解析只修正当前关联，不覆盖原文或抹去历史解析结果。
 
 **异步解析与文档状态：**
 
-- 采集先完成 S3 原文/快照与 Document 入库，记录 \`pending\`；不得在采集事务内等待模型或联网消歧。后台 Worker 随后执行识别、规则匹配及必要时的 Agent 消歧。
-- \`pending\`：等待或正在解析；\`resolved\`：本轮处理完成且没有未解决的实体提及（允许识别结果为空）；\`partial\`：本轮处理完成但仍存在未解决的提及；\`failed\`：处理过程失败，保存错误，允许按重试策略重做。
-- 每轮解析只生成一组可确认的关联及一组仍未确认的提及。**状态 \`partial\` 不妨碍已确认证券参与后续研究**，但未确认候选绝不触发证券任务。
-- Worker 先计算本轮关联集合与当前已确认集合之间的差异。只有首次完成或发生实质变更时才增加 \`entity_resolution_revision\`；相同数据重复处理保持修订号不变。
+- 采集先完成 S3 原文/快照与 Document 入库，记录 `pending`；不得在采集事务内等待模型或联网消歧。后台 Worker 随后执行识别、规则匹配及必要时的 Agent 消歧。
+- `pending`：等待或正在解析；`resolved`：本轮处理完成且没有未解决的实体提及（允许识别结果为空）；`partial`：本轮处理完成但仍存在未解决的提及；`failed`：处理过程失败，保存错误，允许按重试策略重做。
+- 每轮解析只生成一组可确认的关联及一组仍未确认的提及。**状态 `partial` 不妨碍已确认证券参与后续研究**，但未确认候选绝不触发证券任务。
+- Worker 先计算本轮关联集合与当前已确认集合之间的差异。只有首次完成或发生实质变更时才增加 `entity_resolution_revision`；相同数据重复处理保持修订号不变。
 - 将解析结果、文档状态和后续触发记录放在同一数据库事务提交。失败时不发布证券触发；未确认提及可由之后的规则升级或补充资料重新解析。
 - 后续纠正历史身份映射时，保留旧研究的输入快照；对依赖错误映射的现有结果标记需重新评估，当前查询不再将其当作正确证券的有效研究结果，必要时按新的确认关系重新发起任务。无需引入全量依赖图。
 
@@ -205,26 +205,26 @@ Market Data 通过同一 Source / Connector / Source Mapper 接入，但按数�
 
 1. 用公告/上游唯一 ID、Canonical URL、原文哈希做确定性去重；严格区分“内容相同”与“只是报道同一事件”。
 2. 利用已确认的证券或发行主体、事件类型、发生与披露时间、全文及向量检索寻找候选 Event。
-3. 只有满足可解释的规则或经过明确语义判断，才在 \`event_documents\` 中记录 \`confirmed\` 归属；证据不足时保留 \`candidate\`，不能为提高归并率而强制合并。
+3. 只有满足可解释的规则或经过明确语义判断，才在 `event_documents` 中记录 `confirmed` 归属；证据不足时保留 `candidate`，不能为提高归并率而强制合并。
 4. 保存关联来源、判断方法和依据；允许纠正归并但不删除 Document 和来源元数据。
 
-**Document 来源链使用 \`document_relations\`，与 \`event_documents\` 独立。**
+**Document 来源链使用 `document_relations`，与 `event_documents` 独立。**
 
 | 字段 | 契约 |
 | --- | --- |
-| \`id\`、\`from_document_id\` | 一条有方向的来源关系及当前文档 |
-| \`to_document_id\` / \`target_original_url\` | 已入库的目标文档 ID，或尚未入库的原始出处 URL；至少具备一种可追溯目标 |
-| \`relation_type\` | \`duplicate_of\`（同一原始内容）、\`republished_from\`（转载/再发布）、\`cites\`（引用其他报道/披露） |
-| \`status\` | \`candidate\`、\`confirmed\`、\`rejected\` |
-| \`method\` | \`hash\`、\`canonical_url\`、\`link\`、\`rule\`、\`agent\`、\`manual\` 等 |
-| \`evidence_ref\`、\`reason\`、\`updated_at\` | 原始依据与判定说明，支持后续复核 |
+| `id`、`from_document_id` | 一条有方向的来源关系及当前文档 |
+| `to_document_id` / `target_original_url` | 已入库的目标文档 ID，或尚未入库的原始出处 URL；至少具备一种可追溯目标 |
+| `relation_type` | `duplicate_of`（同一原始内容）、`republished_from`（转载/再发布）、`cites`（引用其他报道/披露） |
+| `status` | `candidate`、`confirmed`、`rejected` |
+| `method` | `hash`、`canonical_url`、`link`、`rule`、`agent`、`manual` 等 |
+| `evidence_ref`、`reason`、`updated_at` | 原始依据与判定说明，支持后续复核 |
 
 约束与处理规则：
 
 - 同一确定的“起点 + 类型 + 目标”关系应幂等；自引用无意义，系统拒绝。转载与重复关系应避免形成闭环；遍历来源链时进行去环和深度限制。
-- \`duplicate_of\` 与 \`republished_from\` 用于寻找共享原始出处；\`cites\` **不代表失去独立性**，引用不等于全文转载。候选关系不参与自动判定。
+- `duplicate_of` 与 `republished_from` 用于寻找共享原始出处；`cites` **不代表失去独立性**，引用不等于全文转载。候选关系不参与自动判定。
 - 不能找到原始文档时，保留其原始 URL、可识别的发布者和发现链路，不能凭空创建一个“已验证的原始来源”。
-- Verifier 沿**已确认**的重复/转载来源链判断是否共享源头：同源视为一组证据；可证明各自有独立原始调查时才视为独立；无法判断时标记 \`unknown\`，不把“没有已知关系”当成“独立”。
+- Verifier 沿**已确认**的重复/转载来源链判断是否共享源头：同源视为一组证据；可证明各自有独立原始调查时才视为独立；无法判断时标记 `unknown`，不把“没有已知关系”当成“独立”。
 - 来源是否独立、来源是否可信、结论是否得到支持是不同判断。相关来源的数量不得直接作为真实性票数；核查结果引用参与判断的具体来源关系和证据。
 
 ### 6.6 检索
@@ -292,9 +292,9 @@ StepResult:
 
 | 阶段 | 提交内容 | 可供哪些 Task 消费 |
 | --- | --- | --- |
-| 1. 采集入库 | S3 原文与 PostgreSQL Document、采集幂等键、采集游标；实体状态为 \`pending\` | \`on_new_documents\`：不依赖证券身份的文档处理任务 |
-| 2. 后台实体解析 | \`entity_mentions\`、\`document_entities\`、文档解析状态/修订号 | 解析结果提交后才能产生证券级触发 |
-| 3. 就绪事件持久化 | 与第 2 步**同一 PostgreSQL 事务**写入 \`on_entities_resolved\` 事件，记录文档、修订、确认证券集合 | \`on_entities_resolved\`：需要 \`security_id\` 的 Task |
+| 1. 采集入库 | S3 原文与 PostgreSQL Document、采集幂等键、采集游标；实体状态为 `pending` | `on_new_documents`：不依赖证券身份的文档处理任务 |
+| 2. 后台实体解析 | `entity_mentions`、`document_entities`、文档解析状态/修订号 | 解析结果提交后才能产生证券级触发 |
+| 3. 就绪事件持久化 | 与第 2 步**同一 PostgreSQL 事务**写入 `on_entities_resolved` 事件，记录文档、修订、确认证券集合 | `on_entities_resolved`：需要 `security_id` 的 Task |
 | 4. 创建 Run | Worker 消费已提交的事件，按确认证券创建独立、可重试 Task Run | 常规执行与结果入库 |
 
 **最小持久化触发契约：**
@@ -314,20 +314,20 @@ TaskEvent:
 TaskEvent 可以是 PostgreSQL 任务/事件表的一个类型，不需要部署消息中间件。事件与相应业务数据在同一事务中写入；Worker 领取并创建 Task Run 时采用唯一键和事务保护。Worker 崩溃或重启后，可以安全重新领取未完成事件，重复投递不能重复创建相同 Run。
 
 - 第 1 步事务失败不推进游标、不创建任何新数据触发；重试先检查内容哈希及幂等键。
-- 第 2 步 \`failed\` 时记录错误并重试，不发布 \`on_entities_resolved\`；\`partial\` 可以发布已确认证券集合，并保留待消歧部分。
-- 即使本轮没有确认任何 Security，也保存解析完成/部分完成的事实；\`confirmed_security_ids\` 为空时不创建证券 Run。
+- 第 2 步 `failed` 时记录错误并重试，不发布 `on_entities_resolved`；`partial` 可以发布已确认证券集合，并保留待消歧部分。
+- 即使本轮没有确认任何 Security，也保存解析完成/部分完成的事实；`confirmed_security_ids` 为空时不创建证券 Run。
 - 重新解析只在已确认关联**实质改变**时发布新修订事件。新增证券产生新的研究范围；撤销或改正旧关联须在 Repository 中保留更正信息，并标记依赖旧关联的研究需要重估。与旧修订输入相同的重试不得产生重复触发。
 
 #### Fan-out 是创建 Run，不是 Task 内循环
 
-- Task 的 \`scope\` 可以是单证券、Watchlist 或事件携带的已确认 \`security_id\` 集合；显式 \`for_each: security\` 才按证券展开，其余 Task 可以对整批文档只运行一次。
-- 将 scope 展开为去重、稳定顺序的内部 \`security_id\`，校验 \`max_items\` 上限；每个证券产生一个 Run，携带 \`security_id\`、\`task_batch_id\`、时间窗口和输入证据引用。
-- Run 的幂等身份由 \`task_id\`、Task 定义版本、触发事件 ID（或调度窗口）、\`security_id\` 与研究窗口组成；数据库层建立唯一约束。**同一个事件重投不产生新 Run，确有实体关联修订的事件则允许新 Run。**
-- 每个 Run 有独立状态、步骤日志与重试；Worker 使用 Task 的 \`max_concurrency\` 限制并发；某证券失败不撤销其他证券的成功结果。
+- Task 的 `scope` 可以是单证券、Watchlist 或事件携带的已确认 `security_id` 集合；显式 `for_each: security` 才按证券展开，其余 Task 可以对整批文档只运行一次。
+- 将 scope 展开为去重、稳定顺序的内部 `security_id`，校验 `max_items` 上限；每个证券产生一个 Run，携带 `security_id`、`task_batch_id`、时间窗口和输入证据引用。
+- Run 的幂等身份由 `task_id`、Task 定义版本、触发事件 ID（或调度窗口）、`security_id` 与研究窗口组成；数据库层建立唯一约束。**同一个事件重投不产生新 Run，确有实体关联修订的事件则允许新 Run。**
+- 每个 Run 有独立状态、步骤日志与重试；Worker 使用 Task 的 `max_concurrency` 限制并发；某证券失败不撤销其他证券的成功结果。
 - 需要汇总时，汇总 Task 读取指定批次/窗口的研究结果及缺失状态，不自动创建隐式依赖屏障。
-- 系统只支持上述顺序步骤、结构化 \`when\` 条件、触发、fan-out 和有限重试；不引入循环 DSL、通用 DAG 引擎或分布式事件总线。
+- 系统只支持上述顺序步骤、结构化 `when` 条件、触发、fan-out 和有限重试；不引入循环 DSL、通用 DAG 引擎或分布式事件总线。
 
-**示例：** 一份公告入库后先得到 \`pending\`，此时不会触发“按 NVDA 研究”；解析完成并确认 NVDA 才产生证券级 Run。若 Worker 恰好在事件提交后宕机，恢复时仍能领取同一事件，但唯一约束保证不会再建第二个 NVDA Run。若后来更正该公告实际关联另一只股票，新的解析修订保留纠正记录，并据此创建新证券的研究 Run。
+**示例：** 一份公告入库后先得到 `pending`，此时不会触发“按 NVDA 研究”；解析完成并确认 NVDA 才产生证券级 Run。若 Worker 恰好在事件提交后宕机，恢复时仍能领取同一事件，但唯一约束保证不会再建第二个 NVDA Run。若后来更正该公告实际关联另一只股票，新的解析修订保留纠正记录，并据此创建新证券的研究 Run。
 
 ### 8.2 任务配置示例
 
@@ -416,7 +416,7 @@ Tool 与 Connector 处于不同边界：
 
 ### 11.1 独立核查、记录契约与状态聚合
 
-**Finding 是不可被核查步骤静默改写的研究主张。** Researcher 保存主张及支持引用后，初始 \`verification_status = unverified\`。Researcher 自评、模型置信分数、同一文本的重复生成都不能直接升为 \`supported\`。
+**Finding 是不可被核查步骤静默改写的研究主张。** Researcher 保存主张及支持引用后，初始 `verification_status = unverified`。Researcher 自评、模型置信分数、同一文本的重复生成都不能直接升为 `supported`。
 
 Verifier 与 Researcher 为不同执行步骤，拥有独立的任务输入和结果记录。Verifier 检查的不是“另一个模型是否赞同”，而是：主张是否与原始资料一致、数值/单位/期间是否正确、证券身份是否匹配、引用是否被断章取义、引用来源是否真正独立、是否存在反面证据或前视偏差。可确定的数学与财务核对优先使用代码计算；可按任务选择相同或不同模型，**不强制每项研究调用两种模型**。
 
@@ -424,35 +424,35 @@ Verifier 与 Researcher 为不同执行步骤，拥有独立的任务输入和�
 
 | 记录 | 必须保留的字段及含义 |
 | --- | --- |
-| \`findings\` | \`finding_id\`、\`analysis_id\`、确定的 \`claim\` 内容、\`kind\`、研究时点、原始 \`evidence_refs\` |
-| \`verification_runs\` | \`run_id\`、任务/Verifier 标识、执行时间、输入 Finding 列表、核查规则/模型/提示词版本、数据时间边界 |
-| \`finding_verifications\` | \`verification_id\`、\`finding_id\`、\`run_id\`、\`verdict\`、支持与反面证据引用、判定依据、\`checked_at\`、\`is_active\`、\`supersedes_id\`（可空）、\`inactive_reason\`（可空） |
-| \`reports\` | 生成时的 Finding 引用、当时的聚合状态快照、研究报告内容与生成时间 |
+| `findings` | `finding_id`、`analysis_id`、确定的 `claim` 内容、`kind`、研究时点、原始 `evidence_refs` |
+| `verification_runs` | `run_id`、任务/Verifier 标识、执行时间、输入 Finding 列表、核查规则/模型/提示词版本、数据时间边界 |
+| `finding_verifications` | `verification_id`、`finding_id`、`run_id`、`verdict`、支持与反面证据引用、判定依据、`checked_at`、`is_active`、`supersedes_id`（可空）、`inactive_reason`（可空） |
+| `reports` | 生成时的 Finding 引用、当时的聚合状态快照、研究报告内容与生成时间 |
 
-\`verdict\` 仅表示一次核查的结果：\`supported\`、\`contradicted\` 或 \`insufficient_evidence\`；\`unverified\` 和 \`contested\` 是**聚合状态**，不作为单次核查结论。每条核查都保存输入证据的版本和理由，核查未完成/执行失败不能伪造一个成功的 verdict。
+`verdict` 仅表示一次核查的结果：`supported`、`contradicted` 或 `insufficient_evidence`；`unverified` 和 `contested` 是**聚合状态**，不作为单次核查结论。每条核查都保存输入证据的版本和理由，核查未完成/执行失败不能伪造一个成功的 verdict。
 
 #### 当前状态的确定性聚合规则
 
-只读取同一个固定 \`finding_id\` 下 \`is_active=true\` 的有效核查记录。对于已被正式修正、数据引用被证明错误或新版本明确取代的核查，保留旧记录，但设置失效标记与 \`inactive_reason\`；失效有依据，不能因为与另一条核查不一致就自动移除。
+只读取同一个固定 `finding_id` 下 `is_active=true` 的有效核查记录。对于已被正式修正、数据引用被证明错误或新版本明确取代的核查，保留旧记录，但设置失效标记与 `inactive_reason`；失效有依据，不能因为与另一条核查不一致就自动移除。
 
-| 有效记录中的结论组合 | 当前 \`verification_status\` |
+| 有效记录中的结论组合 | 当前 `verification_status` |
 | --- | --- |
-| 无有效记录 | \`unverified\` |
-| 只有 \`insufficient_evidence\` | \`insufficient_evidence\` |
-| 有 \`supported\`，无 \`contradicted\` | \`supported\` |
-| 有 \`contradicted\`，无 \`supported\` | \`contradicted\` |
-| 同时有 \`supported\` 与 \`contradicted\` | \`contested\` |
+| 无有效记录 | `unverified` |
+| 只有 `insufficient_evidence` | `insufficient_evidence` |
+| 有 `supported`，无 `contradicted` | `supported` |
+| 有 `contradicted`，无 `supported` | `contradicted` |
+| 同时有 `supported` 与 `contradicted` | `contested` |
 
-\`insufficient_evidence\` 不会覆盖有效的支持或反驳。追加一条反面核查，若没有使之前的支持记录正式失效，状态从 \`supported\` 变为 \`contested\`；若旧核查因为引错财报被有依据地取代，它不再参与计算，但仍可以在历史中查看。
+`insufficient_evidence` 不会覆盖有效的支持或反驳。追加一条反面核查，若没有使之前的支持记录正式失效，状态从 `supported` 变为 `contested`；若旧核查因为引错财报被有依据地取代，它不再参与计算，但仍可以在历史中查看。
 
 任何状态变动都不会修改原始 Finding 或历史 Report 的生成时快照。当前页面读取最新聚合状态，报告查看其生成时快照与可追溯核查历史；报告如需更新，另生成新版本，不隐式改写原有报告。
 
-\`supported\` 只表示**现有证据能够支持主张**，不是市场预测一定实现，也不是数学意义上的真实性保证。缺少可复查依据时保留不确定性，不用多模型投票或复杂评分制造虚假确定性。
+`supported` 只表示**现有证据能够支持主张**，不是市场预测一定实现，也不是数学意义上的真实性保证。缺少可复查依据时保留不确定性，不用多模型投票或复杂评分制造虚假确定性。
 
 #### 例子与验收边界
 
-1. Researcher 生成“某公司收入同比增长 30%”，系统记录 \`unverified\`；确定性核查读取两期同口径财务数值并计算后，才能写入证据支持或反驳的验证记录。
-2. 某 Finding 先有一个有效 \`supported\`，后续检索到独立反面材料，新增有效 \`contradicted\`，页面必须显示 \`contested\`，且可分别打开两次验证及对应出处。
+1. Researcher 生成“某公司收入同比增长 30%”，系统记录 `unverified`；确定性核查读取两期同口径财务数值并计算后，才能写入证据支持或反驳的验证记录。
+2. 某 Finding 先有一个有效 `supported`，后续检索到独立反面材料，新增有效 `contradicted`，页面必须显示 `contested`，且可分别打开两次验证及对应出处。
 3. 当旧核查引用了错误证券或错误财务期间，修正时保留记录和失效理由；重新聚合只读取有效记录，历史报告仍保持原有状态与时间说明。
 
 ## 12. 技术与部署
