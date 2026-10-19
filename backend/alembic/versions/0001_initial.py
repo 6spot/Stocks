@@ -51,16 +51,8 @@ def upgrade():
         sa.Column("embedding_model", sa.String(255)),
         sa.Column("embedding_dimensions", sa.Integer()),
         sa.UniqueConstraint("document_id", "position", name="uq_document_chunks_position"))
-    op.create_table("evidence",
-        sa.Column("id", UUID(as_uuid=True), primary_key=True),
-        sa.Column("document_id", UUID(as_uuid=True), sa.ForeignKey("documents.id"), nullable=False),
-        sa.Column("chunk_id", UUID(as_uuid=True), sa.ForeignKey("document_chunks.id")),
-        sa.Column("claim", sa.Text(), nullable=False),
-        sa.Column("verification_status", sa.String(30), nullable=False, server_default="unverified"),
-        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("now()")))
 
 def downgrade():
-    op.drop_table("evidence")
     op.drop_table("document_chunks")
     op.drop_index("ix_documents_search", table_name="documents")
     op.drop_index("ix_documents_source_published", table_name="documents")
