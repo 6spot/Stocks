@@ -175,10 +175,11 @@ Research Scope 定义“**值得采集和后续研究的内容范围**”，与 
 | tasks / task_runs / step_runs | 任务定义快照、独立研究范围与增量窗口、按证券独立的运行及逐步骤执行记录 |
 | research_cursors / research_inputs | 每个任务/范围的成功增量位置，以及每次研究实际选用的文档、结构化数据与分类版本引用；逻辑数据契约可由既有运行记录承载 |
 | evidence_packages | 某次研究的取材查询条件、候选覆盖统计、入选证据及其版本、排除/缺口说明的持久化快照；可直接作为 Task Run 的结构化输出存储，无需独立服务或专属物理表 |
-| analyses / findings | 研究过程、结构化结论、事实/推断类型、模型及提示词版本 |
+| analyses / findings | 研究过程、结构化结论、事实/推断类型、在本次研究中的重要性、模型及提示词版本 |
+| finding_relations | 一次研究的 Finding 对一个或多个历史 Finding 的延续、修正、挑战或取代关系，保留证据与判断理由 |
 | verification_runs / finding_verifications | 独立核查执行、判断、依据与核查模型信息 |
 | evidence_links | 单条结论与 Document/Chunk/结构化金融数据的可追溯关系 |
-| reports | 可阅读报告及所引用的 Analysis |
+| reports | 可阅读报告、生成时的结论/核查状态快照、动态内容块及所引用的 Analysis 与数据/图表 |
 
 数据库表可根据性能合理拆分或合并，但上述信息语义及可追溯关系必须保留。Source 信任等级变更，不覆写既有研究执行时使用的快照。**资料只持有自身的发布时间、采集/入库时间、有效版本、可研究状态与关联元数据；研究进度、使用记录及时间范围均属于独立的 Task/Run 数据。**
 
@@ -508,9 +509,13 @@ tasks:
       - id: save
         use: repository.save_analysis
         input: research.output
+      - id: verify
+        use: repository.verify_key_findings
+        input: save.output
+        with: {scope: key_facts_and_numbers}
       - id: report
         use: repository.render_report
-        input: save.output
+        input: {analysis: save.output, verification: verify.output}
 
   weekly_watchlist_research:
     type: analysis
@@ -651,6 +656,33 @@ Provider 定义 protocol、HTTP endpoint、认证方式、默认超时等。支�
 - 不做模型质量动态打分、成本自动选路或无限重试。
 - 记录请求的 Provider/模型、实际可获得的返回模型标识、耗时、Token、可获得费用及回退原因。
 
+### 9.1 Research Agent 的输入、行为与有界补证
+
+Research Agent 是普通可配置的 Agent 角色，执行现有 Research Task 中的一个研究步骤；**不是独立的调度服务、固定的报告类型或额外的 Research Engine**。市场、行业、个股、跨主题研究统一使用相同的 ResearchContext 和输出契约，通过 Objective、Scope、可选 Strategy 与证据包体现差异。
+
+**输入 ResearchContext：**
+
+| 字段 | 契约 |
+| --- | --- |
+| `run_id`、`objective`、`scope`、`strategy_ref?` | 对应 Task Run 的不可变配置快照；研究什么、面向何种视角 |
+| `as_of`、`changes_window` | 所有引用必须在 `as_of` 可获知；窗口仅划定新增变化而不限制历史背景 |
+| `evidence_package_ref` | 指向第 8.3 节已保存的取材快照，不要求全文重复塞入 Prompt |
+| `previous_analysis_refs[]` | 相关历史 Analysis/Findings 的稳定引用及可用版本；允许为空 |
+| `coverage` | 取材/来源缺口、未扫描候选、分类积压等；缺口不是“没有发生变化”的证据 |
+| `allowed_tools[]`、`budget` | 由可信 Task 配置授权的 Repository/远程工具与有限调用/Token 预算，模型不能扩权 |
+
+**研究行为：**
+
+1. 从本次新增变化入手，结合历史资料识别与 Objective 相关的事实、指标修订、事件与政策变化，不逐篇按新闻顺序复述。区分“新公开的旧事实”“既有指标的修订”“当前发生的现实变化”和“不同来源的观点”。
+2. 根据相关性、变化程度、可能的影响路径、证据强弱、历史研究差异和待解决问题，判断哪些内容对**本次研究**重要。重要不等于利好、利空或确定性；没有显著新变化也是有效结论，不能为凑栏目发明新观点。
+3. 检查 Evidence Package 的关键缺口，必要时用已授权 Repository 只读 Tool 进行少量补充检索；缺少来源、反面证据或指标时可带不确定性结束，不能因为检索无结果而捏造数据。
+4. 将研究结果表示为统一的 Analysis：简要综合判断、`findings[]`、`open_questions[]`、引用证据和覆盖范围；向报告层提供可阅读的段落建议，但不把 Markdown 作为唯一资产。
+5. 对历史 Finding 的变化作有证据的**候选关系判断**，由系统验证其引用的目标 ID、Run/Scope 和时间可见性后保存；不因模型一次判断就改写旧 Finding 或核查状态。
+
+**补充检索调用与终止条件：** Agent 只能提出已授权工具中的结构化请求，说明 `purpose`、允许的过滤条件及需要查证的问题；系统强制固定 `as_of`、超时、调用次数、Token 预算及来源登记。对同一检索无进展时停止，保留 `open_questions`；不会无限尝试，也不创建隐式 Agent 子任务。新的补充证据追加到本 Run 的最终 `research_inputs`，保留初始 Evidence Package 原快照。历史回溯不得使用 `as_of` 后公开的新资料伪装当时已知的事实。
+
+**输出校验：** 仅校验结构、合法的 `kind` 与 `importance`、引用 ID/版本是否存在且可获知、引用对应输入或经登记的补证、工具权限及必需字段。不能用“文字长短”“情绪方向”“模型自评可信度”等硬编码规则替代模型的研究判断。非法引用、结构错误可以有限重试/返回步骤错误；不允许为了通过校验静默生成虚构事实。
+
 ## 10. Tools 与远程 MCP
 
 Tool 与 Connector 处于不同边界：
@@ -674,9 +706,86 @@ Tool 与 Connector 处于不同边界：
 市场情绪相关结论必须区分可观察指标、媒体/机构观点和模型的综合推断；样本不足或同源转载较多时不能宣称市场整体共识。研究任务可引用历史报告对比判断变化，不影响持续采集任务。
 
 
+### 11.0 Analysis、Finding 与历史研究关系
+
+**Evidence 是长期共享的来源资产，Finding 是某次研究提出的一条固定主张，Report 是从本次研究结果组织的阅读产物。** 一份资料可以支持多个 Finding，一条 Finding 可以被多个报告和后续研究引用；三者都不互相覆盖。
+
+**Analysis / Finding 的基本契约：**
+
+| 字段 | 语义 |
+| --- | --- |
+| `analysis_id`、`run_id`、`evidence_package_ref`、`research_inputs_ref` | 一次研究的身份及完整取材链 |
+| `summary`、`open_questions[]`、`coverage_ref` | 综合判断、尚未解决的问题与资料覆盖情况 |
+| `finding_id`、`claim`、`kind` | 不可变 Finding；`kind = fact / inference / opinion` 表示主张性质，**fact 并不自动表示已核实** |
+| `evidence_refs[]`、`counter_evidence_refs[]` | 支持与相反的证据引用（含具体数据/Chunk 版本）；不能只给来源名称而没有可查证引用 |
+| `assumptions[]`、`uncertainties[]`、`time_context` | 推断前提、尚未确认的因素和适用时间 |
+| `importance`、`importance_reason` | 在本 Run 中的展示优先级：`key / supporting / monitor`；说明与 Objective、实际变化或未解决风险的关系，**不是可信度或投资评分** |
+| `verification_status` | 按第 11.1 节独立核查记录派生；初始为 `unverified`，不由 Researcher 直接确定 |
+| `finding_relations[]` | 本次 Finding 与一个或多个历史 Finding 的具体关系、原因及引用的新证据 |
+
+**历史关系类型：**
+
+| `relation_type` | 含义 |
+| --- | --- |
+| `reinforces` | 本次新证据进一步支持历史判断 |
+| `refines` | 本次证据使此前判断的条件、范围或表述需要补充/修正 |
+| `challenges` | 新证据对历史判断提出挑战；**不等于已证明原判断错误** |
+| `supersedes` | 在本次明确指定的研究语境中用新的 Finding 取代旧的判断；不删除旧记录，也不更改旧记录的事实核查状态 |
+
+`new` 是没有历史关联时的展示分类，**不是必须落库的一种关系**。`finding_relations` 至少保存 `from_finding_id`（当前）、`to_finding_id`（历史）、`relation_type`、`reason`、`evidence_refs`、`created_at`；研究时点与 Scope 可以由关联 Analysis 获取。仅允许指向当时已存在、对当前 Task 可访问的历史 Finding，不允许自引用、无依据的关联或跨时间反向引用；同一组关系幂等。
+
+关系只表达**新的研究如何理解旧的研究**，不直接变更历史 Finding 或其 Verification 记录。某个历史 Finding 本次未被引用不意味着已失效；上一份报告也不因为出现 `supersedes` 就被删除。真正的核查事实更正仍按第 11.1 节的独立核查修正与历史快照规则处理。
+
+**研究质量约束：**
+
+- Agent 根据 Objective 与证据决定哪些 Finding 值得标为 `key`；每个关键判断都必须有重要性理由与证据/前提。不能要求固定生成 N 条“重点发现”或用关键词计数判断重要性。
+- `supporting` 是帮助解释核心判断的材料；`monitor` 是影响还不明确、值得后续跟踪的问题。三种等级描述报告中的用途，不表示主张真实性、概率或交易信号。
+- 允许 `findings=[]`，并明确输出“本次未发现足以改变既有主要判断的新增证据”，前提是取材覆盖满足任务成功条件；若部分关键来源缺失，则只能说明资料覆盖不足，不能宣称没有重要变化。
+- 关键数值/政策事实核查优先，观点和影响预测可以保留未核查性质及前提。研究过程与 Researcher 输出不向 `supported` 自动升级。
+
+~~~yaml
+analysis:
+  run_id: run_001
+  evidence_package_ref: package_001
+  summary: "本次研究判断示例，非真实市场结论"
+  findings:
+    - finding_id: finding_101
+      claim: "某项新政策修改了特定产品限制范围"
+      kind: fact
+      importance: key
+      importance_reason: "改变了此前研究使用的政策前提"
+      evidence_refs: [doc_101]
+      counter_evidence_refs: []
+      assumptions: []
+      uncertainties: []
+      finding_relations:
+        - to_finding_id: finding_082
+          relation_type: refines
+          reason: "新文件补充了此前尚未明确的适用范围"
+          evidence_refs: [doc_101]
+    - finding_id: finding_102
+      claim: "若限制适用于目标产品，相关企业可能面临经营压力"
+      kind: inference
+      importance: monitor
+      importance_reason: "影响路径值得追踪，但企业敞口尚未核实"
+      evidence_refs: [doc_101]
+      counter_evidence_refs: []
+      assumptions: ["相关产品确实落在限制范围内"]
+      uncertainties: ["公司受影响收入尚不明确"]
+      finding_relations: []
+  open_questions:
+    - question: "具体业务敞口是多少？"
+      evidence_gap: company_disclosure
+  coverage_ref: package_001
+~~~
+
+此例为**结构化输出示意**。真实 `finding_id` 由 Stocks 分配或校验，研究 Agent 可以在单次模型响应中输出所有 Finding，不要求为每个判断单独调用 Agent。
+
 ### 11.1 独立核查、记录契约与状态聚合
 
 **Finding 是不可被核查步骤静默改写的研究主张。** Researcher 保存主张及支持引用后，初始 `verification_status = unverified`。Researcher 自评、模型置信分数、同一文本的重复生成都不能直接升为 `supported`。
+
+**报告生成顺序为：Researcher → 持久化 Findings → 关键事实核查（若 Task 启用）→ Report Renderer。** `repository.verify_key_findings` 表示现有 Task 中执行 Verifier 的一步，而非 Repository 自己生成研究结论或一个新服务。任务可以选择只核查重要事实、数值、政策条款；其他 Finding 保留 `unverified`。被选择的必需核查若失败，不能假装成功或把相关 Finding 标为 `supported`；按 Task 成功条件选择任务失败，或明确生成包含未核查说明的报告。核查范围和失败处理在执行快照中保存。
 
 Verifier 与 Researcher 为不同执行步骤，拥有独立的任务输入和结果记录。Verifier 检查的不是“另一个模型是否赞同”，而是：主张是否与原始资料一致、数值/单位/期间是否正确、证券身份是否匹配、引用是否被断章取义、引用来源是否真正独立、是否存在反面证据或前视偏差。可确定的数学与财务核对优先使用代码计算；可按任务选择相同或不同模型，**不强制每项研究调用两种模型**。
 
@@ -749,11 +858,54 @@ V0 采用响应式单人研究工作台，不开发 UI 组件库，不制作图�
 
 第一版的来源、模型、Agent、策略、任务和工具均以 YAML/Markdown/.env 管理；Web 只提供必要的查看与触发能力，不重复开发配置编辑系统。
 
+### 13.1 统一 Research 阅读与证据交互
+
+**一个 Research 界面、一套报告展示契约，不按市场/行业/个股开发不同页面。** Research 目录按 Scope、研究主题与时间组织 Report，选中后进入统一阅读区；报告章节随 Objective、实际证据和 Findings 动态变化。
+
+**报告展示数据契约：**
+
+| 数据组 | 必要字段或意义 |
+| --- | --- |
+| `report_id`、`analysis_id`、`run_id` | 报告、研究结果、Task Run 的可追溯关系 |
+| `title`、`objective`、`scope`、`strategy_ref?` | 研究主题及其范围/视角 |
+| `as_of`、`changes_window`、`generated_at` | 数据可获知截止、本次新增信息区间及生成时间，三者不能混淆 |
+| `summary`、`sections[]` | 可阅读摘要与动态内容块（正文、Finding 列表、表格、图表引用等），不把 Markdown 当作唯一事实存储 |
+| `finding_refs[]`、`verification_snapshot` | 生成时的结论顺序、展示级别及当时核查状态；历史 Report 不被后来状态变化隐式覆写 |
+| `evidence_package_ref`、`coverage_ref` | 研究所采用资料、选取/排除统计、未扫描候选、不可用来源和其他覆盖缺口 |
+| `previous_report_ref?`、`historical_finding_links[]` | 可选的上次报告引用和有依据的历史判断关联；没有明确关联不能用正文差异臆造“观点逆转” |
+
+**呈现优先级：** 默认先显示核心摘要、`key` Findings 与相较此前有**明确关系证据**的判断变化；后面按实际研究内容展示支持性证据、数据变化/图表、风险与 `monitor` 问题。没有适用指标时不展示空白图表，也不强制所有报告包含同一组章节。Report Renderer 根据结构化 `sections[]` 组合组件，不因研究对象不同创建另一套前端/数据库结构。
+
+**三种核心阅读操作：**
+
+1. **阅读研究**：研究目录可按 Scope、时间、任务查看报告；阅读区突出结论、为何重要、主要变化、关键数据与不确定性。没有显著变化时如实说明。系统保存历史成功报告，当前 Run 失败不能替换其内容。
+2. **追溯证据**：点击 Finding 或段落引用打开侧边抽屉（移动端全屏/底部详情），显示支持/反面证据、来源发布者、原文位置或结构化指标值、日期/单位/期间、实际使用的版本、转载与核查结果，并能打开 Repository 内的原始资料。原始数据应来自持久引用，不以模型生成的数字驱动图表。
+3. **观察变化**：对有明确 `finding_relations` 的当前/历史 Finding 显示延续、修订、挑战或取代及其依据；不得简单比较两篇报告措辞就得出判断发生反转。历史 Finding 的核查状态变更与新研究的观点演变分别展示。旧报告保留生成时状态，并可查看其与最新核查的差异。
+
+**覆盖与失败显示：**
+
+- 在报告元数据附近提供“研究依据与覆盖”入口，显示 Evidence Package 实际入选证据、候选发现/扫描/截断数量、不可用来源、分类/采集积压及受影响维度。数据不足时在相关结论附近展示缺口，不仅在 Runs 日志中呈现。
+- 区分 `unverified`、`insufficient_evidence`、`supported`、`contradicted`、`contested` 与 `kind`（事实/推断/观点）；二者不合成虚假的报告可信度分数。核查失败或暂缺证据不能呈现成“已证实”。
+- 报告生成失败展示失败 Run 和最后成功版本；重新生成报告创建新的 Report/修订引用，不静默更改旧版。任务可按研究成功条件决定是否容许带覆盖不足说明的报告。
+- 图表从 Repository 读取真实时间序列/金融数据及单位与版本。Agent 只可以建议要表达的指标、说明和引用，不得凭自然语言编造折线值。
+- 桌面端用“研究目录 + 报告正文 + 按需打开的证据详情”构成主要界面；移动端复用同样的数据与操作，仅调整导航和证据详情容器。不开发独立报告编辑器或自造组件库。
+
 ## 14. 原型验证目标与边界
 
 原型应完整覆盖“关注范围内的真实来源 → 持续采集和轻量分类 → S3/数据库情报沉淀 → 独立定时/手动综合研究 → 保存证据和报告 → Web 查看”的端到端路径。纯采集任务可以长期独立运行，无需每篇资料生成分析；定时研究也可以在采集源暂时不可用时使用已有数据并说明覆盖不足。
 
 验证重点：增量幂等、原始证据及转载关系追溯、异步实体解析后的可靠证券级就绪事件、独立自动分类后的主题/行业就绪事件与可选研究触发、无证券文档依然可研究、直接事实关联与主题相关性分离、证券身份与历史代码 as-of 消歧、结构化金融数据的时点正确性、按证券独立 Task Run 的并发和故障隔离、保守事件归并、核查状态确定性聚合、任务/Agent 解耦、简单主备回退、外部内容隔离、配置扩展成本、可观察模型消耗、ARM + Docker 部署可用性。
+
+### 研究分析与展示验收场景
+
+- **同一研究 Agent**：市场、行业与个股 Task 分别提供不同 Scope/Objective 和 Evidence Package，运行同一个 Research Agent 结构化输出契约；不得为三类报告硬编码不同的引擎。
+- **有变化也有不确定性**：政策公布确认但影响程度不明时，Researcher 可以生成关键政策事实和附带条件的风险推断；不允许把“可能影响”写成确定的经营损失。
+- **没有显著变化**：本次已完成候选筛选且来源覆盖充足，但没有足以修改主要判断的新资料时，可产出空 `findings` 的正常研究；不得强制凑关键结论。若分类积压导致资料不足则必须显示覆盖缺口。
+- **历史判断关系**：新 Finding 引用实际存在的历史 Finding 与证据提出 `refines` 或 `challenges`；旧 Finding/Report 不变，旧报告未被提及的判断不能推断为无效。
+- **意见变化不等于核查更正**：新 Analysis 对旧 Finding 提出 `challenges` 不更改旧 Finding 的核查状态；旧财务引用修订则由 Verifier 自己的有效记录决定状态。
+- **核查在报告前**：关键事实与数值按任务选择独立核查，Report 记录生成时的聚合状态快照，未经核查的推断不得显示为 `supported`；旧报告与最新核查的差异均可查看。
+- **证据交互**：点击报告 Finding 的引用可定位到对应原始文档位置或数据点/版本，展示来源及反面证据；同一份文档在不同报告中依旧可重复引用。
+- **缺失数据与生成故障**：输入有无法扫描的候选或来源故障时报告明确显示覆盖不完整；报告失败保留上次成功报告及其可读证据，不污染 Repository。
 
 ### 综合研究与采集验收场景
 
