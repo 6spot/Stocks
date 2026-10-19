@@ -118,7 +118,7 @@ Research Agent 是普通可配置的 Agent 角色，执行现有 Research Task �
 2. 根据相关性、变化程度、可能的影响路径、证据强弱、历史研究差异和待解决问题，判断哪些内容对**本次研究**重要。重要不等于利好、利空或确定性；没有显著新变化也是有效结论，不能为凑栏目发明新观点。
 3. 检查 Evidence Package 的关键缺口，主动追问重要判断最可能错在哪里、哪些证据可以推翻它、是否存在其他合理解释；必要时用已授权 Repository 只读 Tool 进行少量反证与背景补充检索。找不到反证不意味着已证明正确；缺少来源、反面证据或指标时可带不确定性结束，不能捏造数据。
 4. 将研究结果表示为统一的 Analysis：简要综合判断、`findings[]`、`open_questions[]`、引用证据和覆盖范围；向报告层提供可阅读的段落建议，但不把 Markdown 作为唯一资产。
-5. 对历史 Finding 的变化作有证据的**候选关系判断**，由系统验证其引用的目标 ID、Run/Scope 和时间可见性后保存；不因模型一次判断就改写旧 Finding 或核查状态。
+5. V0 可引用此前报告对比新变化，但不要求建立逐条历史 Finding 关系；如果后续启用此类增强，应有来源依据且不能改写旧判断。
 
 **补充检索调用与终止条件：** Agent 只能提出已授权工具中的结构化请求，说明 `purpose`、允许的过滤条件及需要查证的问题；系统强制固定 `as_of`、超时、调用次数、Token 预算及来源登记。对同一检索无进展时停止，保留 `open_questions`；不会无限尝试，也不创建隐式 Agent 子任务。新的补充证据追加到本 Run 的最终 `research_inputs`，保留初始 Evidence Package 原快照。历史回溯不得使用 `as_of` 后公开的新资料伪装当时已知的事实。
 
@@ -126,7 +126,7 @@ Research Agent 是普通可配置的 Agent 角色，执行现有 Research Task �
 
 ## 分析、独立验证与研究结果
 
-分析结果以结构化记录优先，Markdown 报告为其展现形式。单条 Finding 至少包含：claim、kind（fact/inference/opinion 等）、verification_status、支持和反面 evidence_refs、关键假设、时间边界与来源说明。
+V0 分析结果应保存摘要、实际使用的 Document/Fact 证据引用、研究时间范围和资料缺口，可按需形成 `findings[]`；报告是阅读视图。**不要求为每条 Finding 建立独立核查状态或历史关系系统**。以下更完整的 Finding 关系与独立核查记录属于后续增强，不能阻碍首版早晚报告生成。
 
 每次 Analysis 保存 Task Run、Agent/模型、实际提示词版本或哈希、Evidence Package/最终 `research_inputs` 引用、输入文档与金融数值版本引用、输出 Finding、生成时间和用量。Report 引用 Analysis，可被其他研究任务检索，而不是把报告正文当作无法拆分的唯一数据。
 
@@ -135,7 +135,7 @@ Research Agent 是普通可配置的 Agent 角色，执行现有 Research Task �
 市场情绪相关结论必须区分可观察指标、媒体/机构观点和模型的综合推断；样本不足或同源转载较多时不能宣称市场整体共识。研究任务可引用历史报告对比判断变化，不影响持续采集任务。
 
 
-### Analysis、Finding 与历史研究关系
+### Analysis、Finding 与历史研究关系（后续增强）
 
 **Evidence 是长期共享的来源资产，Finding 是某次研究提出的一条固定主张，Report 是从本次研究结果组织的阅读产物。** 一份资料可以支持多个 Finding，一条 Finding 可以被多个报告和后续研究引用；三者都不互相覆盖。
 
@@ -214,7 +214,7 @@ analysis:
 
 此例为**结构化输出示意**。真实 `finding_id` 由 Stocks 分配或校验，研究 Agent 可以在单次模型响应中输出所有 Finding，不要求为每个判断单独调用 Agent。
 
-### 独立核查、记录契约与状态聚合
+### 独立核查、记录契约与状态聚合（后续增强）
 
 **Finding 是不可被核查步骤静默改写的研究主张。** Researcher 保存主张及支持引用后，初始 `verification_status = unverified`。Researcher 自评、模型置信分数、同一文本的重复生成都不能直接升为 `supported`。
 

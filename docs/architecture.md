@@ -6,7 +6,7 @@
 
 | 文档 | 唯一职责 |
 | --- | --- |
-| **[数据采集与 Repository](data.md)** | Source、Connector、Scope、分类、实体、金融与宏观数据、政策、来源可信度及检索 |
+| **[数据采集与 Repository](data.md)** | Source、Connector、Scope、Document/Fact、分类与标签、来源追溯及检索 |
 | **[任务执行与模型接入](execution.md)** | Task / Run、增量窗口、触发、Agent/Provider 配置、Tool 与 MCP |
 | **[研究取材与分析](research.md)** | Evidence Selection、Research Agent、Analysis/Findings、历史关系与独立核查 |
 | **[Web 界面与报告交互](interface.md)** | Overview、Intelligence、Research 报告阅读、证据追溯与历史对比 |

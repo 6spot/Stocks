@@ -49,7 +49,7 @@ StepResult:
 
 **V0 无证券级事件触发、实体解析就绪事件、自动按股票展开 Run 或任务批次屏障。** 例如市场早晚报告与 NVDA 早晚报告是两份独立 YAML Task；若需多只股票，可以配置多份任务，不需要新增证券身份表、自动 Fan-out 或第二套研究引擎。后续确有需要时再讨论高级事件驱动研究。
 
-### 默认采集、综合研究与可选即时研究示例
+### 采集与定时研究示例
 
 #### 研究增量窗口与共享资料引用
 
@@ -62,7 +62,7 @@ StepResult:
 | `window_start` / `window_end` | Task Run | 本次新增/变更情报的选择范围，采用 `[start,end)` |
 | `as_of` | Task Run | 研究取材的知识截止时点；所有输入在该时点必须已经可获得 |
 | 成功增量游标 | Task + Research Scope | 为本任务的下一次运行确定增量起点；不同研究任务/范围互不影响 |
-| `research_inputs` | Task Run / Analysis | 记录实际使用的 Document ID、分类/实体版本、数据点版本和历史 Analysis 引用 |
+| `research_inputs` | Task Run / Analysis | 记录实际使用的 Document/Fact 引用、分类输入快照、数据版本和历史 Analysis 引用 |
 
 **窗口生成与推进规则：**
 
@@ -106,7 +106,7 @@ tasks:
       - id: evidence
         use: repository.select_evidence
         with:
-          scope: research_scope
+          scope: {regions: [US], topics: [macro, policy, market_sentiment]}
           objective: "综合市场情绪、宏观与政策的近期变化"
           window: run.window
           as_of: run.as_of
