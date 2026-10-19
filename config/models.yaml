@@ -1,0 +1,10 @@
+# This is a generic HTTP API example, not a dedicated proxy configuration.
+providers:
+  default:
+    protocol: openai_compatible
+    base_url: ${MODEL_API_BASE_URL}
+    api_key: ${MODEL_API_KEY}
+models:
+  fast:
+    provider: default
+    name: ${MODEL_NAME}

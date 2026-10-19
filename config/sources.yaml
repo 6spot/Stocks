@@ -1,0 +1,10 @@
+# Sources name publishers; connector declares the transport.
+# Replace the example URL with a live HTTPS RSS/Atom source.
+sources:
+  - id: sample_rss
+    name: Sample publisher
+    connector: rss
+    enabled: false
+    publisher: example.com
+    trust_tier: T4
+    url: https://example.com/feed.xml

@@ -1,0 +1,36 @@
+services:
+  postgres:
+    image: pgvector/pgvector:0.8.7-pg17-bookworm
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: stocks
+      POSTGRES_DB: stocks
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U stocks -d stocks"]
+      interval: 5s
+      timeout: 5s
+      retries: 15
+    networks: [internal]
+
+  api:
+    build: ./backend
+    restart: unless-stopped
+    env_file: .env
+    volumes:
+      - ./config:/app/config:ro
+    ports:
+      - "127.0.0.1:8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: ["uvicorn", "stocks.api:app", "--host", "0.0.0.0", "--port", "8000"]
+    networks: [internal]
+
+volumes:
+  pgdata:
+
+networks:
+  internal:
