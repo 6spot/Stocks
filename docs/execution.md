@@ -44,7 +44,7 @@ StepResult:
 | --- | --- | --- |
 | 1. 采集入库 | S3 原文与 PostgreSQL Document、采集幂等键、采集游标；实体状态为 `pending` | `on_new_documents`：不依赖证券身份的文档处理任务 |
 | 2A. 后台实体解析 | `entity_mentions`、`document_entities`、文档解析状态/修订号 | 解析结果提交后才能产生证券级触发 |
-| 2B. 后台自动分类 | `document_classifications`、分类状态/修订号 | 分类结果提交后才能产生主题/行业级触发；无需等待 2A |
+| 2B. 后台自动分类 | Document 当前分类 JSONB、标签、`should_extract`、处理状态 | 分类提交后才能产生主题/行业级触发；无需等待 2A |
 | 3. 就绪事件持久化 | 与对应的 2A/2B **同一 PostgreSQL 事务**分别写入就绪事件及修订 | `on_entities_resolved`：证券任务；`on_document_classified`：主题/行业任务 |
 | 4. 创建 Run | Worker 根据已启用的 Task 消费事件；证券级任务按确认证券展开，主题级任务按分类条件创建 Run | 常规执行与结果入库；未启用事件研究则不产生研究 Run |
 
@@ -57,7 +57,7 @@ TaskEvent:
   document_ids:          list[document_id]
   resolution_revision:   int | null
   confirmed_security_ids: list[security_id]  # entities_resolved 时
-  classification_ref:    document_id + classification_revision | null  # classified 时
+  classification_ref:    document_id + classification_updated_at | null  # classified 时
   created_at:            timestamp
   delivery_state:        pending | processing | completed
   retry_metadata:        attempts, lease_expires_at, last_error
@@ -68,7 +68,7 @@ TaskEvent 可以是 PostgreSQL 任务/事件表的一个类型，不需要部署
 - 第 1 步事务失败不推进游标、不创建任何新数据触发；重试先检查内容哈希及幂等键。
 - 第 2 步 `failed` 时记录错误并按已有 Worker 的有限重试策略重做，不发布 `on_entities_resolved`；Worker 中断或解析任务租约过期时允许重新领取。`partial` 可以发布已确认证券集合，并保留待消歧部分。超过积压时长的 `pending` 与重试耗尽的 `failed` 进入 Overview/Runs 可见列表，绝不视为研究已经完成。
 - 即使本轮没有确认任何 Security，也保存解析完成/部分完成的事实；`confirmed_security_ids` 为空时不创建证券 Run，**但绝不阻止已完成分类的主题/行业研究**。
-- `on_document_classified` 只在分类完成、结果已提交时发布，携带可查询的分类引用；**仅已启用的事件型 Task** 才可按标签、行业、类别、地域过滤后建立 Run，空标签不强制触发。重新分类按分类修订与任务研究窗口幂等，不会重复创建相同 Run。
+- `on_document_classified` 只在分类完成、结果已提交时发布，携带可查询的分类引用；**仅已启用的事件型 Task** 才可按标签、行业、类别、地域过滤后建立 Run，空标签不强制触发。重新分类依 Document ID、实质更新标识与任务窗口幂等，不会重复创建相同 Run。
 - 分类触发器的可选过滤字段使用 `category_in[]`、`topic_any[]`、`industry_any[]`、`region_any[]`：同一字段多值为“任一匹配”，不同字段同时配置时必须全部满足；不配置过滤字段表示对所有完成分类的文档生效。过滤只基于已保存的分类结果，不能以模型预测代替明确触发条件。
 - 重新解析只在已确认关联**实质改变**时发布新修订事件。新增证券产生新的研究范围；撤销或改正旧关联须在 Repository 中保留更正信息，并标记依赖旧关联的研究需要重估。与旧修订输入相同的重试不得产生重复触发。
 
@@ -106,7 +106,7 @@ TaskEvent 可以是 PostgreSQL 任务/事件表的一个类型，不需要部署
 | 时间或引用 | 所属记录 | 作用 |
 | --- | --- | --- |
 | `published_at` / `collected_at` | Document | 原始发布与系统采集事实；不同研究复用 |
-| `classified_at` / 分类修订、实体修订 | 文档后处理记录 | 标明新分类或新关联何时对研究可见 |
+| `classified_at` / 当前分类更新、实体状态 | Document 后处理信息 | 标明当前分类或实体关联何时可供研究使用；报告引用当时的输入快照 |
 | `window_start` / `window_end` | Task Run | 本次新增/变更情报的选择范围，采用 `[start,end)` |
 | `as_of` | Task Run | 研究取材的知识截止时点；所有输入在该时点必须已经可获得 |
 | 成功增量游标 | Task + Research Scope | 为本任务的下一次运行确定增量起点；不同研究任务/范围互不影响 |
