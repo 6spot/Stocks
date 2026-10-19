@@ -23,7 +23,8 @@ Stocks 是面向单一 Owner、以美股为主要市场的个人投资情报与�
 5. **原始资料与业务数据分离**。PostgreSQL + pgvector 管理业务与检索数据，独立 S3 兼容对象存储保存原始文档和快照。
 6. **不把信誉当事实真值**。来源身份、信任等级、单条论断的可信性、核实状态各自建模。
 7. **外部信息永远是数据，不是系统指令**。工具权限由配置和运行时授权决定，不能被外部正文改变。
-8. **只做最小充分的调度与回退**。顺序步骤、简单条件与触发器满足原型，不引入动态 DAG、模型评分路由或多 Agent 自主协商。
+8. **只做最小充分的调度与回退**。顺序步骤、简单条件、明确的按证券 fan-out 和触发器满足原型，不引入动态 DAG、模型评分路由或多 Agent 自主协商。
+9. **证券身份与金融数据是一等公民**。公司、证券、交易代码分开管理；结构化行情和财务数据不强行转换为 Document。
 
 ## 3. 概念与职责
 
@@ -32,7 +33,9 @@ Stocks 是面向单一 Owner、以美股为主要市场的个人投资情报与�
 | Source | 信息发布主体或上游数据服务的一份配置 | 身份、采集范围、访问参数、信任级别 | 规定 AI 如何分析 |
 | Connector | 通用采集实现：RSS、HTTP API、Web | 请求、增量获取、格式解析的通用流程 | 判定利好、组织研究任务 |
 | Source Mapper | 特定来源的字段映射及必要解析规则 | 转换上游格式为统一信息记录 | 变成独立底层 Connector 类型 |
-| Intelligence Repository | 情报与证据统一的数据访问边界 | 持久化、去重、索引、查询、来源关联 | 自主决定投资策略 |
+| Intelligence Repository | 情报、证券实体、金融事实与证据的统一数据访问边界 | 持久化、去重、索引、查询、来源关联 | 自主决定投资策略 |
+| Issuer / Security | 发行主体与可交易证券 | 稳定身份、历史代码、文档和数据关联 | 以当前 Ticker 替代永久身份 |
+| Market Data | 行情、财务及公司行为等结构化数据 | 带时间口径的数值存储与追溯 | 用文本切片替代数值序列 |
 | Task | 一份可独立执行的工作定义 | 触发、步骤、条件、输入、输出 | 假设必定使用 Agent |
 | Agent | 可配置的智能处理角色 | 提取、判断、分析、复核、工具调用请求 | 管理外部模型服务的部署 |
 | Model Provider | 某种模型 HTTP API 的接入配置 | 认证、协议转换、超时、响应与用量归一化 | 决定投资判断标准 |
@@ -63,7 +66,8 @@ Stocks 是面向单一 Owner、以美股为主要市场的个人投资情报与�
 ~~~
 
 - 采集 Task 获取信息后可直接入库、结束；不会因为不存在分析 Task 而停止。
-- 分析 Task 从 Repository 按股票、时间、信息类型、可信度和检索条件选择输入。
+- 分析 Task 从 Repository 按发行主体或证券、时间、信息类型、可信度和检索条件选择输入；行情和财务等结构化数据通过同一 Repository 查询接口提供。
+- 一个 Task 可以按证券范围拆分为多个独立 Task Run；具体规则见第 8 节。
 - Agent 可以按需调用 Repository 只读工具或远程 MCP 工具补证；新获得的资料经统一入库流程登记来源，再供结论引用。
 - 多个研究 Task 能消费同一批资料并独立产出结论。研究结果也允许成为后续研究的输入。
 - 模型输出本身不等于事实；只有具备具体证据链接的事实陈述才能作为已核实内容呈现。
@@ -83,13 +87,15 @@ Stocks 是面向单一 Owner、以美股为主要市场的个人投资情报与�
 fetch(source_config, cursor, scope) -> FetchBatch
 
 FetchBatch:
-  items:            DocumentCandidate[]
+  items:            IngestCandidate[]
   next_cursor:      opaque | null
   fetched_at:       timestamp
   metadata:         object
 ~~~
 
-DocumentCandidate 至少提供：上游 ID 或 URL、标题、正文/摘要、发布时间、发现时使用的 Source、原始 URL、实际发布者（已知时）、原始负载或原始负载引用。缺少的字段允许为空，但不得伪造。
+IngestCandidate 是带类型标识的输入记录，可为 DocumentCandidate（非结构化资料）、MarketBarCandidate（行情）、FinancialFactCandidate（财务数值）或 CorporateActionCandidate（公司行为）。不同类型有各自的字段校验与入库映射，但复用 Source、采集状态、幂等、原始负载留存和追溯机制。
+
+DocumentCandidate 至少提供：上游 ID 或 URL、标题、正文/摘要、发布时间、Source、原始 URL、实际发布者（已知时）、原始负载或引用。结构化候选记录至少提供关联实体标识、指标/数值/单位、数据时间口径与来源引用。未知字段允许为空，但不得伪造；尚未消歧的证券先保存原始标识而不强行匹配。
 
 每个 Source 独立配置启停、采集周期、范围、请求限制、凭据引用与失败重试。采集必须支持限速、超时、幂等和数据量上限。用户配置或外部文档中的 URL 均须在抓取前进行网络目标校验，避免 SSRF、私网探测以及不安全重定向。
 
@@ -112,7 +118,7 @@ DocumentCandidate 至少提供：上游 ID 或 URL、标题、正文/摘要、�
 
 ### 6.1 存储分工
 
-- PostgreSQL：Source、采集状态/游标、标准化 Document 元数据、可搜索正文、股票与事件关联、Task/运行记录、分析结论与证据关联。
+- PostgreSQL：Source、采集状态/游标、发行主体与证券身份、结构化行情与财务数据、标准化 Document 元数据、可搜索正文、股票与事件关联、Task/运行记录、分析结论与证据关联。
 - pgvector：Document Chunk 的 Embedding 与语义相似度能力，和 PostgreSQL 全文检索、结构化过滤结合构成混合检索。
 - 远程 S3 兼容存储：HTML/XML/JSON 原始快照、PDF、研报及较大的原始文件。数据库只保留 Object Key、内容哈希、尺寸、类型等元数据。
 - S3 通过标准 API 访问。可利用 Tailscale 私有网络连接独立存储服务器，但应用不绑定某个私网产品或存储厂商。
@@ -125,22 +131,61 @@ DocumentCandidate 至少提供：上游 ID 或 URL、标题、正文/摘要、�
 | --- | --- |
 | sources | 上游身份、Connector 类型、出版主体、信任配置 |
 | source_cursors / collection_runs | 增量位置、采集执行与错误 |
+| issuers | 公司或其他发行主体的稳定内部 ID、名称历史和外部标识 |
+| securities | 具体证券（含不同股类、ADR 等）及其发行主体关系 |
+| security_identifiers / listings | Ticker、交易所、外部标识及有效期 |
+| entity_mentions / document_entities | 文档中提及的主体与证券、消歧证据和状态 |
+| watchlists / watchlist_securities | 研究标的列表及成员证券 ID |
 | documents | 每份获取的信息和来源元数据、对象引用 |
 | document_chunks | 可检索文本切片、位置与所属文档 |
 | embeddings | 向量、模型、维度、生成时间及切片引用（可以与 Chunk 关联） |
-| events / event_documents | 同一事件及相关原始信息的关联 |
-| tasks / task_runs / step_runs | 任务定义快照和逐步骤执行记录 |
+| market_bars | 证券行情 OHLCV、数据时间、交易场所、调整口径及来源 |
+| financial_facts | 财务指标、报告期间、单位、披露时间、修订与原始申报引用 |
+| corporate_actions | 拆股、股息、合并、证券变更等事件 |
+| events / event_documents | 同一事件与文档的候选/已确认关系及归并依据 |
+| tasks / task_runs / step_runs | 任务定义快照、按证券独立的运行及逐步骤执行记录 |
 | analyses / findings | 研究过程、结构化结论、事实/推断类型、模型及提示词版本 |
-| evidence_links | 单条结论与 Document/Chunk/原始来源的可追溯关系 |
+| verification_runs / finding_verifications | 独立核查执行、判断、依据与核查模型信息 |
+| evidence_links | 单条结论与 Document/Chunk/结构化金融数据的可追溯关系 |
 | reports | 可阅读报告及所引用的 Analysis |
 
 数据库表可根据性能合理拆分或合并，但上述信息语义及可追溯关系必须保留。Source 信任等级变更，不覆写既有研究执行时使用的快照。
 
-### 6.3 检索
+### 6.3 发行主体、证券身份与消歧
 
-Repository 对调用者提供：文档读取、按来源/股票/事件/时间过滤、全文检索、语义检索、相似事件查找和证据引用读取。
+Issuer 是公司或发行主体，Security 是可研究或交易的具体证券，两者以内部稳定 ID 关联。一个 Issuer 可以关联多种 Security（不同股类、ADR 等）；Ticker 只是在特定交易场所、特定有效期间使用的标识，不能作为永久主键。外部 CIK、FIGI 等标识需保留命名空间及来源；名称、Ticker 或公司关系的变更保留历史有效期。
 
-向量必须记录 Embedding 模型和维度；不同模型的向量不直接混合排序。pgvector 从初版引入，具体向量索引按已配置的 Embedding 模型建立，语义相似度绝不充当事实真实性评分。
+- Watchlist 以 security_id 表示研究标的；需要公司层面分析时，通过 issuer_id 查询其关联证券。
+- Document 可以提及多个 Issuer/Security。实体识别先保存原文提及、候选实体和依据，再进行规则匹配及按需模型消歧。
+- 优先使用可验证的外部标识、交易所、上下文和历史有效期；无法确认时保持 unresolved，不自动归到名称相似的股票。
+- 合并、改名、拆分、退市与证券更换记录为可追溯的实体/证券关系变动，不删除旧标识和历史关联。
+
+### 6.4 结构化金融数据与时间语义
+
+Market Data 通过同一 Source / Connector / Source Mapper 接入，但按数值事实存储，不强行写入 Document Chunk。Agent 通过 Repository 的只读 Tool 获取指定证券、发行主体、时间范围和指标的数据。能够定期获取的数据应沉淀并复用，不能仅依赖 Agent 每次临时查询外部服务。
+
+- market_bars：security_id、时间粒度/时间戳、交易场所、OHLCV、币种、调整口径、Source 与数据版本。
+- financial_facts：issuer_id、指标及报表口径、数值、单位/币种、财务期间、公开披露时间、采集时间、修订记录和原始申报引用。
+- corporate_actions：拆股、分红、并购或证券标识变动等，保存生效日期、可获知时间和原始来源。
+- 研究时使用 as-of 语义：按研究时点只读取当时已公开的数据版本，不因后续财报修订或行情调整造成前视偏差；研究记录固定具体数据版本或引用。
+- S3 保留结构化数据原始响应/文件快照，PostgreSQL 保存规范化数值、来源和校验标识。
+
+### 6.5 事件归并与证据独立性
+
+Event 是多篇文档可能共同描述的现实事件，并非一篇新闻或一组相似向量。处理顺序：
+
+1. 使用公告 ID、上游事件标识、Canonical URL、内容哈希等确定性规则处理真正的重复记录。
+2. 通过已消歧的 Issuer/Security、事件类型、发生/披露时间、全文与向量相似度查找候选 Event。
+3. 对候选关系使用明确的规则或可选 Agent 语义判断。仅相关但并非同一件事的报道不得合并；证据不足时暂不合并。
+4. event_documents 保留关系依据、匹配方式和确认状态；归并允许人工纠正或重新评估，而不覆盖原始 Document。
+
+同一 Event 下有多篇 Document 不代表有多份独立证据。独立性按原始发布者、原始披露/报道及转载链判断，并单独记录用于验证的证据来源。
+
+### 6.6 检索
+
+Repository 对调用者提供：按 Issuer/Security、来源、事件、时间和数据可获知时点的查询；文档全文/语义/混合检索；结构化行情财务查询；相似事件和证据读取。
+
+向量必须记录 Embedding 模型和维度；不同模型的向量不直接混合排序。pgvector 从初版引入，具体向量索引按已配置的 Embedding 模型建立。向量相似度只表示语义相关，不表示事实真实性或证据独立性。
 
 ## 7. 来源可信度、证据与安全
 
@@ -148,7 +193,7 @@ Repository 对调用者提供：文档读取、按来源/股票/事件/时间过
 
 1. **来源身份与默认可信度**：T1 官方原始记录、T2 可识别原始发布者、T3 二手媒体/机构、T4 未核实来源。这些是可配置初始类别，不是客观真伪概率。
 2. **具体论断属性**：披露事实、已知数值、个人观点、预测、未经证实的传闻，分别标记。
-3. **核实状态**：unverified、supported、contradicted、insufficient_evidence 等，保留支持与反面证据。
+3. **核实状态**：unverified、supported、contradicted、insufficient_evidence 等，保留支持与反面证据；这些状态由独立核查记录产生，不由生成该 Finding 的 Agent 自行宣布。
 
 可高度信任官方系统确实披露了一份文件，但不因此认定文件中的未来预测必然成立。低等级来源可以作为线索，不可仅因级别低就静默丢掉重要未核实事件。可信度、重要性、交易价值不能混成一个分数。
 
@@ -171,6 +216,7 @@ Task 属性：
 | type | collection / processing / analysis / report 等显示分类，不限制允许的步骤 |
 | strategy | 可选策略 ID；无策略的采集任务正常运行 |
 | trigger | manual、schedule（明确时区）、on_new_documents 等 |
+| scope | 可选的证券范围；可按 security_id 展开独立 Run |
 | steps | 有序步骤及参数/上游结果引用 |
 | enabled | 是否参与触发 |
 
@@ -191,7 +237,19 @@ StepResult:
 
 按任务记录配置/策略/模型/提示词快照，便于解释历史研究结果。Task 使用独立运行记录，Worker 与 Web API 分进程；任务队列及租约利用 PostgreSQL。外部调用需有超时、有限重试、崩溃恢复和幂等键。成功持久化新数据后才触发下游任务；避免重复触发同一来源事件。
 
-两个合法任务例子：
+### 8.1 按证券 fan-out
+
+fan-out 发生在 **Task Run 创建阶段**，不在 Task 的 steps 中提供循环/并行 DSL：
+
+- Task 声明单证券或 Watchlist 等 scope。若配置 `for_each: security`，触发时先解析为有上限的去重 security_id 集合，再为每个证券创建独立 Task Run；每个 Run 使用相同 Task 定义并携带自己的 security_id、时间窗口和参数。
+- 使用 task_batch_id 关联本次展开的所有 Run，单证券失败只影响对应 Run；Worker 以 `max_concurrency` 限制并发。重复触发使用由 Task 定义版本、触发 ID、证券 ID 和数据窗口组成的幂等键。
+- 一个收集任务仍可只产生一个 Run 并处理一批文档；只有显式配置证券级 fan-out 的任务才按证券展开。
+- 后续汇总任务从 Repository 查询指定批次或时间窗口的成功结果，并显式展示缺失、失败或尚未完成的证券；不隐含“所有分支成功才能继续”的任务依赖屏障。
+- 数据事件触发必须基于事务提交后的持久化记录。多个文档映射到同一证券与同一研究窗口时去重，避免重复研究。
+
+### 8.2 任务配置示例
+
+下列任务展示纯采集、按文档触发分析和按证券展开的不同场景：
 
 ~~~yaml
 tasks:
@@ -222,6 +280,20 @@ tasks:
         use: repository.save_analysis
         input: analyze.output
         when: {step: analyze, status: succeeded}
+
+  daily_watchlist_research:
+    type: analysis
+    strategy: long_term
+    trigger: {kind: schedule, cron: "0 8 * * 1-5", timezone: America/New_York}
+    scope: {from: watchlist, for_each: security, max_items: 50}
+    execution: {max_concurrency: 3}
+    steps:
+      - id: research
+        use: agent.researcher
+        input: run.security_id
+      - id: save
+        use: repository.save_analysis
+        input: research.output
 ~~~
 
 配置文件提供人可读的任务定义，数据库保存运行时快照和事件，不让 Task 引擎依赖某个投资风格、模型厂商或上游来源。
@@ -252,11 +324,20 @@ Tool 与 Connector 处于不同边界：
 - 如研究产生新的证据，先经过统一 Source/Document 入库与来源记录，再由 Analysis 引用。
 - 工具调用由 Stocks 授权后执行，模型只能提出结构化请求。
 
-## 11. 分析与研究结果
+## 11. 分析、独立验证与研究结果
 
 分析结果以结构化记录优先，Markdown 报告为其展现形式。单条 Finding 至少包含：claim、kind（fact/inference/opinion 等）、verification_status、支持和反面 evidence_refs、关键假设、时间边界与来源说明。
 
-每次 Analysis 保存 Task Run、Agent/模型、实际提示词版本或哈希、输入文档引用、输出 Finding、生成时间和用量。Report 引用 Analysis，可被其他研究任务检索，而不是把报告正文当作无法拆分的唯一数据。
+每次 Analysis 保存 Task Run、Agent/模型、实际提示词版本或哈希、输入文档与金融数值版本引用、输出 Finding、生成时间和用量。Report 引用 Analysis，可被其他研究任务检索，而不是把报告正文当作无法拆分的唯一数据。
+
+### 11.1 独立核查契约
+
+- Researcher 负责提出 Finding 与证据引用；新 Finding 默认 `unverified`。Researcher 的自评、模型置信分数或重复表达不能直接转为 `supported`。
+- Verifier 是**与研究生成步骤分离的执行角色**，独立读取原始引用和可用的反面证据，逐条检查“证据是否真正支持所表达的结论”；优先核对日期、证券身份、来源独立性与数据可获知时点。
+- 对数值、同比、财务口径等可确定检查的事项优先执行确定性计算；模型判断补充语义核查，不替代可计算校验。
+- Verifier 可使用不同提示词并可按任务选择同一或不同模型；不强制双模型，也不要求每份普通摘要都进行昂贵复核。需要升级为已核实状态的结论必须具有独立核查记录。
+- 验证结果写入独立的 `verification_runs` 与 `finding_verifications`，保留核查输入、方法、引用、模型/规则版本、判定与理由；不覆盖原始 Finding。当前 `verification_status` 是由这些记录派生的查询状态，支持 `unverified`、`supported`、`contradicted`、`insufficient_evidence`。
+- `supported` 的含义是“提供的证据支持此结论”，而不是保证未来预测正确或证明现实世界的绝对真值。报告需要展示未核实、相互冲突以及证据不足的结论。
 
 研究结果鼓励明确“尚需验证的问题”，不输出无证据的确定性涨跌概率或自动交易指令。
 
@@ -298,6 +379,6 @@ V0 采用响应式单人研究工作台，不开发 UI 组件库，不制作图�
 
 原型应完整覆盖一条从“真实来源 → 采集 → S3/数据库持久化 → 检索 → 可选研究 → 保存证据与报告 → Web 查看”的端到端路径，且允许纯采集任务独立运行。
 
-验证重点：增量幂等、原始证据追溯、任务/Agent 解耦、简单主备回退、外部内容隔离、配置扩展成本、可观察模型消耗、ARM + Docker 部署可用性。
+验证重点：增量幂等、原始证据追溯、证券身份及历史代码消歧、结构化金融数据的时点正确性、按证券独立 Task Run 的并发和故障隔离、保守事件归并、独立 Finding 核查、任务/Agent 解耦、简单主备回退、外部内容隔离、配置扩展成本、可观察模型消耗、ARM + Docker 部署可用性。
 
 不纳入此产品基线：自动交易、行情高频撮合、复杂量化回测、多租户权限、分布式消息平台、复杂 DAG 可视化、多 Agent 自主协商和以模型为中心的自动路由优化。
