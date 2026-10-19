@@ -40,7 +40,7 @@ StepResult:
 
 | 阶段 | 系统行为 |
 | --- | --- |
-| 1. 过滤、获取与入库 | RSS、API、外部搜索及授权 Tool 发现候选后先宽松过滤；对入选者取得正文/原始负载，统一保存 Document、S3 快照、来源/时间及幂等键。无法取得全文要标记内容不完整 |
+| 1. 采集、获取与入库 | 配置 RSS/媒体/API 范围内的新内容及更新全部收录；外部搜索按研究目的选择要获取的结果。取得的原文或原始响应统一存 Document、S3 快照、来源/时间和幂等键。全文失败须标记不完整 |
 | 2. 后台轻量处理 | 适用文本由 Decision Model 完成类别、标签及 `should_extract`，需要时调用 LLM 提取 Fact；结构化 API 响应直接程序解析 Fact。可检索文本同时生成 Embedding 并写入 pgvector，索引失败须可见及可重试 |
 | 3. 研究 Task | YAML 设置 `manual` 或带时区 `schedule`，到点独立创建 Run，从 Repository 统一检索 Document + Fact，合并去重后交给同一研究 Agent |
 | 4. 报告留存 | 成功保存报告及本次证据引用后推进对应任务增量窗口；失败保留记录，不修改已入库情报或丢失待研究增量 |
@@ -94,9 +94,12 @@ tasks:
       - id: fetch
         use: connector.rss
         with: {source: financial_news}
+      - id: acquire
+        use: collection.acquire_content
+        input: fetch.items
       - id: save
         use: repository.ingest
-        input: fetch.items
+        input: acquire.output
 
   daily_market_report:
     type: report
@@ -147,7 +150,7 @@ tasks:
 
 ~~~
 
-这里的 `financial_news`、Agent ID、股票代码及运行时间都是**配置示例**，不代表已经实现相应 Task 或预设真实数据源。V0 使用 YAML 配置独立的市场、行业或个股任务；不提供可视化编辑，也不要求事件驱动研究。数据库仅记录执行时的配置、时间范围、实际输入及结果快照。
+这里的 `financial_news`、`collection.acquire_content`、Agent ID 与时间都是逻辑配置示例，并非已实现接口；`acquire` 只表示 RSS 仅有标题/摘要/链接时需补取正文，Feed 已含全文或 API 已返回完整响应则无需二次下载。**fetch 和 acquire 之间不执行逐篇相关性过滤。** 入库后统一分类、按需 Fact 和 Embedding，市场、行业和个股仍由各自 YAML Task 调度。
 
 ## Agent、HTTP 模型与回退
 
@@ -172,5 +175,5 @@ Tool 与 Connector 处于不同边界：
 - MCP 仅支持远程 Streamable HTTP；不实现 stdio 客户端。
 - MCP 的工具发现、调用和结果解析由通用客户端负责。外部服务作为配置项，不为每个工具提供商实现一套底层框架。
 - MCP 搜索供应商属于“发现/查询渠道”，其返回网页的真正 Publisher 是原网站，不因搜索服务本身而提升可信等级。
-- 研究从外部搜索、MCP/Tool 等发现相关内容时，同样先执行 Scope 过滤、获取原始正文/响应，再走统一 Source/Repository 持久化、标签、按需 Fact 与向量索引；Analysis 必须引用已保存的证据，不能将一次性搜索摘要当作完整文档或绕过入库。没有新数据时直接复用现有 Repository 引用。
+- 研究通过外部搜索、MCP/Tool 找到资料时，按研究目标选择实际获取的结果；取得原始正文/响应后，通过统一 Source/Repository 持久化并分类、按需提取 Fact、生成 Embedding。Analysis 引用已保存证据，不能把一次性搜索摘要当作全文；已有 Repository 资料满足需要则直接复用。
 - 工具调用由 Stocks 授权后执行，模型只能提出结构化请求。
