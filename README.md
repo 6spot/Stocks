@@ -1,18 +1,14 @@
 # Stocks
 
-Personal US-equity intelligence prototype. This repository is intentionally small and configuration-driven.
+一个面向个人美股研究的 AI 投资情报系统：采集多来源信息，沉淀可检索、可追溯的情报，通过可配置 Task 和 Agent 完成研究与报告，为人工投资决策提供参考。
 
-## Architecture rules
+## 文档
 
-- A **source** identifies a publisher or upstream dataset. RSS, HTTP API, and Web are transport mechanisms, not publishers.
-- A **task** defines what executes. Collection does not require a model or an analysis step.
-- An **agent** is a configured prompt/model/tools combination. Model access is via configurable HTTP providers, never a named external deployment.
-- Raw external content is untrusted data; it never grants permissions or system instructions.
-- PostgreSQL + pgvector stores metadata, evidence references, searchable text and vectors. Raw content snapshots are stored in a separate S3-compatible object store.
-- Source identity/trust tier, claim evidence and verification status are distinct concepts.
+- [产品与系统设计](docs/architecture.md)：项目的设计基线；包含架构、Source/Connector/Task/Agent/Tool 边界、数据契约、可信度、存储、技术选型和部署。
+- [本地运行说明](docs/quickstart.md)：环境准备、Docker Compose、迁移与命令入口。
 
-## Current implementation scope
+## 核心约定
 
-Initial vertical slice: REST health/items, RSS ingestion, PostgreSQL schema, S3 raw snapshots and configurable HTTP model requests with ordered fallback. Additional connectors, task orchestration and the research UI remain future work until implemented.
+Task 可以只执行采集，也可以组合可选的 Agent、工具和分析步骤。投资策略是 Task 的可选属性，不限制底层执行能力。模型通过可配置 HTTP Provider 访问，不依赖某个特定服务商或部署方式。
 
-See `docs/architecture.md` for boundaries and `docs/quickstart.md` for setup.
+设计调整直接修改 [docs/architecture.md](docs/architecture.md) 的相应章节。
