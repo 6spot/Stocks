@@ -175,7 +175,7 @@ Research Scope 定义“**值得采集和后续研究的内容范围**”，与 
 | `topics[]` | 可多选的主题标签，例如 `interest_rates`、`inflation`、`liquidity` |
 | `related_industries[]` | 文章讨论或可能影响的行业分类标识，属于**主题相关性**，不表示直接提及某一证券 |
 | `regions[]` | 所涉及的地域或市场；不明确时为空，不根据语言猜测 |
-| `method`、`model_ref`、`taxonomy_version` | 分类方式、实际使用的模型/规则引用及词表版本 |
+| `method`、`model_ref`、`taxonomy_version` | 分类方式、实际使用的模型/规则引用及词表版本；模型切换不改变 Stocks 的类别/标签 ID 和 `should_extract` 语义 |
 | `classified_at`、`reason_or_evidence_ref` | 分类发生时间及可追溯依据；不能把模型分类标记成已经核实的事实 |
 | `should_extract` | 同一次低成本分类请求给出的布尔抽取决策；表示是否需要后续 LLM 结构化抽取，**不是保留/删除原文的开关** |
 
@@ -183,7 +183,7 @@ Research Scope 定义“**值得采集和后续研究的内容范围**”，与 
 
 **自动分类流程与失败边界：**
 
-1. Document 原文可靠入库后，Worker 先使用已知元数据/规则，必要时**一次调用 Jev 这类低成本 Decision Model** 完成类别、多个标签和 `should_extract` 判断。模型只选择预定义结果，**不在这一阶段生成事实正文、数字或结论**；不依赖某个固定厂商。模型接口沿用[Agent 与模型配置](execution.md)的 Provider/Adapter。
+1. Document 原文可靠入库后，Worker 先使用已知元数据/规则，必要时**一次调用配置的低成本 Decision Model** 完成类别、多个标签和 `should_extract` 判断。模型可以是 Jev、Cloudflare Clef/Clef-flash 或其他符合所需决策能力的模型，**不绑定某个厂商、模型或部署平台**。它选择预定义结果，不在这一阶段生成事实正文、数字或结论；通过[Agent 与模型配置](execution.md)的 Provider/Adapter 接入。
 2. 分类与抽取决策必须符合固定 Schema 和受控词表；超出选项、模型故障或无效结构时按有限重试处理，保留原文及待处理/失败状态，不能默认为 `should_extract=false`。分类完成后，不论标签是否为空、类别是否为 `other`，文档仍在 Repository 中可查询。
 3. 分类状态与实体解析状态**独立**：`classification_status = pending / completed / failed`；一方完成无需等待另一方。已完成的结果与其修订记录持久化，重新分类保留历史，更新当前结果并依据实质变化发布新事件。
 4. 分类结果、状态/修订号及 `on_document_classified` 持久化事件在同一数据库事务写入。Worker 仅消费已提交事件；失败保留错误、重试与 Runs 可查询记录，防止分类失败造成无声遗漏。
