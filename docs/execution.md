@@ -11,12 +11,12 @@ Task 属性：
 | id / name | 稳定标识、可读标题 |
 | type | collection / processing / analysis / report 等显示分类，不限制允许的步骤 |
 | strategy | 可选策略 ID；无策略的采集任务正常运行 |
-| trigger | manual、schedule（明确时区）、on_new_documents（文档级）、on_entities_resolved（证券级）、on_document_classified（主题/行业级）等 |
-| scope | 可选的证券范围；可按 security_id 展开独立 Run |
+| trigger | V0 使用 manual 或 schedule（明确时区）；文档事件型研究触发属于后续增强 |
+| scope | 市场/地域、公司名称、股票代码、行业与主题等研究范围；直接从 YAML 配置 |
 | steps | 有序步骤及参数/上游结果引用 |
 | enabled | 是否参与触发 |
 
-最小步骤执行种类：Connector 获取、Repository 持久化/查询、Agent 调用、授权 Tool 调用、结构化分析保存及报告渲染。**默认 Task 定时执行采集、独立执行轻量分类/实体解析，并按日或周执行综合研究；单篇触发研究的 Task 必须单独启用。**
+最小步骤执行种类：Connector 获取、Repository 持久化/查询、Decision Model 分类及抽取决策、按需 LLM 抽取、研究 Agent 调用、授权 Tool 查询及报告保存。**V0 使用 YAML 定时采集、异步整理数据，并按任务自身设定的早晚/日/周时间生成市场或个股综合报告；不按文章逐篇生成报告。**
 
 步骤按配置顺序执行；when 仅允许基于已执行步骤的结构化字段或状态判断，不使用自由 Python 表达式或通用 DAG。满足条件才执行；条件不满足为 SKIPPED，不是 FAILED。
 
@@ -34,68 +34,20 @@ StepResult:
 按任务记录配置/策略/模型/提示词快照，便于解释历史研究结果。Task 使用独立运行记录，Worker 与 Web API 分进程；任务队列及租约利用 PostgreSQL。外部调用需有超时、有限重试、崩溃恢复和幂等键。成功持久化新数据后才触发下游任务；避免重复触发同一来源事件。
 
 
-### 数据生命周期、可靠触发与证券 fan-out
+### V0 数据处理与定时研究
 
-**文档级、证券级和主题/行业级任务使用各自所需的就绪条件。** Document 入库不表示证券身份已确认，也不表示主题分类已完成。两条后处理路径互不等待。
+采集与研究独立运行；模型处理阶段不阻塞原始资料保存，也不要求为每篇文档识别证券身份。
 
-#### 数据生命周期与触发语义
+| 阶段 | 系统行为 |
+| --- | --- |
+| 1. 原始资料入库 | Source/Connector 获取文章、公告或 API 响应，先保存 S3 快照及 Document、游标与幂等键 |
+| 2. 后台轻量处理 | 对适用文本由可配置 Decision Model 一次完成类别、标签（含有依据的公司/代码）和 `should_extract`；需要时再调用 LLM 生成 Fact。结构化 API 响应直接由 Source Mapper 解析 Fact |
+| 3. 研究 Task | YAML 设置 `manual` 或带时区 `schedule`，到点独立创建 Run，从 Repository 统一检索 Document + Fact，合并去重后交给同一研究 Agent |
+| 4. 报告留存 | 成功保存报告及本次证据引用后推进对应任务增量窗口；失败保留记录，不修改已入库情报或丢失待研究增量 |
 
-| 阶段 | 提交内容 | 可供哪些 Task 消费 |
-| --- | --- | --- |
-| 1. 采集入库 | S3 原文与 PostgreSQL Document、采集幂等键、采集游标；实体状态为 `pending` | `on_new_documents`：不依赖证券身份的文档处理任务 |
-| 2A. 后台实体解析 | `entity_mentions`、`document_entities`、文档解析状态/修订号 | 解析结果提交后才能产生证券级触发 |
-| 2B. 后台自动分类 | Document 当前分类 JSONB、标签、`should_extract`、处理状态 | 分类提交后才能产生主题/行业级触发；无需等待 2A |
-| 3. 就绪事件持久化 | 与对应的 2A/2B **同一 PostgreSQL 事务**分别写入就绪事件及修订 | `on_entities_resolved`：证券任务；`on_document_classified`：主题/行业任务 |
-| 4. 创建 Run | Worker 根据已启用的 Task 消费事件；证券级任务按确认证券展开，主题级任务按分类条件创建 Run | 常规执行与结果入库；未启用事件研究则不产生研究 Run |
+后台分类/抽取任务通过已有 Worker 的有限重试与幂等机制运行。分类失败时保留原文并展示积压，不将失败当成“无关信息”或 `should_extract=false`；未抽取的原文仍能参与研究。
 
-**最小持久化触发契约：**
-
-~~~text
-TaskEvent:
-  event_id:              stable unique id
-  kind:                  on_new_documents | on_entities_resolved | on_document_classified
-  document_ids:          list[document_id]
-  resolution_revision:   int | null
-  confirmed_security_ids: list[security_id]  # entities_resolved 时
-  classification_ref:    document_id + classification_updated_at | null  # classified 时
-  created_at:            timestamp
-  delivery_state:        pending | processing | completed
-  retry_metadata:        attempts, lease_expires_at, last_error
-~~~
-
-TaskEvent 可以是 PostgreSQL 任务/事件表的一个类型，不需要部署消息中间件。事件与相应业务数据在同一事务中写入；Worker 领取并创建 Task Run 时采用唯一键和事务保护。Worker 崩溃或重启后，可以安全重新领取未完成事件，重复投递不能重复创建相同 Run。
-
-- 第 1 步事务失败不推进游标、不创建任何新数据触发；重试先检查内容哈希及幂等键。
-- 第 2 步 `failed` 时记录错误并按已有 Worker 的有限重试策略重做，不发布 `on_entities_resolved`；Worker 中断或解析任务租约过期时允许重新领取。`partial` 可以发布已确认证券集合，并保留待消歧部分。超过积压时长的 `pending` 与重试耗尽的 `failed` 进入 Overview/Runs 可见列表，绝不视为研究已经完成。
-- 即使本轮没有确认任何 Security，也保存解析完成/部分完成的事实；`confirmed_security_ids` 为空时不创建证券 Run，**但绝不阻止已完成分类的主题/行业研究**。
-- `on_document_classified` 只在分类完成、结果已提交时发布，携带可查询的分类引用；**仅已启用的事件型 Task** 才可按标签、行业、类别、地域过滤后建立 Run，空标签不强制触发。重新分类依 Document ID、实质更新标识与任务窗口幂等，不会重复创建相同 Run。
-- 分类触发器的可选过滤字段使用 `category_in[]`、`topic_any[]`、`industry_any[]`、`region_any[]`：同一字段多值为“任一匹配”，不同字段同时配置时必须全部满足；不配置过滤字段表示对所有完成分类的文档生效。过滤只基于已保存的分类结果，不能以模型预测代替明确触发条件。
-- 重新解析只在已确认关联**实质改变**时发布新修订事件。新增证券产生新的研究范围；撤销或改正旧关联须在 Repository 中保留更正信息，并标记依赖旧关联的研究需要重估。与旧修订输入相同的重试不得产生重复触发。
-
-#### 触发事件不等于启动深度研究
-
-`on_new_documents`、`on_entities_resolved`、`on_document_classified` 首先表示有一批可被查询的新情报或元数据。它们支持安排必要的后处理或显式启用的特定任务，但**不会自动要求生成单篇分析或报告**。
-
-- 默认研究周期由独立 Task 的 `schedule` 或 `manual` 决定，研究任务查询已存储的多篇文档和多类金融数据。
-- 如果启用某个事件驱动研究 Task，其过滤条件、研究目标和输出仍需明确配置；没有配置不产生研究 Run。
-- 研究任务失败不回滚已持久化情报，也不阻止后续采集。报告生成应能使用现有有效数据，同时明确数据覆盖不足和尚未完成的分类/采集状态。
-
-#### 主题/行业任务与证券任务的边界
-
-- `on_entities_resolved` 适合分析被资料**直接确认涉及**的证券，可按 `security_id` 扇出。
-- `on_document_classified` 适合宏观、政策与行业 Task。其输入是 Document ID、分类引用与标签，不要求文档有证券关联，也不默认推导全行业股票并批量 fan-out；若策略后来需要研究具体标的，由 Task 根据 Watchlist/Repository 数据明确决定证券范围。
-- 两种就绪事件均来自同一 PostgreSQL 持久化机制，分别按文档+修订+任务/研究窗口幂等。分类不等于核实，不得把预测影响关系写进事实关联。
-
-#### Fan-out 是创建 Run，不是 Task 内循环
-
-- Task 的 `scope` 可以是单证券、Watchlist 或事件携带的已确认 `security_id` 集合；显式 `for_each: security` 才按证券展开，其余 Task 可以对整批文档只运行一次。
-- 将 scope 展开为去重、稳定顺序的内部 `security_id`，校验 `max_items` 上限；每个证券产生一个 Run，携带 `security_id`、`task_batch_id`、时间窗口和输入证据引用。
-- Run 的幂等身份由 `task_id`、Task 定义版本、触发事件 ID（或调度窗口）、`security_id` 与研究窗口组成；数据库层建立唯一约束。**同一个事件重投不产生新 Run，确有实体关联修订的事件则允许新 Run。**
-- 每个 Run 有独立状态、步骤日志与重试；Worker 使用 Task 的 `max_concurrency` 限制并发；某证券失败不撤销其他证券的成功结果。
-- 需要汇总时，汇总 Task 读取指定批次/窗口的研究结果及缺失状态，不自动创建隐式依赖屏障。
-- 系统只支持上述顺序步骤、结构化 `when` 条件、触发、fan-out 和有限重试；不引入循环 DSL、通用 DAG 引擎或分布式事件总线。
-
-**示例：** 一份公告入库后先得到 `pending`，此时不会触发“按 NVDA 研究”；解析完成并确认 NVDA 才产生证券级 Run。若 Worker 恰好在事件提交后宕机，恢复时仍能领取同一事件，但唯一约束保证不会再建第二个 NVDA Run。若后来更正该公告实际关联另一只股票，新的解析修订保留纠正记录，并据此创建新证券的研究 Run。
+**V0 无证券级事件触发、实体解析就绪事件、自动按股票展开 Run 或任务批次屏障。** 例如市场早晚报告与 NVDA 早晚报告是两份独立 YAML Task；若需多只股票，可以配置多份任务，不需要新增证券身份表、自动 Fan-out 或第二套研究引擎。后续确有需要时再讨论高级事件驱动研究。
 
 ### 默认采集、综合研究与可选即时研究示例
 
@@ -106,7 +58,7 @@ TaskEvent 可以是 PostgreSQL 任务/事件表的一个类型，不需要部署
 | 时间或引用 | 所属记录 | 作用 |
 | --- | --- | --- |
 | `published_at` / `collected_at` | Document | 原始发布与系统采集事实；不同研究复用 |
-| `classified_at` / 当前分类更新、实体状态 | Document 后处理信息 | 标明当前分类或实体关联何时可供研究使用；报告引用当时的输入快照 |
+| `classified_at` / 标签及 Fact 处理时间 | Document/Fact 及处理记录 | 标明分类、抽取何时可供研究使用；报告引用当时的输入快照 |
 | `window_start` / `window_end` | Task Run | 本次新增/变更情报的选择范围，采用 `[start,end)` |
 | `as_of` | Task Run | 研究取材的知识截止时点；所有输入在该时点必须已经可获得 |
 | 成功增量游标 | Task + Research Scope | 为本任务的下一次运行确定增量起点；不同研究任务/范围互不影响 |
@@ -116,7 +68,7 @@ TaskEvent 可以是 PostgreSQL 任务/事件表的一个类型，不需要部署
 
 1. 周期性研究 Run 创建时，将 `window_start` 设为**同一 Task + 研究范围的上一次成功完成并提交结果的 `window_end`**；本次 `window_end` 取启动时固定的截止时点。第一次运行使用明确配置的初始起点或初始回看范围。
 2. 窗口只用于发现已进入 Repository、并在本次可研究增量中首次出现或发生重要修订的资料。文章的 `published_at` 不用于判定是否“已处理”：周二才入库或完成分类的上周五公告，也会作为周二新增可研究信息进入后续 Run。保留资料自身的真实发布时间供报告解释。
-3. 对采集入库、分类完成或影响研究的关联修订分别保留可追溯的新增/变更记录及其入库时点或版本，增量查询以**系统可研究的变更记录**为准；多次变化只需按引用和版本幂等去重，不重复复制 Document。研究截止时点固定后，晚于该时点提交的变化留给下一个 Run。
+3. 对 Document 入库、分类完成、Fact 抽取/解析及内容修订保留可追溯的系统可研究时间；增量查询按这些已提交的变化去重，不能用原文发布时间替代系统入库时点。研究截止后完成的处理留给下一个 Run。
 4. 只有要求的分析与报告结果**成功持久化**后，才原子地推进该 Task + Scope 的研究游标。失败、取消或中断不推进；下次运行重试或覆盖未成功区间。即使周末无定时运行，周一仍从周五上次成功终点开始，包含周末新增信息。
 5. Agent 可以根据明确的 Research Scope、`as_of` 与检索条件访问**增量窗口之外的历史背景资料和以前的 Analysis**，并对比既有结论；这些背景不应错误计作本次新增情报。每个研究 Run 将最终采用的输入 ID、版本、选择原因或查询条件留在独立 `research_inputs` 中，以便复现。
 6. 同一份资料可参与多个不同的 Task、时间窗口与策略研究，不在 Document 上设置全局 `analyzed`、`last_used_by_task`、`research_window` 或 `consumed_at`。重复性由各自 Run 和输入引用的幂等约束处理。
@@ -148,7 +100,7 @@ tasks:
 
   daily_market_report:
     type: report
-    trigger: {kind: schedule, cron: "0 9 * * 1-5", timezone: America/New_York}
+    trigger: {kind: schedule, cron: "0 8,20 * * *", timezone: America/New_York}
     window: {mode: since_last_success, initial_lookback: 7d}
     steps:
       - id: evidence
@@ -165,27 +117,21 @@ tasks:
       - id: save
         use: repository.save_analysis
         input: research.output
-      - id: verify
-        use: repository.verify_key_findings
-        input: save.output
-        with: {scope: key_facts_and_numbers}
       - id: report
         use: repository.render_report
-        input: {analysis: save.output, verification: verify.output}
+        input: save.output
 
-  weekly_watchlist_research:
-    type: analysis
-    strategy: long_term
-    trigger: {kind: schedule, cron: "0 9 * * 6", timezone: America/New_York}
-    window: {mode: since_last_success, initial_lookback: 30d}
-    scope: {from: watchlist, for_each: security, max_items: 50}
-    execution: {max_concurrency: 3}
+  nvda_daily_report:
+    type: report
+    trigger: {kind: schedule, cron: "0 8,20 * * *", timezone: America/New_York}
+    window: {mode: since_last_success, initial_lookback: 7d}
+    scope: {symbols: [NVDA], companies: [NVIDIA]}
     steps:
       - id: evidence
         use: repository.select_evidence
         with:
-          scope: {security_id: run.security_id}
-          objective: "研究关注证券在本周期的基本面、行业环境与风险变化"
+          scope: {symbols: [NVDA], companies: [NVIDIA], topics: [semiconductors]}
+          objective: "综合 NVDA 相关公司公告、行业政策、走势与市场背景"
           window: run.window
           as_of: run.as_of
           budget: {max_tokens: 30000}
@@ -195,22 +141,13 @@ tasks:
       - id: save
         use: repository.save_analysis
         input: research.output
+      - id: report
+        use: repository.render_report
+        input: save.output
 
-  important_event_research:
-    enabled: false
-    type: analysis
-    trigger: {kind: on_document_classified, category_in: [policy]}
-    steps:
-      - id: judge
-        use: agent.event_judge
-        input: trigger.classification_ref
-      - id: research
-        use: agent.researcher
-        input: trigger.document_ids
-        when: {step: judge, field: should_analyze, equals: true}
 ~~~
 
-这里的 `financial_news`、Agent ID 和周期是**配置示例**，并非预设的真实数据源或固定业务策略。采集数据与研究报告都通过独立 Task 执行；`important_event_research` 默认关闭，说明事件驱动深度研判不是每篇资料的必经步骤。配置文件提供人可读定义，数据库记录执行时的配置、时间范围、实际输入与结果快照。
+这里的 `financial_news`、Agent ID、股票代码及运行时间都是**配置示例**，不代表已经实现相应 Task 或预设真实数据源。V0 使用 YAML 配置独立的市场、行业或个股任务；不提供可视化编辑，也不要求事件驱动研究。数据库仅记录执行时的配置、时间范围、实际输入及结果快照。
 
 ## Agent、HTTP 模型与回退
 
