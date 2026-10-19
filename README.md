@@ -7,10 +7,10 @@
 - [系统架构与设计入口](docs/architecture.md)：产品原则、模块职责、系统链路与文档导航。
 - [数据](docs/data.md)：Source、采集、分类、Repository、金融数据与检索。
 - [执行](docs/execution.md)：Task/Run、调度、Agent/模型与 Tool。
-- [研究](docs/research.md)：Evidence Selection、Findings、历史研究、Verifier。
+- [研究](docs/research.md)：Evidence Selection、Research Agent、Analysis/Report、证据追溯。
 - [界面](docs/interface.md)：Web 页面、研究报告与证据交互。
 - [验收](docs/validation.md)：原型边界、端到端验收场景。
-- [本地运行说明](docs/quickstart.md)：环境准备、Docker Compose、迁移与命令入口。
+- [本地运行说明](docs/quickstart.md)：环境准备、Docker Compose、全新数据库初始化与命令入口。
 
 ## 核心约定
 

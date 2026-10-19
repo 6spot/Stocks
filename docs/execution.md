@@ -53,11 +53,11 @@ StepResult:
 
 #### 研究增量窗口与共享资料引用
 
-**研究窗口是某个 Task Run 查找新增变化的范围，不是 Document 的属性或整次研究的资料访问边界。** Document 保留 `published_at`、`collected_at`、原始出处和处理版本；研究专属的窗口、游标、取材和运行状态不能写入 Document。
+**研究窗口是 Task Run 查找新增变化的范围，不是 Document 的属性。** Document 记录来源首次发布时间 `published_at`、来源最后更新时间 `source_updated_at`（可为空）、Stocks 采集时间 `collected_at`、原始出处和内容版本；研究游标与取材状态归属于 Task/Run。
 
 | 时间或引用 | 所属记录 | 作用 |
 | --- | --- | --- |
-| `published_at` / `collected_at` | Document | 原始发布与系统采集事实；不同研究复用 |
+| `published_at` / `source_updated_at` / `collected_at` | Document | 来源首次发布、来源最后更新（可缺失）及 Stocks 采集时间 |
 | `classified_at` / 标签及 Fact 处理时间 | Document/Fact 及处理记录 | 标明分类、抽取何时可供研究使用；报告引用当时的输入快照 |
 | `window_start` / `window_end` | Task Run | 本次新增/变更情报的选择范围，采用 `[start,end)` |
 | `as_of` | Task Run | 研究取材的知识截止时点；所有输入在该时点必须已经可获得 |

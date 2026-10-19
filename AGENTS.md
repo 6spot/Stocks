@@ -22,7 +22,7 @@ Stocks 是单一 Owner 使用的美股情报与研究系统。目标是以尽量
 | 系统定位、模块边界、技术与部署 | [docs/architecture.md](docs/architecture.md) |
 | Source、采集、分类标签、Document/Fact、数据质量与 Repository | [docs/data.md](docs/data.md) |
 | Task / Run、Worker、模型 Provider、Tool / MCP | [docs/execution.md](docs/execution.md) |
-| Evidence Selection、Research Agent、Finding、Verifier | [docs/research.md](docs/research.md) |
+| Evidence Selection、Research Agent、Analysis/Report、证据引用 | [docs/research.md](docs/research.md) |
 | Web、报告与证据交互 | [docs/interface.md](docs/interface.md) |
 | 原型范围、关键场景、完成条件 | [docs/validation.md](docs/validation.md) |
 | 本地启动、数据库初始化与采集命令 | [docs/quickstart.md](docs/quickstart.md) |

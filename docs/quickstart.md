@@ -4,7 +4,7 @@ Requires Docker Compose, an S3-compatible endpoint accessible from the API conta
 
 1. Copy .env.example to .env. Change POSTGRES_PASSWORD and update DATABASE_URL to use the same password. Configure S3_ENDPOINT_URL, S3_BUCKET and S3 credentials.
 2. Run: docker compose up -d --build postgres api
-3. Migrate: docker compose run --rm api alembic upgrade head
+3. Initialize a fresh development database with the current schema: docker compose run --rm api alembic upgrade head (bootstrap only; no historical data upgrade or backward compatibility).
 4. Verify: http://127.0.0.1:8000/health
 5. Set a real HTTPS RSS URL and enabled: true in config/sources.yaml.
 6. Collect once: docker compose run --rm api python -m stocks.cli collect --all
