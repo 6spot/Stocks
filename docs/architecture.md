@@ -333,7 +333,7 @@ Repository 对调用者提供：按 Issuer/Security、行业、主题、类别�
 
 1. **来源身份与默认可信度**：T1 官方原始记录、T2 可识别原始发布者、T3 二手媒体/机构、T4 未核实来源。这些是可配置初始类别，不是客观真伪概率。
 2. **具体论断属性**：披露事实、已知数值、个人观点、预测、未经证实的传闻，分别标记。
-3. **核实状态**：unverified、supported、contradicted、contested、insufficient_evidence，保留支持与反面证据；这些状态由独立核查记录按第 11.1 节的规则派生，不由生成该 Finding 的 Agent 自行宣布。
+3. **核实状态**：unverified、supported、contradicted、contested、insufficient_evidence，保留支持与反面证据；这些状态由独立核查记录按第 11.2 节的规则派生，不由生成该 Finding 的 Agent 自行宣布。
 
 可高度信任官方系统确实披露了一份文件，但不因此认定文件中的未来预测必然成立。低等级来源可以作为线索，不可仅因级别低就静默丢掉重要未核实事件。可信度、重要性、交易价值不能混成一个分数。
 
@@ -706,7 +706,7 @@ Tool 与 Connector 处于不同边界：
 市场情绪相关结论必须区分可观察指标、媒体/机构观点和模型的综合推断；样本不足或同源转载较多时不能宣称市场整体共识。研究任务可引用历史报告对比判断变化，不影响持续采集任务。
 
 
-### 11.0 Analysis、Finding 与历史研究关系
+### 11.1 Analysis、Finding 与历史研究关系
 
 **Evidence 是长期共享的来源资产，Finding 是某次研究提出的一条固定主张，Report 是从本次研究结果组织的阅读产物。** 一份资料可以支持多个 Finding，一条 Finding 可以被多个报告和后续研究引用；三者都不互相覆盖。
 
@@ -720,7 +720,7 @@ Tool 与 Connector 处于不同边界：
 | `evidence_refs[]`、`counter_evidence_refs[]` | 支持与相反的证据引用（含具体数据/Chunk 版本）；不能只给来源名称而没有可查证引用 |
 | `assumptions[]`、`uncertainties[]`、`time_context` | 推断前提、尚未确认的因素和适用时间 |
 | `importance`、`importance_reason` | 在本 Run 中的展示优先级：`key / supporting / monitor`；说明与 Objective、实际变化或未解决风险的关系，**不是可信度或投资评分** |
-| `verification_status` | 按第 11.1 节独立核查记录派生；初始为 `unverified`，不由 Researcher 直接确定 |
+| `verification_status` | 按第 11.2 节独立核查记录派生；初始为 `unverified`，不由 Researcher 直接确定 |
 | `finding_relations[]` | 本次 Finding 与一个或多个历史 Finding 的具体关系、原因及引用的新证据 |
 
 **历史关系类型：**
@@ -734,7 +734,7 @@ Tool 与 Connector 处于不同边界：
 
 `new` 是没有历史关联时的展示分类，**不是必须落库的一种关系**。`finding_relations` 至少保存 `from_finding_id`（当前）、`to_finding_id`（历史）、`relation_type`、`reason`、`evidence_refs`、`created_at`；研究时点与 Scope 可以由关联 Analysis 获取。仅允许指向当时已存在、对当前 Task 可访问的历史 Finding，不允许自引用、无依据的关联或跨时间反向引用；同一组关系幂等。
 
-关系只表达**新的研究如何理解旧的研究**，不直接变更历史 Finding 或其 Verification 记录。某个历史 Finding 本次未被引用不意味着已失效；上一份报告也不因为出现 `supersedes` 就被删除。真正的核查事实更正仍按第 11.1 节的独立核查修正与历史快照规则处理。
+关系只表达**新的研究如何理解旧的研究**，不直接变更历史 Finding 或其 Verification 记录。某个历史 Finding 本次未被引用不意味着已失效；上一份报告也不因为出现 `supersedes` 就被删除。真正的核查事实更正仍按第 11.2 节的独立核查修正与历史快照规则处理。
 
 **研究质量约束：**
 
@@ -781,7 +781,7 @@ analysis:
 
 此例为**结构化输出示意**。真实 `finding_id` 由 Stocks 分配或校验，研究 Agent 可以在单次模型响应中输出所有 Finding，不要求为每个判断单独调用 Agent。
 
-### 11.1 独立核查、记录契约与状态聚合
+### 11.2 独立核查、记录契约与状态聚合
 
 **Finding 是不可被核查步骤静默改写的研究主张。** Researcher 保存主张及支持引用后，初始 `verification_status = unverified`。Researcher 自评、模型置信分数、同一文本的重复生成都不能直接升为 `supported`。
 
