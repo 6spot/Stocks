@@ -16,4 +16,4 @@
 
 Task 可以只执行采集，也可以组合可选的 Agent、工具和分析步骤。投资策略是 Task 的可选属性，不限制底层执行能力。模型通过可配置 HTTP Provider 访问，不依赖某个特定服务商或部署方式。
 
-设计调整直接修改 [docs/architecture.md](docs/architecture.md) 的相应章节。
+设计调整请修改对应领域文档；只有涉及整体模块边界或系统原则时，才同步修改 [架构总览](docs/architecture.md)。
