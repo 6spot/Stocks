@@ -166,7 +166,7 @@ DocumentCandidate 至少提供：上游 ID 或 URL、标题、正文/摘要、�
 | `security_identifiers` | `security_id`、`type`（ticker/FIGI 等）、`value`、`exchange`、`valid_from`、`valid_to`、`source_ref` | 有效期采用 `[valid_from, valid_to)`，允许空上界；同一命名空间、交易场所和时间点出现多个候选时不得猜测 |
 | `entity_mentions` | `mention_id`、`document_id`、原文词语、位置或文本引用、识别到的实体类型、`reference_time`、`time_basis`、`status` | 每处提及可独立消歧；`unresolved` 必须可查询 |
 | `document_entities` | `document_id`、`issuer_id` 或 `security_id`、`resolution_status`、`resolved_as_of`、`method`、`evidence_ref`、`resolution_revision` | 支持多对多关系；只有 `confirmed` 的 `security_id` 能驱动证券级任务 |
-| `documents` | `entity_resolution_status`、`entity_resolution_revision`、`entity_resolved_at`、错误信息（失败时） | 文档完整入库与实体解析相互独立；初始状态为 `pending` |
+| `documents` | `entity_resolution_status`、`entity_resolution_revision`、`entity_resolved_at`、`entity_attempts`、`entity_last_attempt_at`、`entity_last_error` | 文档完整入库与实体解析相互独立；初始状态为 `pending`；解析执行的租约/下次重试时间由已有 PostgreSQL Worker 任务记录管理 |
 
 以上列出要求保留的**数据语义和字段契约**；具体索引、主键类型或部分辅助字段的物理拆分由数据库实现决定，不得丢失历史时间和确认依据。
 
@@ -185,6 +185,14 @@ DocumentCandidate 至少提供：上游 ID 或 URL、标题、正文/摘要、�
 - Worker 先计算本轮关联集合与当前已确认集合之间的差异。只有首次完成或发生实质变更时才增加 `entity_resolution_revision`；相同数据重复处理保持修订号不变。
 - 将解析结果、文档状态和后续触发记录放在同一数据库事务提交。失败时不发布证券触发；未确认提及可由之后的规则升级或补充资料重新解析。
 - 后续纠正历史身份映射时，保留旧研究的输入快照；对依赖错误映射的现有结果标记需重新评估，当前查询不再将其当作正确证券的有效研究结果，必要时按新的确认关系重新发起任务。无需引入全量依赖图。
+
+**解析积压的发现和恢复：**
+
+- `pending` 不意味着一定正常执行。按照文档采集/入队时间与当前时间判断等待时长，并检查 Worker 任务的租约到期情况。设置一个统一可配置的 `entity_resolution_stale_after`（默认 30 分钟）；超过阈值的文档计入“解析积压”，不需要增加新的文档状态。
+- Worker 从任务表领取解析任务，记录开始时间和尝试次数。进程异常退出或租约过期后，同一任务可被重新领取；失败记录错误、按已有的有限重试策略重新入队。重复处理应使用同一文档/解析修订的幂等规则，不重复发布证券事件。
+- 达到重试上限后保留 `failed` 和最后错误，等待人工处理或主动重新入队；**不能把 failed 当作已处理成功**。已达到阈值的 `pending`、全部 `failed` 都必须能按文档 ID/来源查询，供界面展示与定位。
+- Overview 显示“解析超时未完成数”和“解析失败数”，并能进入 Runs 查看具体文档、入队/最后尝试时间、尝试次数、最近错误及可否重试。阈值变化只影响告警统计，不改变数据状态或跳过研究。
+- 晚到的解析结果仍正常保存并发布相应的证券就绪事件；首版不增加 `max_delay`、过期触发拦截或自动丢弃历史研究。是否继续深入分析，由原有 Task 条件与 Agent 结合发布时间、研究策略决定。
 
 ### 6.4 结构化金融数据与时间语义
 
@@ -314,7 +322,7 @@ TaskEvent:
 TaskEvent 可以是 PostgreSQL 任务/事件表的一个类型，不需要部署消息中间件。事件与相应业务数据在同一事务中写入；Worker 领取并创建 Task Run 时采用唯一键和事务保护。Worker 崩溃或重启后，可以安全重新领取未完成事件，重复投递不能重复创建相同 Run。
 
 - 第 1 步事务失败不推进游标、不创建任何新数据触发；重试先检查内容哈希及幂等键。
-- 第 2 步 `failed` 时记录错误并重试，不发布 `on_entities_resolved`；`partial` 可以发布已确认证券集合，并保留待消歧部分。
+- 第 2 步 `failed` 时记录错误并按已有 Worker 的有限重试策略重做，不发布 `on_entities_resolved`；Worker 中断或解析任务租约过期时允许重新领取。`partial` 可以发布已确认证券集合，并保留待消歧部分。超过积压时长的 `pending` 与重试耗尽的 `failed` 进入 Overview/Runs 可见列表，绝不视为研究已经完成。
 - 即使本轮没有确认任何 Security，也保存解析完成/部分完成的事实；`confirmed_security_ids` 为空时不创建证券 Run。
 - 重新解析只在已确认关联**实质改变**时发布新修订事件。新增证券产生新的研究范围；撤销或改正旧关联须在 Repository 中保留更正信息，并标记依赖旧关联的研究需要重估。与旧修订输入相同的重试不得产生重复触发。
 
@@ -481,11 +489,11 @@ V0 采用响应式单人研究工作台，不开发 UI 组件库，不制作图�
 
 主要视图：
 
-- Overview：采集概况、重要事件、任务执行与近期研究。
+- Overview：采集概况、重要事件、任务执行与近期研究；展示超时未解析的 pending 数量和 failed 数量，并提供定位入口。
 - Intelligence：来源、股票、时间、信任级别与全文/语义检索。
 - Tasks：任务名称、类型、可选策略、上次执行、状态和手动触发。
 - Research：报告、结构化结论、证据来源与历史观点。
-- Runs：任务执行步骤、模型调用、费用、错误与回退信息。
+- Runs：任务执行步骤、模型调用、费用、错误与回退信息；可查看积压/失败文档的来源、采集时间、最近尝试、错误和重试状态。
 
 第一版的来源、模型、Agent、策略、任务和工具均以 YAML/Markdown/.env 管理；Web 只提供必要的查看与触发能力，不重复开发配置编辑系统。
 
@@ -501,6 +509,8 @@ V0 采用响应式单人研究工作台，不开发 UI 组件库，不制作图�
 - **部分解析和补充识别**：文档确认证券 A，但另一个提及未解决，状态为 partial；证券 A 可以被研究。之后确定证券 B 时，仅为新增的 B 产生研究范围，不重复触发 A。
 - **历史股票代码**：同一 Ticker 在不同时间对应不同 Security；历史报道使用其指代时间作 as-of 匹配，无法唯一确认时保留 unresolved，不使用当前映射覆盖旧文档。
 - **转载与引用**：两篇转载同一原文的资料在 Event 内可关联，但只视为一条共享原始证据；仅引用了他人报道的独立调查不得自动认定为转载，无法判断时保持 unknown。
+- **解析积压可见与恢复**：某文档入库后超过 `entity_resolution_stale_after` 仍为 pending，Overview 计数增加且 Runs 可定位文档；Worker 重启、租约恢复并成功完成后计数下降、正常触发证券 Run。连续失败达到重试上限后显示 failed、保留错误与重新入队入口，不允许静默跳过。
+- **晚到结果**：某文档入库数天后才确认新证券关联，仍持久化关联并按幂等规则发出就绪事件；不按文档年龄丢弃，时效判断留给 Task/Agent。
 - **核查冲突与修正**：同一 Finding 的两条有效核查分别支持和反驳时显示 contested；有依据地废止错误核查后重新派生状态，旧核查仍可查看，历史 Report 不被改写。
 
 不纳入此产品基线：自动交易、行情高频撮合、复杂量化回测、多租户权限、分布式消息平台、复杂 DAG 可视化、多 Agent 自主协商和以模型为中心的自动路由优化。
