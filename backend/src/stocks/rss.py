@@ -59,15 +59,30 @@ def parse_feed(raw: bytes) -> list[dict]:
         uid = str(entry.get("id") or entry.get("link") or "")
         if not uid:
             uid = hashlib.sha256((title + "|" + summary).encode()).hexdigest()
-        when = entry.get("published_parsed") or entry.get("updated_parsed")
-        published = datetime.fromtimestamp(calendar.timegm(when), timezone.utc) if when else None
+        published_time = entry.get("published_parsed")
+        updated_time = entry.get("updated_parsed")
+        published = (
+            datetime.fromtimestamp(calendar.timegm(published_time), timezone.utc)
+            if published_time else None
+        )
+        updated = (
+            datetime.fromtimestamp(calendar.timegm(updated_time), timezone.utc)
+            if updated_time else None
+        )
+        # Some feeds alias the publication date as their update date.
+        # A matching date is not evidence of a later revision.
+        if updated == published:
+            updated = None
+        item_hash = hashlib.sha256((title + "|" + summary).encode()).hexdigest()
         records.append({
-            "dedupe_key": hashlib.sha256(uid.encode()).hexdigest(),
+            # The feed entry ID locates a story; changed content is a new snapshot.
+            "dedupe_key": hashlib.sha256((uid + "|" + item_hash).encode()).hexdigest(),
             "title": title,
             "original_url": entry.get("link"),
             "summary": summary,
             "published_at": published,
-            "content_hash": hashlib.sha256((title + "|" + summary).encode()).hexdigest(),
+            "source_updated_at": updated,
+            "content_hash": item_hash,
         })
     return records
 

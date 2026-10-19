@@ -22,6 +22,7 @@ def documents(limit: int = Query(50, ge=1, le=200)) -> list[dict]:
                 "title": d.title,
                 "original_url": d.original_url,
                 "published_at": d.published_at,
+                "source_updated_at": d.source_updated_at,
                 "collected_at": d.collected_at,
                 "trust_tier": d.trust_tier_snapshot,
                 "snapshot_key": d.snapshot_key,

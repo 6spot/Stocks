@@ -29,6 +29,7 @@ def upgrade():
         sa.Column("title", sa.Text(), nullable=False),
         sa.Column("original_url", sa.Text()),
         sa.Column("published_at", sa.DateTime(timezone=True)),
+        sa.Column("source_updated_at", sa.DateTime(timezone=True)),
         sa.Column("collected_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("now()")),
         sa.Column("summary", sa.Text()),
         sa.Column("content_hash", sa.String(64), nullable=False),
