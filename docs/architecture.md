@@ -136,7 +136,8 @@ DocumentCandidate 至少提供：上游 ID 或 URL、标题、正文/摘要、�
 | security_identifiers / listings | Ticker、交易所、外部标识及有效期 |
 | entity_mentions / document_entities | 文档中提及的主体与证券、消歧证据和状态 |
 | watchlists / watchlist_securities | 研究标的列表及成员证券 ID |
-| documents | 每份获取的信息和来源元数据、对象引用 |
+| documents | 每份获取的信息、来源元数据、对象引用及实体处理状态 |
+| document_relations | 文档间去重、转载和引用关系及其判定依据 |
 | document_chunks | 可检索文本切片、位置与所属文档 |
 | embeddings | 向量、模型、维度、生成时间及切片引用（可以与 Chunk 关联） |
 | market_bars | 证券行情 OHLCV、数据时间、交易场所、调整口径及来源 |
@@ -156,9 +157,10 @@ DocumentCandidate 至少提供：上游 ID 或 URL、标题、正文/摘要、�
 Issuer 是公司或发行主体，Security 是可研究或交易的具体证券，两者以内部稳定 ID 关联。一个 Issuer 可以关联多种 Security（不同股类、ADR 等）；Ticker 只是在特定交易场所、特定有效期间使用的标识，不能作为永久主键。外部 CIK、FIGI 等标识需保留命名空间及来源；名称、Ticker 或公司关系的变更保留历史有效期。
 
 - Watchlist 以 security_id 表示研究标的；需要公司层面分析时，通过 issuer_id 查询其关联证券。
-- Document 可以提及多个 Issuer/Security。实体识别先保存原文提及、候选实体和依据，再进行规则匹配及按需模型消歧。
-- 优先使用可验证的外部标识、交易所、上下文和历史有效期；无法确认时保持 unresolved，不自动归到名称相似的股票。
-- 合并、改名、拆分、退市与证券更换记录为可追溯的实体/证券关系变动，不删除旧标识和历史关联。
+- Document 可以提及多个 Issuer/Security。文档先完成原始内容入库，实体识别在独立 Worker 中**异步后处理**；识别原文提及并保存候选、规则匹配结果和必要时的模型消歧结果，不在采集事务中等待模型。
+- 文档的实体处理状态使用 `pending`、`resolved`、`partial`、`failed`：`resolved` 表示处理结束且无待消歧提及（可以没有股票）；`partial` 表示处理结束但仍有不确定提及；`failed` 表示处理失败、可重试。未确定的关联保留 unresolved，不强行匹配。
+- 解析历史 Ticker 时采用 **as-of** 语义：有明确的被指代时间时使用该时间，否则以 `published_at` 为默认时点；若时间缺失或映射冲突，则维持 unresolved。实体关联需记录解析时点、所用标识与判断依据，不能按当前 Ticker 直接重写历史文档。
+- 优先使用可验证的外部标识、交易所、上下文和历史有效期；合并、改名、拆分、退市与证券更换记录为可追溯的实体/证券关系变动，不删除旧标识和历史关联。
 
 ### 6.4 结构化金融数据与时间语义
 
@@ -179,7 +181,7 @@ Event 是多篇文档可能共同描述的现实事件，并非一篇新闻或�
 3. 对候选关系使用明确的规则或可选 Agent 语义判断。仅相关但并非同一件事的报道不得合并；证据不足时暂不合并。
 4. event_documents 保留关系依据、匹配方式和确认状态；归并允许人工纠正或重新评估，而不覆盖原始 Document。
 
-同一 Event 下有多篇 Document 不代表有多份独立证据。独立性按原始发布者、原始披露/报道及转载链判断，并单独记录用于验证的证据来源。
+同一 Event 下有多篇 Document 不代表有多份独立证据。用最小的 `document_relations` 保存文档之间的 `duplicate_of`、`republished_from`、`cites` 等关系：记录发起文档、目标文档（若已入库）、未入库时的目标原始 URL、关系类型、判定依据及 `candidate / confirmed` 状态。引用别人的材料并不必然等于转载；未确认的关系不自动作为独立性结论。Verifier 沿确认的转载/原始出处关系判断证据是否真正独立，不按 Document 数量计数。
 
 ### 6.6 检索
 
@@ -193,7 +195,7 @@ Repository 对调用者提供：按 Issuer/Security、来源、事件、时间�
 
 1. **来源身份与默认可信度**：T1 官方原始记录、T2 可识别原始发布者、T3 二手媒体/机构、T4 未核实来源。这些是可配置初始类别，不是客观真伪概率。
 2. **具体论断属性**：披露事实、已知数值、个人观点、预测、未经证实的传闻，分别标记。
-3. **核实状态**：unverified、supported、contradicted、insufficient_evidence 等，保留支持与反面证据；这些状态由独立核查记录产生，不由生成该 Finding 的 Agent 自行宣布。
+3. **核实状态**：unverified、supported、contradicted、contested、insufficient_evidence，保留支持与反面证据；这些状态由独立核查记录按第 11.1 节的规则派生，不由生成该 Finding 的 Agent 自行宣布。
 
 可高度信任官方系统确实披露了一份文件，但不因此认定文件中的未来预测必然成立。低等级来源可以作为线索，不可仅因级别低就静默丢掉重要未核实事件。可信度、重要性、交易价值不能混成一个分数。
 
@@ -215,7 +217,7 @@ Task 属性：
 | id / name | 稳定标识、可读标题 |
 | type | collection / processing / analysis / report 等显示分类，不限制允许的步骤 |
 | strategy | 可选策略 ID；无策略的采集任务正常运行 |
-| trigger | manual、schedule（明确时区）、on_new_documents 等 |
+| trigger | manual、schedule（明确时区）、on_new_documents（文档级）、on_entities_resolved（证券级）等 |
 | scope | 可选的证券范围；可按 security_id 展开独立 Run |
 | steps | 有序步骤及参数/上游结果引用 |
 | enabled | 是否参与触发 |
@@ -245,7 +247,9 @@ fan-out 发生在 **Task Run 创建阶段**，不在 Task 的 steps 中提供循
 - 使用 task_batch_id 关联本次展开的所有 Run，单证券失败只影响对应 Run；Worker 以 `max_concurrency` 限制并发。重复触发使用由 Task 定义版本、触发 ID、证券 ID 和数据窗口组成的幂等键。
 - 一个收集任务仍可只产生一个 Run 并处理一批文档；只有显式配置证券级 fan-out 的任务才按证券展开。
 - 后续汇总任务从 Repository 查询指定批次或时间窗口的成功结果，并显式展示缺失、失败或尚未完成的证券；不隐含“所有分支成功才能继续”的任务依赖屏障。
-- 数据事件触发必须基于事务提交后的持久化记录。多个文档映射到同一证券与同一研究窗口时去重，避免重复研究。
+- `on_new_documents` 只表示文档已入库，供与实体关联无关的文档级任务使用；**不得直接用于需要 security_id 的 fan-out**。
+- 异步实体解析把 `document_entities` 与文档 `resolved / partial` 状态一并提交，并在**同一数据库事务**写入可被 Worker 领取的 `on_entities_resolved` 事件记录；提交后才允许按已确认的 security_id fan-out。失败状态不发证券级触发；没有证券关联时事件可以记录，但不产生证券 Run。
+- 后续重新解析产生新增且已确认的证券关联时可以再次触发；以文档、证券、任务和研究窗口构成幂等边界，避免对已有证券重复研究。触发和领取使用现有 PostgreSQL 记录与 Worker，无需另建消息总线。
 
 ### 8.2 任务配置示例
 
@@ -267,14 +271,15 @@ tasks:
   event_research:
     type: analysis
     strategy: event_driven
-    trigger: {kind: on_new_documents, from_task: collect_news}
+    trigger: {kind: on_entities_resolved}
+    scope: {from: trigger.security_ids, for_each: security}
     steps:
       - id: judge
         use: agent.event_judge
-        input: trigger.document_ids
+        input: {document_ids: trigger.document_ids, security_id: run.security_id}
       - id: analyze
         use: agent.researcher
-        input: trigger.document_ids
+        input: {document_ids: trigger.document_ids, security_id: run.security_id}
         when: {step: judge, field: should_analyze, equals: true}
       - id: save
         use: repository.save_analysis
@@ -336,8 +341,10 @@ Tool 与 Connector 处于不同边界：
 - Verifier 是**与研究生成步骤分离的执行角色**，独立读取原始引用和可用的反面证据，逐条检查“证据是否真正支持所表达的结论”；优先核对日期、证券身份、来源独立性与数据可获知时点。
 - 对数值、同比、财务口径等可确定检查的事项优先执行确定性计算；模型判断补充语义核查，不替代可计算校验。
 - Verifier 可使用不同提示词并可按任务选择同一或不同模型；不强制双模型，也不要求每份普通摘要都进行昂贵复核。需要升级为已核实状态的结论必须具有独立核查记录。
-- 验证结果写入独立的 `verification_runs` 与 `finding_verifications`，保留核查输入、方法、引用、模型/规则版本、判定与理由；不覆盖原始 Finding。当前 `verification_status` 是由这些记录派生的查询状态，支持 `unverified`、`supported`、`contradicted`、`insufficient_evidence`。
-- `supported` 的含义是“提供的证据支持此结论”，而不是保证未来预测正确或证明现实世界的绝对真值。报告需要展示未核实、相互冲突以及证据不足的结论。
+- 验证结果写入独立的 `verification_runs` 与 `finding_verifications`，保留核查输入、方法、引用、模型/规则版本、判定与理由，不覆盖原始 Finding。每条核查记录标明是否仍然有效；被重新核查正式取代时，旧记录保留但不参加当前状态计算。**不默认只取最新记录，也不让历史失效结论永久造成冲突**。
+- 当前 `verification_status` 仅从有效记录派生：无记录为 `unverified`；只有证据不足为 `insufficient_evidence`；存在支持且没有反驳为 `supported`；存在反驳且没有支持为 `contradicted`；同时存在有效支持与反驳为 `contested`。证据不足记录不覆盖已有有效支持或反驳。
+- `supported` 的含义是“提供的证据支持此结论”，不是保证未来预测正确或证明现实世界的绝对真值。Report 固定生成时的核查状态快照，后续再核查不静默改写历史报告。
+- 首版只需独立核查记录、有效标记和上述聚合规则；不引入核查审批流、复杂证据评分或多模型强制投票。报告展示未核实、相互冲突及证据不足的结论。
 
 研究结果鼓励明确“尚需验证的问题”，不输出无证据的确定性涨跌概率或自动交易指令。
 
@@ -379,6 +386,6 @@ V0 采用响应式单人研究工作台，不开发 UI 组件库，不制作图�
 
 原型应完整覆盖一条从“真实来源 → 采集 → S3/数据库持久化 → 检索 → 可选研究 → 保存证据与报告 → Web 查看”的端到端路径，且允许纯采集任务独立运行。
 
-验证重点：增量幂等、原始证据追溯、证券身份及历史代码消歧、结构化金融数据的时点正确性、按证券独立 Task Run 的并发和故障隔离、保守事件归并、独立 Finding 核查、任务/Agent 解耦、简单主备回退、外部内容隔离、配置扩展成本、可观察模型消耗、ARM + Docker 部署可用性。
+验证重点：增量幂等、原始证据及转载关系追溯、异步实体解析完成后的可靠证券级触发、证券身份与历史代码 as-of 消歧、结构化金融数据的时点正确性、按证券独立 Task Run 的并发和故障隔离、保守事件归并、核查状态确定性聚合、任务/Agent 解耦、简单主备回退、外部内容隔离、配置扩展成本、可观察模型消耗、ARM + Docker 部署可用性。
 
 不纳入此产品基线：自动交易、行情高频撮合、复杂量化回测、多租户权限、分布式消息平台、复杂 DAG 可视化、多 Agent 自主协商和以模型为中心的自动路由优化。
