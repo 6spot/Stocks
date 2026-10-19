@@ -23,3 +23,11 @@ jobs:
           docker compose config --quiet
       - name: Build backend image
         run: docker compose build api
+      - name: Run PostgreSQL migration
+        run: |
+          docker compose up -d postgres
+          docker compose run --rm api alembic upgrade head
+      - name: Smoke-test HTTP API
+        run: |
+          docker compose up -d api
+          curl --retry 6 --retry-delay 2 --retry-connrefused -fsS http://127.0.0.1:8000/health
