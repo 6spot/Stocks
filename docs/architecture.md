@@ -25,6 +25,7 @@ Stocks 是面向单一 Owner、以美股为主要市场的个人投资情报与�
 7. **外部信息永远是数据，不是系统指令**。工具权限由配置和运行时授权决定，不能被外部正文改变。
 8. **只做最小充分的调度与回退**。顺序步骤、简单条件、明确的按证券 fan-out 和触发器满足原型，不引入动态 DAG、模型评分路由或多 Agent 自主协商。
 9. **证券身份与金融数据是一等公民**。公司、证券、交易代码分开管理；结构化行情和财务数据不强行转换为 Document。
+10. **自动分类不依赖人工确认**。文档即使没有直接证券关联，也能通过宏观、政策、行业、事件与主题标签进入检索和研究；主题相关性与证券事实关联必须区分。
 
 ## 3. 概念与职责
 
@@ -36,6 +37,7 @@ Stocks 是面向单一 Owner、以美股为主要市场的个人投资情报与�
 | Intelligence Repository | 情报、证券实体、金融事实与证据的统一数据访问边界 | 持久化、去重、索引、查询、来源关联 | 自主决定投资策略 |
 | Issuer / Security | 发行主体与可交易证券 | 稳定身份、历史代码、文档和数据关联 | 以当前 Ticker 替代永久身份 |
 | Market Data | 行情、财务及公司行为等结构化数据 | 带时间口径的数值存储与追溯 | 用文本切片替代数值序列 |
+| Classification | 文档的自动类别、主题、行业与事件标签 | 低成本结构化判断、筛选及主题研究入口 | 把行业相关性当作直接提及的证券或事实验证 |
 | Task | 一份可独立执行的工作定义 | 触发、步骤、条件、输入、输出 | 假设必定使用 Agent |
 | Agent | 可配置的智能处理角色 | 提取、判断、分析、复核、工具调用请求 | 管理外部模型服务的部署 |
 | Model Provider | 某种模型 HTTP API 的接入配置 | 认证、协议转换、超时、响应与用量归一化 | 决定投资判断标准 |
@@ -66,7 +68,8 @@ Stocks 是面向单一 Owner、以美股为主要市场的个人投资情报与�
 ~~~
 
 - 采集 Task 获取信息后可直接入库、结束；不会因为不存在分析 Task 而停止。
-- 分析 Task 从 Repository 按发行主体或证券、时间、信息类型、可信度和检索条件选择输入；行情和财务等结构化数据通过同一 Repository 查询接口提供。
+- 分析 Task 从 Repository 按发行主体或证券、行业、宏观主题、政策类别、事件类型、时间、可信度和检索条件选择输入；行情和财务等结构化数据通过同一 Repository 查询接口提供。
+- 文档后处理既可以确认直接提及的 Issuer/Security，也可以独立生成主题、行业和宏观标签。无直接证券关联不代表无需研究；相关性标签只用于发现候选研究方向，不自动生成直接证券事实关联。
 - 一个 Task 可以按证券范围拆分为多个独立 Task Run；具体规则见第 8 节。
 - Agent 可以按需调用 Repository 只读工具或远程 MCP 工具补证；新获得的资料经统一入库流程登记来源，再供结论引用。
 - 多个研究 Task 能消费同一批资料并独立产出结论。研究结果也允许成为后续研究的输入。
@@ -134,7 +137,8 @@ DocumentCandidate 至少提供：上游 ID 或 URL、标题、正文/摘要、�
 | issuers | 公司或其他发行主体的稳定内部 ID、名称历史和外部标识 |
 | securities | 具体证券（含不同股类、ADR 等）及其发行主体关系 |
 | security_identifiers / listings | Ticker、交易所、外部标识及有效期 |
-| entity_mentions / document_entities | 文档中提及的主体与证券、消歧证据和状态 |
+| entity_mentions / document_entities | 文档中直接提及的主体与证券、消歧证据和状态 |
+| document_classifications | 文档的类别、主题/行业/地域标签、分类修订与来源依据 |
 | watchlists / watchlist_securities | 研究标的列表及成员证券 ID |
 | documents | 每份获取的信息、来源元数据、对象引用及实体处理状态 |
 | document_relations | 文档间去重、转载和引用关系及其判定依据 |
@@ -166,7 +170,7 @@ DocumentCandidate 至少提供：上游 ID 或 URL、标题、正文/摘要、�
 | `security_identifiers` | `security_id`、`type`（ticker/FIGI 等）、`value`、`exchange`、`valid_from`、`valid_to`、`source_ref` | 有效期采用 `[valid_from, valid_to)`，允许空上界；同一命名空间、交易场所和时间点出现多个候选时不得猜测 |
 | `entity_mentions` | `mention_id`、`document_id`、原文词语、位置或文本引用、识别到的实体类型、`reference_time`、`time_basis`、`status` | 每处提及可独立消歧；`unresolved` 必须可查询 |
 | `document_entities` | `document_id`、`issuer_id` 或 `security_id`、`resolution_status`、`resolved_as_of`、`method`、`evidence_ref`、`resolution_revision` | 支持多对多关系；只有 `confirmed` 的 `security_id` 能驱动证券级任务 |
-| `documents` | `entity_resolution_status`、`entity_resolution_revision`、`entity_resolved_at`、`entity_attempts`、`entity_last_attempt_at`、`entity_last_error` | 文档完整入库与实体解析相互独立；初始状态为 `pending`；解析执行的租约/下次重试时间由已有 PostgreSQL Worker 任务记录管理 |
+| `documents` | `entity_resolution_status`、`entity_resolution_revision`、`entity_resolved_at`、`entity_attempts`、`entity_last_attempt_at`、`entity_last_error`；`classification_status`、`classification_revision` | 文档入库后，两类异步结果分别落库与标识状态；实体识别和自动分类均不阻塞原文持久化，复用现有 PostgreSQL Worker 任务租约机制 |
 
 以上列出要求保留的**数据语义和字段契约**；具体索引、主键类型或部分辅助字段的物理拆分由数据库实现决定，不得丢失历史时间和确认依据。
 
@@ -194,7 +198,48 @@ DocumentCandidate 至少提供：上游 ID 或 URL、标题、正文/摘要、�
 - Overview 显示“解析超时未完成数”和“解析失败数”，并能进入 Runs 查看具体文档、入队/最后尝试时间、尝试次数、最近错误及可否重试。阈值变化只影响告警统计，不改变数据状态或跳过研究。
 - 晚到的解析结果仍正常保存并发布相应的证券就绪事件；首版不增加 `max_delay`、过期触发拦截或自动丢弃历史研究。是否继续深入分析，由原有 Task 条件与 Agent 结合发布时间、研究策略决定。
 
-### 6.4 结构化金融数据与时间语义
+### 6.4 自动分类、标签与关联边界
+
+分类属于 Document 的独立、可复用情报属性；不要求文档必须识别出直接证券关联。宏观经济、行业政策、市场制度、行业动态、企业披露等资料，即使 `confirmed_security_ids=[]`，也应可以完成分类、检索、触发相应主题研究。
+
+**统一分类结果由 Stocks 定义，与模型厂商无关：**
+
+| 字段 | 语义与约束 |
+| --- | --- |
+| `document_id`、`classification_revision` | 文档及本次有效分类修订；重复处理无变化时不新建修订 |
+| `category` | 单个主要类别，来自受控词表，例如 `macro`、`policy`、`industry`、`company`、`other` |
+| `event_type` | 可选的事件类型，如 `monetary_policy`、`earnings`；不适用时为空 |
+| `topics[]` | 可多选的主题标签，例如 `interest_rates`、`inflation`、`liquidity` |
+| `related_industries[]` | 文章讨论或可能影响的行业分类标识，属于**主题相关性**，不表示直接提及某一证券 |
+| `regions[]` | 所涉及的地域或市场；不明确时为空，不根据语言猜测 |
+| `method`、`model_ref`、`taxonomy_version` | 分类方式、实际使用的模型/规则引用及词表版本 |
+| `classified_at`、`reason_or_evidence_ref` | 分类发生时间及可追溯依据；不能把模型分类标记成已经核实的事实 |
+
+标签及类别使用受控词表（配置文件可维护），前端与 Task 使用**稳定标签 ID** 查询而非依赖自由文本字符串。词表允许自然扩展与修订，但保留分类时的词表版本；初版可以将分类作为一条结构化 JSON/JSONB 记录存储，不强制建立独立的标签服务或多张关联表。
+
+**自动分类流程与失败边界：**
+
+1. Document 入库后 Worker 执行异步分类。可先用已知元数据/明确规则，再调用配置的低成本 Decision Model，完成多选标签的逐项 yes/no、单选类别的 choice 等结构化判断；复杂文本再按需使用支持生成的 LLM。模型接口通过第 9 节的 Provider/Adapter 调用，不绑定任何特定厂商。
+2. 分类必须符合固定输出 Schema 与受控词表，超出词表、模型故障或无效结构时按原有有限重试处理，绝不把伪造标签写入正式分类。完成一次有效分类即为 `completed`；分类为空标签或类别 `other` 也可以是有效结果。
+3. 分类状态与实体解析状态**独立**：`classification_status = pending / completed / failed`；一方完成无需等待另一方。已完成的结果与其修订记录持久化，重新分类保留历史，更新当前结果并依据实质变化发布新事件。
+4. 分类结果、状态/修订号及 `on_document_classified` 持久化事件在同一数据库事务写入。Worker 仅消费已提交事件；失败保留错误、重试与 Runs 可查询记录，防止分类失败造成无声遗漏。
+5. 主题或行业相关性不自动扩展成 `document_entities` 的 `confirmed` 证券。只有原文真实提及且能够消歧的证券才产生**直接实体关联**；由政策或宏观事件推测可能受影响的公司，应标记为研究候选，并由研究 Task 使用其他证据独立验证。
+
+**示例：**
+
+~~~yaml
+document_classification:
+  category: macro
+  event_type: monetary_policy
+  topics: [interest_rates, liquidity]
+  related_industries: [banking, real_estate]
+  regions: [US]
+  direct_security_ids: []
+~~~
+
+此处 `direct_security_ids` 是从独立的已确认 `document_entities` 查询得到的阅读视图字段，**不由分类模型直接决定**；真实持久化时由分类记录与实体关联组合展示。该文档没有直接提及的证券，仍然可以被宏观、行业研究 Task 使用。模型所输出的“可能影响”标签只代表待研究的主题关联，绝非确定的股票涨跌判断或投资建议。
+
+### 6.5 结构化金融数据与时间语义
 
 Market Data 通过同一 Source / Connector / Source Mapper 接入，但按数值事实存储，不强行写入 Document Chunk。Agent 通过 Repository 的只读 Tool 获取指定证券、发行主体、时间范围和指标的数据。能够定期获取的数据应沉淀并复用，不能仅依赖 Agent 每次临时查询外部服务。
 
@@ -205,7 +250,7 @@ Market Data 通过同一 Source / Connector / Source Mapper 接入，但按数�
 - S3 保留结构化数据原始响应/文件快照，PostgreSQL 保存规范化数值、来源和校验标识。
 
 
-### 6.5 事件归并与证据独立性
+### 6.6 事件归并与证据独立性
 
 **Event 表示现实中的一件事，不等于文章来源，也不等于向量相似集合。** 同一家公司同一天发布不同公告可对应不同 Event；多家媒体报道同一公告可以对应一个 Event，但其证据可能仅来自一份原始披露。
 
@@ -235,9 +280,11 @@ Market Data 通过同一 Source / Connector / Source Mapper 接入，但按数�
 - Verifier 沿**已确认**的重复/转载来源链判断是否共享源头：同源视为一组证据；可证明各自有独立原始调查时才视为独立；无法判断时标记 `unknown`，不把“没有已知关系”当成“独立”。
 - 来源是否独立、来源是否可信、结论是否得到支持是不同判断。相关来源的数量不得直接作为真实性票数；核查结果引用参与判断的具体来源关系和证据。
 
-### 6.6 检索
+### 6.7 检索
 
-Repository 对调用者提供：按 Issuer/Security、来源、事件、时间和数据可获知时点的查询；文档全文/语义/混合检索；结构化行情财务查询；相似事件和证据读取。
+Repository 对调用者提供：按 Issuer/Security、行业、主题、类别、事件类型、地域、来源、事件、时间和数据可获知时点的查询；文档全文/语义/混合检索；结构化行情财务查询；相似事件和证据读取。
+
+分类结果与实体解析结果支持独立过滤：`confirmed_security_ids` 为空而分类完整的宏观/行业资料是**正常数据**；存在 `unresolved` 提及的文档可按需筛选，但不作为默认的人工审批队列。
 
 向量必须记录 Embedding 模型和维度；不同模型的向量不直接混合排序。pgvector 从初版引入，具体向量索引按已配置的 Embedding 模型建立。向量相似度只表示语义相关，不表示事实真实性或证据独立性。
 
@@ -269,7 +316,7 @@ Task 属性：
 | id / name | 稳定标识、可读标题 |
 | type | collection / processing / analysis / report 等显示分类，不限制允许的步骤 |
 | strategy | 可选策略 ID；无策略的采集任务正常运行 |
-| trigger | manual、schedule（明确时区）、on_new_documents（文档级）、on_entities_resolved（证券级）等 |
+| trigger | manual、schedule（明确时区）、on_new_documents（文档级）、on_entities_resolved（证券级）、on_document_classified（主题/行业级）等 |
 | scope | 可选的证券范围；可按 security_id 展开独立 Run |
 | steps | 有序步骤及参数/上游结果引用 |
 | enabled | 是否参与触发 |
@@ -294,15 +341,16 @@ StepResult:
 
 ### 8.1 数据生命周期、可靠触发与证券 fan-out
 
-**文档级任务和证券级任务必须使用不同的就绪条件。** Document 入库并不表示其证券身份已确认。
+**文档级、证券级和主题/行业级任务使用各自所需的就绪条件。** Document 入库不表示证券身份已确认，也不表示主题分类已完成。两条后处理路径互不等待。
 
 #### 数据生命周期与触发语义
 
 | 阶段 | 提交内容 | 可供哪些 Task 消费 |
 | --- | --- | --- |
 | 1. 采集入库 | S3 原文与 PostgreSQL Document、采集幂等键、采集游标；实体状态为 `pending` | `on_new_documents`：不依赖证券身份的文档处理任务 |
-| 2. 后台实体解析 | `entity_mentions`、`document_entities`、文档解析状态/修订号 | 解析结果提交后才能产生证券级触发 |
-| 3. 就绪事件持久化 | 与第 2 步**同一 PostgreSQL 事务**写入 `on_entities_resolved` 事件，记录文档、修订、确认证券集合 | `on_entities_resolved`：需要 `security_id` 的 Task |
+| 2A. 后台实体解析 | `entity_mentions`、`document_entities`、文档解析状态/修订号 | 解析结果提交后才能产生证券级触发 |
+| 2B. 后台自动分类 | `document_classifications`、分类状态/修订号 | 分类结果提交后才能产生主题/行业级触发；无需等待 2A |
+| 3. 就绪事件持久化 | 与对应的 2A/2B **同一 PostgreSQL 事务**分别写入就绪事件及修订 | `on_entities_resolved`：证券任务；`on_document_classified`：主题/行业任务 |
 | 4. 创建 Run | Worker 消费已提交的事件，按确认证券创建独立、可重试 Task Run | 常规执行与结果入库 |
 
 **最小持久化触发契约：**
@@ -310,10 +358,11 @@ StepResult:
 ~~~text
 TaskEvent:
   event_id:              stable unique id
-  kind:                  on_new_documents | on_entities_resolved
+  kind:                  on_new_documents | on_entities_resolved | on_document_classified
   document_ids:          list[document_id]
   resolution_revision:   int | null
-  confirmed_security_ids: list[security_id]  # resolved event only
+  confirmed_security_ids: list[security_id]  # entities_resolved 时
+  classification_ref:    document_id + classification_revision | null  # classified 时
   created_at:            timestamp
   delivery_state:        pending | processing | completed
   retry_metadata:        attempts, lease_expires_at, last_error
@@ -323,8 +372,15 @@ TaskEvent 可以是 PostgreSQL 任务/事件表的一个类型，不需要部署
 
 - 第 1 步事务失败不推进游标、不创建任何新数据触发；重试先检查内容哈希及幂等键。
 - 第 2 步 `failed` 时记录错误并按已有 Worker 的有限重试策略重做，不发布 `on_entities_resolved`；Worker 中断或解析任务租约过期时允许重新领取。`partial` 可以发布已确认证券集合，并保留待消歧部分。超过积压时长的 `pending` 与重试耗尽的 `failed` 进入 Overview/Runs 可见列表，绝不视为研究已经完成。
-- 即使本轮没有确认任何 Security，也保存解析完成/部分完成的事实；`confirmed_security_ids` 为空时不创建证券 Run。
+- 即使本轮没有确认任何 Security，也保存解析完成/部分完成的事实；`confirmed_security_ids` 为空时不创建证券 Run，**但绝不阻止已完成分类的主题/行业研究**。
+- `on_document_classified` 只在分类完成、结果已提交时发布，携带可查询的分类引用；Task 可按标签、行业、类别、地域过滤后建立普通 Run，空标签不强制触发。重新分类按分类修订与任务研究窗口幂等，不会重复创建相同 Run。
 - 重新解析只在已确认关联**实质改变**时发布新修订事件。新增证券产生新的研究范围；撤销或改正旧关联须在 Repository 中保留更正信息，并标记依赖旧关联的研究需要重估。与旧修订输入相同的重试不得产生重复触发。
+
+#### 主题/行业任务与证券任务的边界
+
+- `on_entities_resolved` 适合分析被资料**直接确认涉及**的证券，可按 `security_id` 扇出。
+- `on_document_classified` 适合宏观、政策与行业 Task。其输入是 Document ID、分类引用与标签，不要求文档有证券关联，也不默认推导全行业股票并批量 fan-out；若策略后来需要研究具体标的，由 Task 根据 Watchlist/Repository 数据明确决定证券范围。
+- 两种就绪事件均来自同一 PostgreSQL 持久化机制，分别按文档+修订+任务/研究窗口幂等。分类不等于核实，不得把预测影响关系写进事实关联。
 
 #### Fan-out 是创建 Run，不是 Task 内循环
 
@@ -339,7 +395,7 @@ TaskEvent 可以是 PostgreSQL 任务/事件表的一个类型，不需要部署
 
 ### 8.2 任务配置示例
 
-下列任务分别展示纯采集、实体解析完成后触发的证券研究，以及按 Watchlist 展开的定时研究：
+下列任务分别展示纯采集、按确认证券触发、按分类主题触发，以及按 Watchlist 展开的定时研究：
 
 ~~~yaml
 tasks:
@@ -372,6 +428,22 @@ tasks:
         input: analyze.output
         when: {step: analyze, status: succeeded}
 
+  macro_policy_research:
+    type: analysis
+    trigger: {kind: on_document_classified}
+    steps:
+      - id: judge
+        use: agent.topic_judge
+        input: trigger.classification_ref
+      - id: analyze
+        use: agent.topic_researcher
+        input: trigger.document_ids
+        when: {step: judge, field: should_analyze, equals: true}
+      - id: save
+        use: repository.save_analysis
+        input: analyze.output
+        when: {step: analyze, status: succeeded}
+
   daily_watchlist_research:
     type: analysis
     strategy: long_term
@@ -391,7 +463,7 @@ tasks:
 
 ## 9. Agent、HTTP 模型与回退
 
-Agent 配置包括：id、role、prompt、model_ref、tools[]，以及按职责需要的结构化输出契约。Decision Agent 可以返回布尔选择、类别或评分；Generation Agent 可以输出研究文本或提出 Tool 调用请求。不同模型类型通过协议 Adapter 接入，不强行假设所有模型都能输出长文、原生工具调用或 JSON Schema。
+Agent 配置包括：id、role、prompt、model_ref、tools[]，以及按职责需要的结构化输出契约。Decision Agent 可以返回布尔选择、类别或评分，适合受控标签分类与便宜的相关性判断；Generation Agent 可以输出研究文本或提出 Tool 调用请求。不同模型类型通过协议 Adapter 接入，不强行假设所有模型都能输出长文、原生工具调用或 JSON Schema。
 
 Provider 定义 protocol、HTTP endpoint、认证方式、默认超时等。支持标准 HTTP 服务的直接调用与兼容接口；增加非兼容协议时只新增薄 Adapter。Provider 不承担 Agent 逻辑，任何私有部署、官方服务或模型聚合服务都只是一个 Provider 配置实例，不构成系统依赖。
 
@@ -490,7 +562,7 @@ V0 采用响应式单人研究工作台，不开发 UI 组件库，不制作图�
 主要视图：
 
 - Overview：采集概况、重要事件、任务执行与近期研究；展示超时未解析的 pending 数量和 failed 数量，并提供定位入口。
-- Intelligence：来源、股票、时间、信任级别与全文/语义检索。
+- Intelligence：来源、股票、**类别、主题标签、行业、地域**、时间、信任级别与全文/语义检索；支持筛选无已确认证券及未解决实体提及的文档，但不要求人工逐篇确认。
 - Tasks：任务名称、类型、可选策略、上次执行、状态和手动触发。
 - Research：报告、结构化结论、证据来源与历史观点。
 - Runs：任务执行步骤、模型调用、费用、错误与回退信息；可查看积压/失败文档的来源、采集时间、最近尝试、错误和重试状态。
@@ -501,7 +573,7 @@ V0 采用响应式单人研究工作台，不开发 UI 组件库，不制作图�
 
 原型应完整覆盖一条从“真实来源 → 采集 → S3/数据库持久化 → 检索 → 可选研究 → 保存证据与报告 → Web 查看”的端到端路径，且允许纯采集任务独立运行。
 
-验证重点：增量幂等、原始证据及转载关系追溯、异步实体解析完成后的可靠证券级触发、证券身份与历史代码 as-of 消歧、结构化金融数据的时点正确性、按证券独立 Task Run 的并发和故障隔离、保守事件归并、核查状态确定性聚合、任务/Agent 解耦、简单主备回退、外部内容隔离、配置扩展成本、可观察模型消耗、ARM + Docker 部署可用性。
+验证重点：增量幂等、原始证据及转载关系追溯、异步实体解析后的证券级触发、独立自动分类后的主题/行业级触发、无证券文档依然可研究、直接事实关联与主题相关性分离、证券身份与历史代码 as-of 消歧、结构化金融数据的时点正确性、按证券独立 Task Run 的并发和故障隔离、保守事件归并、核查状态确定性聚合、任务/Agent 解耦、简单主备回退、外部内容隔离、配置扩展成本、可观察模型消耗、ARM + Docker 部署可用性。
 
 ### 一致性验收场景
 
@@ -511,6 +583,9 @@ V0 采用响应式单人研究工作台，不开发 UI 组件库，不制作图�
 - **转载与引用**：两篇转载同一原文的资料在 Event 内可关联，但只视为一条共享原始证据；仅引用了他人报道的独立调查不得自动认定为转载，无法判断时保持 unknown。
 - **解析积压可见与恢复**：某文档入库后超过 `entity_resolution_stale_after` 仍为 pending，Overview 计数增加且 Runs 可定位文档；Worker 重启、租约恢复并成功完成后计数下降、正常触发证券 Run。连续失败达到重试上限后显示 failed、保留错误与重新入队入口，不允许静默跳过。
 - **晚到结果**：某文档入库数天后才确认新证券关联，仍持久化关联并按幂等规则发出就绪事件；不按文档年龄丢弃，时效判断留给 Task/Agent。
+- **宏观新闻无股票仍能研究**：一篇货币政策新闻没有直接确认的 Security，实体处理完成但证券集合为空，分类结果有 `macro`、`interest_rates`、`banking`；必须可按这些类别/标签检索，并仅按订阅该主题的 Task 触发研究，不制造任何银行股票的直接实体关联。
+- **分类与实体处理相互独立**：实体解析为 `partial` 或 `failed` 时，有效的主题分类仍能入库和触发主题研究；分类失败时已确认的证券仍可触发证券研究。两者的重试分别幂等、错误可定位。
+- **同一行业的相关性与事实边界**：分类模型标注 `real_estate` 仅表明行业相关，不得等价于文档提及某家房地产上市公司；股票级研究需另有可信的证券输入和证据。
 - **核查冲突与修正**：同一 Finding 的两条有效核查分别支持和反驳时显示 contested；有依据地废止错误核查后重新派生状态，旧核查仍可查看，历史 Report 不被改写。
 
 不纳入此产品基线：自动交易、行情高频撮合、复杂量化回测、多租户权限、分布式消息平台、复杂 DAG 可视化、多 Agent 自主协商和以模型为中心的自动路由优化。
