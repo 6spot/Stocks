@@ -30,4 +30,4 @@ jobs:
       - name: Smoke-test HTTP API
         run: |
           docker compose up -d api
-          curl --retry 6 --retry-delay 2 --retry-connrefused -fsS http://127.0.0.1:8000/health
+          curl --retry 10 --retry-delay 2 --retry-all-errors -fsS http://127.0.0.1:8000/health || { docker compose logs api; exit 1; }
