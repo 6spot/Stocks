@@ -29,8 +29,8 @@
 按以下顺序执行，全部为现有 Repository、Worker 和 Task 能实现的操作：
 
 1. **新增集合**：按 `window` 与 `as_of` 调用 `search_changes`，同时寻找本次新入库的 Document、Fact 及有意义的修订；按稳定引用和变化类型去重。旧资料晚到归入本次增量，仍保留真实 `published_at`、来源明确给出的 `source_updated_at`。
-2. **背景集合**：按 Scope + Objective 使用 `search`，查询研究时点可获知的历史 Document、Fact 和已有 Analysis，不受增量窗口限制。区分 `role = new_information / historical_context`；同一资料可被不同 Run 复用。
-3. **统一合并与去重**（仅影响本次研究输入，不删除原始存储）：
+2. **背景集合**：按 Scope + Objective 使用 `search`，通过 pgvector 文本语义召回加元数据过滤、Fact 结构化查询，读取研究时点可获知的历史 Document/Fact 和已有 Analysis，不受增量窗口限制。区分 `role = new_information / historical_context`；同一资料可被不同 Run 复用；向量索引失败或积压需计入覆盖缺口。
+3. **统一合并与去重**（不区分来源是 RSS、API 还是研究过程中的外部搜索；仅影响本次研究输入，不删除原始存储）：
    - **Document + Fact 同时命中**：以 Fact 的结构化字段表达该项已整理事实，并关联其来源 Document 的原文/响应位置；原文仍可补充该 Fact 未覆盖的其他信息，**不能整篇排除**。同一 Fact 经全文与结构化两条查询路径返回时只出现一次。
    - **重复原文/转载**：相同来源的重复抓取由入库幂等处理；已确认内容相同或转载同一原始出处的不同 Document 合为一组证据，保留各份来源及链接。仅靠向量相似、主题或标题相同不得认定为重复。
    - **同指标跨来源**：指标、主体、统计期间、单位与口径一致且数值一致时，可合并为一组事实并保留各来源引用；**数值冲突、版本不同或口径不同必须并列保留，不能平均或静默覆盖**。

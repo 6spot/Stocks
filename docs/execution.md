@@ -40,12 +40,12 @@ StepResult:
 
 | 阶段 | 系统行为 |
 | --- | --- |
-| 1. 原始资料入库 | Source/Connector 获取文章、公告或 API 响应，先保存 S3 快照及 Document、游标与幂等键 |
-| 2. 后台轻量处理 | 对适用文本由可配置 Decision Model 一次完成类别、标签（含有依据的公司/代码）和 `should_extract`；需要时再调用 LLM 生成 Fact。结构化 API 响应直接由 Source Mapper 解析 Fact |
+| 1. 过滤、获取与入库 | RSS、API、外部搜索及授权 Tool 发现候选后先宽松过滤；对入选者取得正文/原始负载，统一保存 Document、S3 快照、来源/时间及幂等键。无法取得全文要标记内容不完整 |
+| 2. 后台轻量处理 | 适用文本由 Decision Model 完成类别、标签及 `should_extract`，需要时调用 LLM 提取 Fact；结构化 API 响应直接程序解析 Fact。可检索文本同时生成 Embedding 并写入 pgvector，索引失败须可见及可重试 |
 | 3. 研究 Task | YAML 设置 `manual` 或带时区 `schedule`，到点独立创建 Run，从 Repository 统一检索 Document + Fact，合并去重后交给同一研究 Agent |
 | 4. 报告留存 | 成功保存报告及本次证据引用后推进对应任务增量窗口；失败保留记录，不修改已入库情报或丢失待研究增量 |
 
-后台分类/抽取任务通过已有 Worker 的有限重试与幂等机制运行。分类失败时保留原文并展示积压，不将失败当成“无关信息”或 `should_extract=false`；未抽取的原文仍能参与研究。
+分类、抽取与 Embedding 通过后台 Worker 的有限重试和幂等机制执行。任何一步失败时都保留已入库原文并展示对应积压；分类错误不能视为“无关”，未抽取 Fact 的文档也应可被 pgvector 检索；未索引的 Document 可查看但必须暴露召回缺口。
 
 **整个 Stocks 系统不提供证券身份主数据、证券级事件解析或按股票自动 Fan-out。** 市场早晚报告和 NVDA 早晚报告是两份独立配置的 YAML Task；如需关注多个股票，直接定义各自的研究任务，仍调用同一套 Repository 与 Research Agent。此处不是首版限制，也不作为后续扩展路线。
 
@@ -172,5 +172,5 @@ Tool 与 Connector 处于不同边界：
 - MCP 仅支持远程 Streamable HTTP；不实现 stdio 客户端。
 - MCP 的工具发现、调用和结果解析由通用客户端负责。外部服务作为配置项，不为每个工具提供商实现一套底层框架。
 - MCP 搜索供应商属于“发现/查询渠道”，其返回网页的真正 Publisher 是原网站，不因搜索服务本身而提升可信等级。
-- 研究从外部取得有复用价值的新证据时，必须先按数据类型走统一 Source/Repository 入库、原始响应/文档留存及来源记录，再由 Analysis 引用；不能仅使用一次性 Tool 返回文本却不保存。没有新数据时直接复用现有 Repository 引用。
+- 研究从外部搜索、MCP/Tool 等发现相关内容时，同样先执行 Scope 过滤、获取原始正文/响应，再走统一 Source/Repository 持久化、标签、按需 Fact 与向量索引；Analysis 必须引用已保存的证据，不能将一次性搜索摘要当作完整文档或绕过入库。没有新数据时直接复用现有 Repository 引用。
 - 工具调用由 Stocks 授权后执行，模型只能提出结构化请求。
