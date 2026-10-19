@@ -174,6 +174,7 @@ Research Scope 定义“**值得采集和后续研究的内容范围**”，与 
 | events / event_documents | 同一事件与文档的候选/已确认关系及归并依据 |
 | tasks / task_runs / step_runs | 任务定义快照、独立研究范围与增量窗口、按证券独立的运行及逐步骤执行记录 |
 | research_cursors / research_inputs | 每个任务/范围的成功增量位置，以及每次研究实际选用的文档、结构化数据与分类版本引用；逻辑数据契约可由既有运行记录承载 |
+| evidence_packages | 某次研究的取材查询条件、候选覆盖统计、入选证据及其版本、排除/缺口说明的持久化快照；可直接作为 Task Run 的结构化输出存储，无需独立服务或专属物理表 |
 | analyses / findings | 研究过程、结构化结论、事实/推断类型、模型及提示词版本 |
 | verification_runs / finding_verifications | 独立核查执行、判断、依据与核查模型信息 |
 | evidence_links | 单条结论与 Document/Chunk/结构化金融数据的可追溯关系 |
@@ -323,6 +324,8 @@ Repository 对调用者提供：按 Issuer/Security、行业、主题、类别�
 
 向量必须记录 Embedding 模型和维度；不同模型的向量不直接混合排序。pgvector 从初版引入，具体向量索引按已配置的 Embedding 模型建立。向量相似度只表示语义相关，不表示事实真实性或证据独立性。
 
+**取材查询接口：** `repository.search_changes` 以 Task Run 的增量窗口与 `as_of` 找到新增入库、完成分类、重要修订等可研究变化；`repository.search` 可不受增量窗口限制，按同一 `as_of`、Scope 和类型检索历史证据。两者都返回稳定引用、版本、时间、来源、关联依据、查询批次和可复查的排序/过滤信息；查询不能修改 Document 的全局状态。Evidence Selection 按第 8.3 节在这两个 Repository 查询之上执行，不另建一套取材数据库。
+
 ## 7. 来源可信度、证据与安全
 
 可信信息分为三个独立维度：
@@ -471,7 +474,7 @@ Run B（行业周报）：自身独立的增量变化窗口
                  → 保存自身 research_inputs → 行业报告
 ~~~
 
-**两类检索必须区分**：`repository.search_changes` 选择本次新增/修订的候选证据；`repository.search` 按研究时点、Scope 与条件选择所有可用的背景/验证资料。二者均读取同一 Repository，前者不修改资料，也不把研究消费进度写回 Document。
+**两类检索必须区分**：`repository.search_changes` 选择本次新增/修订的候选证据；`repository.search` 按研究时点、Scope 与条件选择所有可用的背景/验证资料。二者均读取同一 Repository，前者不修改资料，也不把研究消费进度写回 Document。研究任务通常通过第 8.3 节的 `repository.select_evidence` 统一执行这两类查询及取材，不需要每种研究自己重写步骤。
 
 ~~~yaml
 tasks:
@@ -491,18 +494,17 @@ tasks:
     trigger: {kind: schedule, cron: "0 9 * * 1-5", timezone: America/New_York}
     window: {mode: since_last_success, initial_lookback: 7d}
     steps:
-      - id: changes
-        use: repository.search_changes
-        with: {scope: research_scope, window: run.window}
-      - id: context
-        use: repository.search
+      - id: evidence
+        use: repository.select_evidence
         with:
           scope: research_scope
+          objective: "综合市场情绪、宏观与政策的近期变化"
+          window: run.window
           as_of: run.as_of
-          include: [documents, events, market_data, previous_analyses]
+          budget: {max_tokens: 30000}
       - id: research
-        use: agent.market_researcher
-        input: {new_information: changes.output, historical_context: context.output}
+        use: agent.researcher
+        input: evidence.output
       - id: save
         use: repository.save_analysis
         input: research.output
@@ -518,15 +520,17 @@ tasks:
     scope: {from: watchlist, for_each: security, max_items: 50}
     execution: {max_concurrency: 3}
     steps:
-      - id: changes
-        use: repository.search_changes
-        with: {security: run.security_id, window: run.window}
-      - id: context
-        use: repository.search
-        with: {security: run.security_id, as_of: run.as_of}
+      - id: evidence
+        use: repository.select_evidence
+        with:
+          scope: {security_id: run.security_id}
+          objective: "研究关注证券在本周期的基本面、行业环境与风险变化"
+          window: run.window
+          as_of: run.as_of
+          budget: {max_tokens: 30000}
       - id: research
         use: agent.researcher
-        input: {new_information: changes.output, historical_context: context.output}
+        input: evidence.output
       - id: save
         use: repository.save_analysis
         input: research.output
@@ -546,6 +550,92 @@ tasks:
 ~~~
 
 这里的 `financial_news`、Agent ID 和周期是**配置示例**，并非预设的真实数据源或固定业务策略。采集数据与研究报告都通过独立 Task 执行；`important_event_research` 默认关闭，说明事件驱动深度研判不是每篇资料的必经步骤。配置文件提供人可读定义，数据库记录执行时的配置、时间范围、实际输入与结果快照。
+
+### 8.3 统一取材：Evidence Selection 与 Evidence Package
+
+**一套取材逻辑服务所有研究范围，不按市场/行业/个股分别建设取材引擎。** `repository.select_evidence` 是现有 Task 中可配置的 Repository 步骤：先寻找本次可研究的新增变化，再查询必要历史背景，整理可复查的 Evidence Package 交给 Research Agent。这里的 “Evidence Selection” 表示执行能力，“Evidence Package” 表示本次结果快照；**都不代表新微服务、全局 Agent 或持久化材料副本**。
+
+#### 取材请求与研究维度
+
+| 输入 | 语义 |
+| --- | --- |
+| `run_id`、`task_id`、`task_version` | 研究所属 Task Run 与配置快照 |
+| `objective` | 本次需要回答的研究问题，不限于预先固定的日报/行业/股票类型 |
+| `scope` | Securities、Issuer、行业、区域、宏观主题和政策主题的任意适用组合 |
+| `window_start` / `window_end`、`as_of` | 仅前者界定新增变化；`as_of` 约束所有事实和版本可获知性，沿用第 8.2 节 |
+| `data_requirements[]`（可选） | 研究关注的证据类型或主题维度，例如政策、宏观指标、企业披露、行业信息、历史观点 |
+| `budget`（可选） | 证据 Token 总预算、候选扫描上限、每类内容/维度的取材上限等有界限制；未配置使用可调整的默认值 |
+| `selection_policy_version` | 本次取材规则或配置版本，便于解释不同运行的差异 |
+
+- 已显式配置的 `data_requirements` 作为研究偏好；缺省时，使用 Scope 的结构化标签与 Objective 相关的关键词/主题词表生成默认维度和检索条件。必要时允许由已配置的低成本 Decision Agent 提出补充维度，但其结果须经受控词表/查询参数校验，不能修改 Task 权限、时间截止或预算。**不为市场日报、行业报告和个股报告分别硬编码固定取材数量或查询流程。**
+- **精确关联和背景关联分开**：研究某 Security 时，直接关联的公告/财务等是核心候选；行业政策、供应链或宏观信息是间接背景候选。后者不能因被纳入 Evidence Package 就被写成 `document_entities.confirmed`，不能冒充公司直接证据。
+- 一个维度可以在本次无适用资料；必须表示“没有找到/未能获取/尚未扫描完整”中的实际情况，不能为满足取材额度制造内容或将其他维度的资料强行改类。
+
+#### 候选获取、去重、排序与预算
+
+按以下顺序执行，全部为现有 Repository、Worker 和 Task 能实现的操作：
+
+1. **新增集合**：按 `window` 与 `as_of` 调用 `search_changes`，寻找本次新入库、完成分类、实体/政策/数值等重要修订的可研究数据；按稳定数据 ID、修订和变化类型去重。旧资料晚到归入本次增量，但仍保留其真实 `published_at`。
+2. **背景集合**：按 Scope + Objective 的需求调用 `search`，查询研究时点可获知的历史文档、政策、财务/宏观指标、已有 Analysis；不得被增量窗口限制。区分候选的 `role = new_information / historical_context`，同一资料可以在不同 Run 复用。
+3. **来源与事件去重**：已确认的完全重复、转载记录只占一份主要证据席位，并保留所有关联文档 ID 与原始来源链。只有已确认事件关系才按 Event 聚合；没有可靠 Event 时以文档或确定性原始来源组为候选单位。**向量相似、同一事件关键词或未知独立性不足以自动判定为相同原始证据**；不同出处的独立观点、反面证据和相互冲突的数值不能因为相似而被吞掉。
+4. **候选优先级**：按与研究目标/Scope 的相关性、增量信息价值、事件/数据修订的重要性、可追溯来源、观点差异、所研究时间的适用性组织稳定排序；使用可解释的规则、已保存分类、全文和必要的语义检索即可。来源信誉只是独立维度，不等于真实性或投资重要性；**不引入必须依赖模型的复杂综合打分系统**。
+5. **维度覆盖与裁剪**：从本次需要的研究维度中分配软预算，优先覆盖核心问题、重大新变化、关键事实及重要反面证据，避免某个高频新闻主题或同一转载来源耗尽全部输入；在严格的总 Token/候选扫描预算内选择可追溯的代表性文档片段、完整数值点/序列引用及历史结论。维度预算按 Task 可调，空维度不强制填充。裁剪的是**本次模型输入**，不删除 Repository 数据。
+6. **引用与快照**：取材结果保存唯一 ID、来源、版本、选入原因、原始证据链、确定性排序/规则版本、实际采用的正文片段/数值引用、各维度计数和截断原因。研究 Agent 收到这个快照，而不是任意数量的全文。
+
+**预算与覆盖统计必须区分三个数量：** `candidates_discovered`（查询实际发现的候选）、`candidates_screened`（在本次规则下已完成筛选）、`selected_count`（入选 Evidence Package）。还要记录 `unexamined_count`、查询是否分页/触顶 `retrieval_truncated`，以及各来源的可用性；**扫描上限达到时不能把“只扫描了部分候选”标为全部已覆盖**。候选多但完成筛选后未入选，属于有意取舍；根本没有扫描/来源不可用属于覆盖缺口，必须分别说明。包内的 `selected_count` 不应等同于独立证据组数量，转载组合并需单独统计。
+
+#### Evidence Package 数据契约
+
+~~~yaml
+evidence_package:
+  run_id: run_001
+  selection_policy_version: v1
+  objective_ref: task_snapshot
+  as_of: "2026-10-19T09:00:00Z"
+  scope: {industries: [semiconductors], regions: [US]}
+  changes_window:
+    start: "2026-10-16T09:00:00Z"
+    end: "2026-10-19T09:00:00Z"
+  selection_budget:
+    max_tokens: 30000
+  selected:
+    - ref: doc_101
+      revision: 2
+      role: new_information
+      dimension: policy
+      reason: policy_update
+      evidence_ref: chunk_101_2
+      source_group: origin_101
+    - ref: observation_205
+      revision: 1
+      role: new_information
+      dimension: macro_indicators
+      reason: new_data_release
+    - ref: analysis_018
+      role: historical_context
+      dimension: prior_research
+      reason: previous_research
+  coverage:
+    candidates_discovered: 320
+    candidates_screened: 320
+    selected_count: 3
+    unexamined_count: 0
+    retrieval_truncated: false
+    per_dimension: {policy: 1, macro_indicators: 1, prior_research: 1}
+    sources_unavailable: []
+  selection_notes:
+    - "Example only: 3 selected out of 320 screened"
+~~~
+
+以上为**格式示例，非实际采集与运行结果**。实际包还应保存研究输入引用、数据版本及运行配置的稳定快照；正文片段可通过持久 Chunk 引用获得，避免重复存储全文。表与 JSONB 如何组织属于实现选择，不要求为 Evidence Package 新建独立物理表。包内的筛选统计来自实际查询过程，不允许 Agent 虚构补齐。
+
+#### Agent 补充检索与故障边界
+
+- 研究 Agent 可以通过现有已授权的 Repository 只读 Tool 提出补充查询，用来核对关键事实、查找反例、补齐缺少的历史背景。新查到的资料按相同 `as_of`、权限、引用和 Token/调用预算约束加入本次 `research_inputs`；不回写为 Document 的“已研究”状态，也不覆盖原始证据包快照。
+- 模型不应通过重新搜索任意外部网站绕过研究截止时点。必要的远程 Tool 补证仍走可信来源登记；若该资料在 `as_of` 后才公开，不能作为该历史研究时点的已知事实。
+- 取材失败与无候选不同：检索超时、分类积压、数据源断更、候选扫描不完或版本无法确定时，分别记录原因和受影响维度。可配置 Task 是否允许“带明确覆盖不足的报告”；不满足 Task 成功条件就不能推进第 8.2 节的研究游标。
+- Evidence Package 在下游 Agent 失败时保持可复查，重试默认沿用同一 Run 已保存的输入、版本和选择规则；明确发起的新研究 Run 才按新的 `as_of` 检索更新的资料。
+- 同一 Task Run 无论研究市场、行业、股票或混合主题，都调用同一个 `repository.select_evidence`；不新增研究专属的采集器、独立 Evidence 服务、DAG 或复杂打分调度器。
 
 ## 9. Agent、HTTP 模型与回退
 
@@ -577,7 +667,7 @@ Tool 与 Connector 处于不同边界：
 
 分析结果以结构化记录优先，Markdown 报告为其展现形式。单条 Finding 至少包含：claim、kind（fact/inference/opinion 等）、verification_status、支持和反面 evidence_refs、关键假设、时间边界与来源说明。
 
-每次 Analysis 保存 Task Run、Agent/模型、实际提示词版本或哈希、输入文档与金融数值版本引用、输出 Finding、生成时间和用量。Report 引用 Analysis，可被其他研究任务检索，而不是把报告正文当作无法拆分的唯一数据。
+每次 Analysis 保存 Task Run、Agent/模型、实际提示词版本或哈希、Evidence Package/最终 `research_inputs` 引用、输入文档与金融数值版本引用、输出 Finding、生成时间和用量。Report 引用 Analysis，可被其他研究任务检索，而不是把报告正文当作无法拆分的唯一数据。
 
 **综合报告契约：** 报告应明确本次**新增情报的增量窗口**、研究 Scope 与知识截止时点，同时允许引用该窗口之外的历史财报、政策、既有研究作为背景。综合呈现市场情绪及其指标、重大财经资讯、宏观/行业发展、政策法规变化、重点公司与金融数据、与上次研究相比的新变化、存在分歧的证据以及尚未证实的风险。重点是跨来源综合判断，而不是按每篇新闻逐条复述。报告可根据策略只选择其中适用的维度，但必须保存输入数据/资料的范围、采集新鲜度、关键来源引用和明确的不确定性。如果某维度数据缺失，应标为未覆盖或资料不足，不能默认为没有变化。
 
@@ -654,7 +744,7 @@ V0 采用响应式单人研究工作台，不开发 UI 组件库，不制作图�
 - Overview：持续采集覆盖情况、近期重要事件、市场情绪与综合研究报告、任务执行情况；展示超时未解析的 pending 数量和 failed 数量，并提供定位入口。
 - Intelligence：来源、股票、**类别、主题标签、行业、地域**、时间、信任级别与全文/语义检索；支持筛选无已确认证券及未解决实体提及的文档，但不要求人工逐篇确认。
 - Tasks：任务名称、类型、可选策略、上次执行、状态和手动触发。
-- Research：按日/周或自定义窗口查看综合研究报告、市场情绪变化、结构化结论、证据来源与历史观点；不是逐篇新闻解读列表。
+- Research：按日/周或自定义窗口查看综合研究报告、市场情绪变化、结构化结论、证据来源与历史观点；支持查看本次 Evidence Package 的来源/版本、取材覆盖情况和缺失维度，不是逐篇新闻解读列表。
 - Runs：任务执行步骤、模型调用、费用、错误与回退信息；可查看积压/失败文档的来源、采集时间、最近尝试、错误和重试状态。
 
 第一版的来源、模型、Agent、策略、任务和工具均以 YAML/Markdown/.env 管理；Web 只提供必要的查看与触发能力，不重复开发配置编辑系统。
@@ -666,6 +756,14 @@ V0 采用响应式单人研究工作台，不开发 UI 组件库，不制作图�
 验证重点：增量幂等、原始证据及转载关系追溯、异步实体解析后的可靠证券级就绪事件、独立自动分类后的主题/行业就绪事件与可选研究触发、无证券文档依然可研究、直接事实关联与主题相关性分离、证券身份与历史代码 as-of 消歧、结构化金融数据的时点正确性、按证券独立 Task Run 的并发和故障隔离、保守事件归并、核查状态确定性聚合、任务/Agent 解耦、简单主备回退、外部内容隔离、配置扩展成本、可观察模型消耗、ARM + Docker 部署可用性。
 
 ### 综合研究与采集验收场景
+
+- **统一取材引擎**：市场、行业和个股 Task 仅调整 Scope、Objective、预算和策略，均通过 `repository.select_evidence` 获取不同内容的 Evidence Package；没有三套独立查询流程。
+- **跨维度关联**：研究 NVDA 可以将未直接提及 NVDA 的出口管制政策选为行业/宏观背景；该资料不能因此产生对 NVDA 的已确认直接证券关联。
+- **历史背景不是新增事件**：今日新分类的旧公告进入新增候选，而三个月前的财报可以作为背景引用；二者均保留原始时间与版本。
+- **转载、分歧和证据独立性**：同一官方公告的多条确认转载不占多个主要证据席位，但不同机构独立提出的相反观点保留；无法确认是转载时不能仅凭内容相似强制合并。
+- **容量边界与覆盖说明**：500 条实际候选超出输入预算时，取材按维度裁剪并记录总发现/已筛选/选入数；如果检索只扫描了部分候选，必须标明 `retrieval_truncated` 与 `unexamined_count`，不假装全部检查。
+- **失败与可复现**：分类积压、来源断更和取材超时能被识别；研究 Agent 失败后可复用已保存的相同 Evidence Package 重试，不污染共享 Document，不在成功条件未满足时推进研究游标。
+
 
 - **跨研究复用**：同一份此前采集的官方财报能够同时被日报、行业周报和某只股票的专项研究引用。Document 只有来源、客观时间及处理状态，不存在属于哪个研究窗口或已被哪个 Run 消费的字段；每个 Run 的引用记录独立保存。
 - **增量与背景分离**：日报增量窗口只包含昨天以来刚入库/更新的资料，但允许读取三个月前的财报验证新观点；旧财报属于 background，不被算作今天新发布的情报。
