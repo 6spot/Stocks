@@ -374,6 +374,7 @@ TaskEvent 可以是 PostgreSQL 任务/事件表的一个类型，不需要部署
 - 第 2 步 `failed` 时记录错误并按已有 Worker 的有限重试策略重做，不发布 `on_entities_resolved`；Worker 中断或解析任务租约过期时允许重新领取。`partial` 可以发布已确认证券集合，并保留待消歧部分。超过积压时长的 `pending` 与重试耗尽的 `failed` 进入 Overview/Runs 可见列表，绝不视为研究已经完成。
 - 即使本轮没有确认任何 Security，也保存解析完成/部分完成的事实；`confirmed_security_ids` 为空时不创建证券 Run，**但绝不阻止已完成分类的主题/行业研究**。
 - `on_document_classified` 只在分类完成、结果已提交时发布，携带可查询的分类引用；Task 可按标签、行业、类别、地域过滤后建立普通 Run，空标签不强制触发。重新分类按分类修订与任务研究窗口幂等，不会重复创建相同 Run。
+- 分类触发器的可选过滤字段使用 `category_in[]`、`topic_any[]`、`industry_any[]`、`region_any[]`：同一字段多值为“任一匹配”，不同字段同时配置时必须全部满足；不配置过滤字段表示对所有完成分类的文档生效。过滤只基于已保存的分类结果，不能以模型预测代替明确触发条件。
 - 重新解析只在已确认关联**实质改变**时发布新修订事件。新增证券产生新的研究范围；撤销或改正旧关联须在 Repository 中保留更正信息，并标记依赖旧关联的研究需要重估。与旧修订输入相同的重试不得产生重复触发。
 
 #### 主题/行业任务与证券任务的边界
@@ -430,7 +431,7 @@ tasks:
 
   macro_policy_research:
     type: analysis
-    trigger: {kind: on_document_classified}
+    trigger: {kind: on_document_classified, category_in: [macro, policy]}
     steps:
       - id: judge
         use: agent.topic_judge
