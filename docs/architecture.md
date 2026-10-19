@@ -70,7 +70,8 @@ Stocks 是面向单一 Owner、以美股为主要市场的个人投资情报与�
 ~~~
 
 - 采集任务获取信息、持久化并完成必要的相关性判断、分类与实体消歧后即可结束，**不要求对每条记录进行投资研判**。分类可使用规则或低成本 Decision Model，但仅生成可复用的元数据。
-- 数据在数据库和独立 S3 对象存储中持续累积；研究任务从 Repository 按证券、行业、宏观主题、政策类别、市场情绪、时间窗口和证据可靠性组合查询输入，而不是只阅读最新的一篇资料。
+- 数据在数据库和独立 S3 对象存储中持续累积；同一 Document、事件或指标可以被日报、周报、行业研究和个股研究反复引用。研究任务从 Repository 按证券、行业、宏观主题、政策类别、市场情绪和证据可靠性组合查询输入，而不是只阅读最新的一篇资料。
+- **研究窗口用于识别本次新增或新变更的信息，不用于限制研究可参考的历史资料。** 增量窗口独立保存在 Task Run / 研究任务游标中；历史背景、旧财报、此前政策与历史 Findings 可按研究时点在窗口外读取并标明为背景。资料不记录“属于某次日报”“已被某 Task 消费”这类任务专属属性。
 - 采集故障不阻塞研究读取现有资料；研究 Agent、模型额度或报告生成故障也不阻塞新数据继续采集。研究报告必须说明资料覆盖区间、数据更新状态和已知缺失，不能把暂时未采集到数据解释为没有市场变化。
 - 报告从多个维度识别**一段时间发生的变化**，可与历史报告/结构化结论比较；既不只是新闻标题列表，也不是逐篇正文的改写。
 - 一个 Task 可以按证券范围产生多个独立 Task Run；Repository 同时支持不绑定具体证券的宏观与行业研究。
@@ -171,13 +172,14 @@ Research Scope 定义“**值得采集和后续研究的内容范围**”，与 
 | financial_facts | 财务指标、报告期间、单位、披露时间、修订与原始申报引用 |
 | corporate_actions | 拆股、股息、合并、证券变更等事件 |
 | events / event_documents | 同一事件与文档的候选/已确认关系及归并依据 |
-| tasks / task_runs / step_runs | 任务定义快照、按证券独立的运行及逐步骤执行记录 |
+| tasks / task_runs / step_runs | 任务定义快照、独立研究范围与增量窗口、按证券独立的运行及逐步骤执行记录 |
+| research_cursors / research_inputs | 每个任务/范围的成功增量位置，以及每次研究实际选用的文档、结构化数据与分类版本引用；逻辑数据契约可由既有运行记录承载 |
 | analyses / findings | 研究过程、结构化结论、事实/推断类型、模型及提示词版本 |
 | verification_runs / finding_verifications | 独立核查执行、判断、依据与核查模型信息 |
 | evidence_links | 单条结论与 Document/Chunk/结构化金融数据的可追溯关系 |
 | reports | 可阅读报告及所引用的 Analysis |
 
-数据库表可根据性能合理拆分或合并，但上述信息语义及可追溯关系必须保留。Source 信任等级变更，不覆写既有研究执行时使用的快照。
+数据库表可根据性能合理拆分或合并，但上述信息语义及可追溯关系必须保留。Source 信任等级变更，不覆写既有研究执行时使用的快照。**资料只持有自身的发布时间、采集/入库时间、有效版本、可研究状态与关联元数据；研究进度、使用记录及时间范围均属于独立的 Task/Run 数据。**
 
 
 ### 6.3 发行主体、证券身份与消歧
@@ -437,7 +439,39 @@ TaskEvent 可以是 PostgreSQL 任务/事件表的一个类型，不需要部署
 
 ### 8.2 默认采集、综合研究与可选即时研究示例
 
-Task 的研究窗口必须在 Run 创建时确定并记录 `window_start`（包含）、`window_end`（不包含）、`as_of`（研究资料可获知的截止时点）；Repository 查询仅返回该时点前可获取的资料。研究可引用窗口外的历史背景与之前的 Analysis，但应标明其不是窗口内新增信息。
+#### 研究增量窗口与共享资料引用
+
+**研究窗口是某个 Task Run 查找新增变化的范围，不是 Document 的属性或整次研究的资料访问边界。** Document 保留 `published_at`、`collected_at`、原始出处和处理版本；研究专属的窗口、游标、取材和运行状态不能写入 Document。
+
+| 时间或引用 | 所属记录 | 作用 |
+| --- | --- | --- |
+| `published_at` / `collected_at` | Document | 原始发布与系统采集事实；不同研究复用 |
+| `classified_at` / 分类修订、实体修订 | 文档后处理记录 | 标明新分类或新关联何时对研究可见 |
+| `window_start` / `window_end` | Task Run | 本次新增/变更情报的选择范围，采用 `[start,end)` |
+| `as_of` | Task Run | 研究取材的知识截止时点；所有输入在该时点必须已经可获得 |
+| 成功增量游标 | Task + Research Scope | 为本任务的下一次运行确定增量起点；不同研究任务/范围互不影响 |
+| `research_inputs` | Task Run / Analysis | 记录实际使用的 Document ID、分类/实体版本、数据点版本和历史 Analysis 引用 |
+
+**窗口生成与推进规则：**
+
+1. 周期性研究 Run 创建时，将 `window_start` 设为**同一 Task + 研究范围的上一次成功完成并提交结果的 `window_end`**；本次 `window_end` 取启动时固定的截止时点。第一次运行使用明确配置的初始起点或初始回看范围。
+2. 窗口只用于发现已进入 Repository、并在本次可研究增量中首次出现或发生重要修订的资料。文章的 `published_at` 不用于判定是否“已处理”：周二才入库或完成分类的上周五公告，也会作为周二新增可研究信息进入后续 Run。保留资料自身的真实发布时间供报告解释。
+3. 对采集入库、分类完成或影响研究的关联修订分别保留可追溯的新增/变更记录及其入库时点或版本，增量查询以**系统可研究的变更记录**为准；多次变化只需按引用和版本幂等去重，不重复复制 Document。研究截止时点固定后，晚于该时点提交的变化留给下一个 Run。
+4. 只有要求的分析与报告结果**成功持久化**后，才原子地推进该 Task + Scope 的研究游标。失败、取消或中断不推进；下次运行重试或覆盖未成功区间。即使周末无定时运行，周一仍从周五上次成功终点开始，包含周末新增信息。
+5. Agent 可以根据明确的 Research Scope、`as_of` 与检索条件访问**增量窗口之外的历史背景资料和以前的 Analysis**，并对比既有结论；这些背景不应错误计作本次新增情报。每个研究 Run 将最终采用的输入 ID、版本、选择原因或查询条件留在独立 `research_inputs` 中，以便复现。
+6. 同一份资料可参与多个不同的 Task、时间窗口与策略研究，不在 Document 上设置全局 `analyzed`、`last_used_by_task`、`research_window` 或 `consumed_at`。重复性由各自 Run 和输入引用的幂等约束处理。
+
+~~~text
+Run A（日报）：增量变化窗口 [上次成功日报截止, 本次截止)
+                 + 查询此前财报、历史政策及过往观点作为背景
+                 → 保存本次 research_inputs → 综合报告
+
+Run B（行业周报）：自身独立的增量变化窗口
+                 + 可以复用日报引用过的同一 Document
+                 → 保存自身 research_inputs → 行业报告
+~~~
+
+**两类检索必须区分**：`repository.search_changes` 选择本次新增/修订的候选证据；`repository.search` 按研究时点、Scope 与条件选择所有可用的背景/验证资料。二者均读取同一 Repository，前者不修改资料，也不把研究消费进度写回 Document。
 
 ~~~yaml
 tasks:
@@ -455,17 +489,20 @@ tasks:
   daily_market_report:
     type: report
     trigger: {kind: schedule, cron: "0 9 * * 1-5", timezone: America/New_York}
-    window: {lookback: 1d}
+    window: {mode: since_last_success, initial_lookback: 7d}
     steps:
+      - id: changes
+        use: repository.search_changes
+        with: {scope: research_scope, window: run.window}
       - id: context
         use: repository.search
         with:
           scope: research_scope
-          window: run.window
+          as_of: run.as_of
           include: [documents, events, market_data, previous_analyses]
       - id: research
         use: agent.market_researcher
-        input: context.output
+        input: {new_information: changes.output, historical_context: context.output}
       - id: save
         use: repository.save_analysis
         input: research.output
@@ -477,16 +514,19 @@ tasks:
     type: analysis
     strategy: long_term
     trigger: {kind: schedule, cron: "0 9 * * 6", timezone: America/New_York}
-    window: {lookback: 7d}
+    window: {mode: since_last_success, initial_lookback: 30d}
     scope: {from: watchlist, for_each: security, max_items: 50}
     execution: {max_concurrency: 3}
     steps:
+      - id: changes
+        use: repository.search_changes
+        with: {security: run.security_id, window: run.window}
       - id: context
         use: repository.search
-        with: {security: run.security_id, window: run.window}
+        with: {security: run.security_id, as_of: run.as_of}
       - id: research
         use: agent.researcher
-        input: context.output
+        input: {new_information: changes.output, historical_context: context.output}
       - id: save
         use: repository.save_analysis
         input: research.output
@@ -539,7 +579,7 @@ Tool 与 Connector 处于不同边界：
 
 每次 Analysis 保存 Task Run、Agent/模型、实际提示词版本或哈希、输入文档与金融数值版本引用、输出 Finding、生成时间和用量。Report 引用 Analysis，可被其他研究任务检索，而不是把报告正文当作无法拆分的唯一数据。
 
-**综合报告契约：** 报告应覆盖明确时间窗口和 Research Scope，综合呈现市场情绪及其指标、重大财经资讯、宏观/行业发展、政策法规变化、重点公司与金融数据、与上次研究相比的新变化、存在分歧的证据以及尚未证实的风险。重点是跨来源综合判断，而不是按每篇新闻逐条复述。报告可根据策略只选择其中适用的维度，但必须保存输入数据/资料的范围、采集新鲜度、关键来源引用和明确的不确定性。如果某维度数据缺失，应标为未覆盖或资料不足，不能默认为没有变化。
+**综合报告契约：** 报告应明确本次**新增情报的增量窗口**、研究 Scope 与知识截止时点，同时允许引用该窗口之外的历史财报、政策、既有研究作为背景。综合呈现市场情绪及其指标、重大财经资讯、宏观/行业发展、政策法规变化、重点公司与金融数据、与上次研究相比的新变化、存在分歧的证据以及尚未证实的风险。重点是跨来源综合判断，而不是按每篇新闻逐条复述。报告可根据策略只选择其中适用的维度，但必须保存输入数据/资料的范围、采集新鲜度、关键来源引用和明确的不确定性。如果某维度数据缺失，应标为未覆盖或资料不足，不能默认为没有变化。
 
 市场情绪相关结论必须区分可观察指标、媒体/机构观点和模型的综合推断；样本不足或同源转载较多时不能宣称市场整体共识。研究任务可引用历史报告对比判断变化，不影响持续采集任务。
 
@@ -626,6 +666,11 @@ V0 采用响应式单人研究工作台，不开发 UI 组件库，不制作图�
 验证重点：增量幂等、原始证据及转载关系追溯、异步实体解析后的可靠证券级就绪事件、独立自动分类后的主题/行业就绪事件与可选研究触发、无证券文档依然可研究、直接事实关联与主题相关性分离、证券身份与历史代码 as-of 消歧、结构化金融数据的时点正确性、按证券独立 Task Run 的并发和故障隔离、保守事件归并、核查状态确定性聚合、任务/Agent 解耦、简单主备回退、外部内容隔离、配置扩展成本、可观察模型消耗、ARM + Docker 部署可用性。
 
 ### 综合研究与采集验收场景
+
+- **跨研究复用**：同一份此前采集的官方财报能够同时被日报、行业周报和某只股票的专项研究引用。Document 只有来源、客观时间及处理状态，不存在属于哪个研究窗口或已被哪个 Run 消费的字段；每个 Run 的引用记录独立保存。
+- **增量与背景分离**：日报增量窗口只包含昨天以来刚入库/更新的资料，但允许读取三个月前的财报验证新观点；旧财报属于 background，不被算作今天新发布的情报。
+- **窗口无缺口**：周五日报成功后，周末发布的政策资料进入 Repository，周一日报必须能够纳入；某一次日报失败时不推进研究游标，下一次成功报告覆盖之前未处理的增量。
+- **晚到资料**：一份上周五发布、周二才采集或完成分类的公告，仍可出现在周二研究的新增候选中；保留它真实的 `published_at`，不得把其发布时间错误更改为周二。
 
 - **独立执行**：连续采集 100 篇符合 Research Scope 的资讯，形成 100 条可查资料，但不自动创建 100 份研究报告；定时研究任务按指定窗口读取全部相关文档、指标和历史结论，生成一份综合报告。
 - **故障隔离**：研究 Agent 不可用时，采集、去重、分类继续运行；某 RSS/API 暂停更新时，研究仍能使用已保存数据，报告必须显示来源数据过期或覆盖缺失。
