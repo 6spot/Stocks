@@ -11,7 +11,7 @@ Stocks 是单一 Owner 使用的美股情报与研究系统。目标是以尽量
 | 修改范围 | 规范来源 |
 | --- | --- |
 | 系统定位、模块边界、技术与部署 | [docs/architecture.md](docs/architecture.md) |
-| Source、采集、分类、实体、数据质量与 Repository | [docs/data.md](docs/data.md) |
+| Source、采集、分类标签、Document/Fact、数据质量与 Repository | [docs/data.md](docs/data.md) |
 | Task / Run、Worker、模型 Provider、Tool / MCP | [docs/execution.md](docs/execution.md) |
 | Evidence Selection、Research Agent、Finding、Verifier | [docs/research.md](docs/research.md) |
 | Web、报告与证据交互 | [docs/interface.md](docs/interface.md) |
@@ -23,7 +23,7 @@ Stocks 是单一 Owner 使用的美股情报与研究系统。目标是以尽量
 ## 开发规则
 
 1. **先看现状，再动代码。** 阅读相关文档、现有实现与测试；区分“文档已设计”和“代码已实现”，不假定尚未存在的 Task、Agent 或前端能力已经可用。
-2. **最小充分实现。** 只解决当前任务，复用现有模型、模块、工具和配置；不擅自引入新服务、复杂 DAG、多 Agent 编排、额外数据库或抽象层。不要为了未来兼容尚不存在的旧版本制造过渡代码。
+2. **最小充分实现。** Stocks 是情报分析系统，不维护证券主数据、股票代码历史身份数据库，也不按证券自动拆分任务。公司名称和股票代码仅用作研究配置及检索标签。只解决当前任务，复用现有模型、模块、工具和配置；不擅自引入新服务、复杂 DAG、多 Agent 编排、额外数据库或抽象层。不要为了未来兼容尚不存在的旧版本制造过渡代码。
 3. **守住职责边界。** Source 是数据来源，Connector 是采集机制，Tool 是授权操作；采集/轻量分类与综合研究彼此独立。不同研究范围复用同一 Repository、Evidence Selection 和 Research Agent 流程，不能分别硬编码市场/行业/个股引擎。
 4. **证据必须可追溯。** 保留原始来源、时间、口径与版本；区分采集时间、发布时间、观测期和研究 `as_of`。不能把资料缺失写成事实不存在，不能把推断、模型评分或来源信誉冒充已经核实的事实。
 5. **模型负责判断，代码负责边界。** 对数值、单位、引用、权限及数据结构使用确定性检查；避免通过词数、关键词或固定配额替模型作投资研究判断。Agent、模型、来源、策略与任务配置不得无故写死在业务代码中。
