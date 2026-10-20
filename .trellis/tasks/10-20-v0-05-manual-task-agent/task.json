@@ -3,7 +3,7 @@
   "name": "v0-05-manual-task-agent",
   "title": "V0-05 手动 Task Run 与可配置研究 Agent",
   "description": "用可信文件配置手动执行研究步骤，保存配置快照、执行结果与模型调用信息。",
-  "status": "planning",
+  "status": "in_progress",
   "dev_type": "backend",
   "scope": null,
   "package": null,
@@ -12,7 +12,7 @@
   "assignee": "me",
   "createdAt": "2026-10-20",
   "completedAt": null,
-  "branch": null,
+  "branch": "feat/v0-05-manual-task-agent",
   "base_branch": "main",
   "worktree_path": null,
   "commit": null,
@@ -26,13 +26,15 @@
     "docs/research.md",
     "docs/validation.md"
   ],
-  "notes": "本轮仅规划；依赖写入 meta.depends_on 及规划文档，Trellis 父子关系不会自动调度。开工前复核现状和技术细节并取得该子任务的实施确认。",
+  "notes": "用户已授权按 V0 顺序实施。依赖 V0-04 的持久 Chunk 与检索能力；实现需在真实 PostgreSQL/pgvector 上验证，不引入定时调度或旧库迁移。",
   "meta": {
     "milestone": "V0",
     "kind": "delivery",
-    "depends_on": [],
-    "planning_review": "pending",
+    "depends_on": [
+      ".trellis/tasks/archive/2026-10/10-20-v0-04-vector-search"
+    ],
+    "planning_review": "approved",
     "planning_depth": "delivery-plan",
-    "implementation_authorized": false
+    "implementation_authorized": true
   }
 }
