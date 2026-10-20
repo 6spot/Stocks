@@ -12,13 +12,22 @@
 
 简单可逆改动、纯文档修改无需机械新增或运行代码测试。新增测试应验证实际行为或外部边界，不写只复述实现、重复已有覆盖或没有收益的测试。现有参考：`backend/tests/test_s3.py` 用 Mock 验证存储调用，`backend/tests/test_providers.py` 用 `httpx.MockTransport` 验证 HTTP 回退。
 
+**所有测试与验证必须通过 SSH 在当前任务的隔离远程目录执行，测试服务器唯一入口为
+`root@100.120.14.84`。** 本机不运行 pytest、数据库、Alembic、API、Docker 或任何
+运行时检查；SSH 不可用时保持“未验证”，不得回退到本机。完整流程见
+[测试环境](testing-guidelines.md)。
+
 ```bash
-cd backend
-python -m pytest -q tests/<相关文件>.py
-# 必要时再加 -k <用例筛选>
+ssh root@100.120.14.84
+cd /tmp/stocks-v0-XX-<task-slug>-<run>/backend
+ln -s /opt/stocks-test-runtime/tool-venvs/stock-tools .venv
+.venv/bin/python -m pytest -q tests/<相关文件>.py
+# 必要时再加 -k <用例筛选>；不得在本机执行
 ```
 
-上面是命令格式，不是每次都要运行的清单。数据库结构、API 或部署变更按受影响范围追加新库初始化、接口或 Compose 检查。CI 的全量测试不构成本地每次改动跑全量的要求。交付时只报告实际执行的检查及尚未验证的部分。
+上面是远程命令格式，不是每次都要运行的清单。数据库结构、API 或部署变更按受影响
+范围在测试服务器追加新库初始化、接口或 Compose 检查。仓库不在 GitHub Runner 或
+其他非指定机器上运行测试。交付时只报告测试服务器上的实际执行结果及尚未验证的部分。
 
 ## 外部采集与真实来源
 

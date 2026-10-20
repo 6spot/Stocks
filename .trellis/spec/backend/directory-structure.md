@@ -12,6 +12,9 @@ Python 包在 `backend/src/stocks/`，测试在 `backend/tests/`，数据库初�
 - 外部系统访问集中在对应适配模块；调用者不复制认证、超时、请求或响应处理。
 - 配置从 `settings.py` 或专门的配置读取函数进入代码，不在调用函数里散落环境变量读取。
 - 测试按受测模块命名，例如 `backend/tests/test_s3.py` 和 `backend/tests/test_providers.py`。外部 HTTP 可参照 `httpx.MockTransport`，对象存储可参照 `unittest.mock.Mock`，避免测试依赖真实服务。
+- 测试代码可以在工作区编辑，但任何测试、编译、类型检查、数据库或服务验证都必须在
+  测试服务器的任务隔离目录执行；本机不运行。环境与清理规则见
+  [测试环境](testing-guidelines.md)。
 - 采集结果按单条隔离：Feed 发现、文章获取和入库失败只影响当前条目，记录稳定错误后继续处理其余条目；配置错误则在发出任何请求前终止。
 
 仅在职责边界或重复代码确有需要时新增抽象；命名跟随现有 Python 模块的小写下划线风格。

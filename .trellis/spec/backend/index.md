@@ -9,7 +9,7 @@
 | [错误处理](error-handling.md) | 配置、外部请求、API 失败路径 |
 | [日志](logging-guidelines.md) | 运行诊断与敏感信息处理 |
 | [质量与验证](quality-guidelines.md) | 代码审查与测试选择 |
-| [测试环境](testing-guidelines.md) | 远程 Docker 验证、隔离数据库与清理 |
+| [测试环境](testing-guidelines.md) | 仅限测试服务器、隔离数据库与资源清理 |
 
 ## Quality Check
 

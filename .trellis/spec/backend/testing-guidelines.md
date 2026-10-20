@@ -1,9 +1,20 @@
 # 后端测试与远程验证环境
 
+## 强制环境边界
+
+**所有模块的测试与验证，包括单元测试、代码编译/类型/格式检查、数据库初始化与查询、
+API smoke、外部集成、Compose 构建和部署验收，都必须在测试服务器
+`100.120.14.84` 的隔离任务目录中执行。** 测试服务器是唯一的测试与验证环境。
+
+本机只用于读取、编辑和打包当前工作区代码。禁止在本机运行 pytest、数据库、
+pgvector、Docker、Alembic、API 服务或任何需要运行时/外部依赖的验证；即使本机
+碰巧安装了相同工具或服务，也不得复用，更不得把本机结果记作通过。禁止以本机测试
+替代远程测试，禁止本机与测试服务器并行验证。
+
 ## Scope / Trigger
 
-- Trigger: 后端行为、数据库结构、Compose 配置或外部集成需要实际验证。本地缺少
-  Python 3.12、Docker 或可用 pgvector 数据库时使用远程环境。
+- Trigger: 后端行为、数据库结构、Compose 配置或外部集成需要实际验证。所有此类验证
+  必须使用远程测试服务器，不检查也不使用本机同类环境。
 - 目标机器：`100.120.14.84`。通过 SSH 连接，用户名为 `root`，密码由执行者从用户会话取得。
 - 密码、模型密钥、S3 密钥和数据库内容不得写入仓库、命令日志、测试输出或 Trellis 记录。
 
@@ -58,10 +69,12 @@ ln -s /opt/stocks-test-runtime/tool-venvs/stock-tools .venv
 .venv/bin/python -m pytest -q tests/<相关文件>.py
 ```
 
-持久环境首次缺少当前项目依赖时，先在独立临时目录副本运行
+该持久环境不包含 `pip` 模块；安装或更新项目包时使用 `/opt/stocks-test-runtime/bin/uv pip`，
+不要尝试 `python -m pip`。持久环境首次缺少当前项目依赖时，先在独立临时目录副本运行
 `uv sync --python /opt/stocks-test-runtime/tool-venvs/stock-tools/bin/python --extra dev`，
-再以 `uv pip install --python /opt/stocks-test-runtime/tool-venvs/stock-tools/bin/python
---no-deps --force-reinstall -e .` 将当前工作区包安装为可编辑包。不要在测试机器全局
+再以 `/opt/stocks-test-runtime/bin/uv pip install --python
+/opt/stocks-test-runtime/tool-venvs/stock-tools/bin/python --no-deps
+--force-reinstall -e .` 将当前工作区包安装为可编辑包。不要在测试机器全局
 安装项目包；公共环境的项目包来源会被后续项目替换，验证前必须核对
 `.venv/bin/python -c 'import stocks; print(stocks.__file__)'` 指向 `backend/src`。
 
@@ -90,6 +103,13 @@ DATABASE_URL='postgresql+psycopg://stocks:<random-test-value>@127.0.0.1:55432/st
 ## Contracts
 
 - 远程执行只使用测试数据库中生成的凭证；不要复用生产或开发数据库。
+- pgvector 检索会执行 `LOAD 'vector'`；数据库测试角色必须具备加载该扩展的权限。
+  如复用已有 pgvector 容器，只为本任务新建的独立测试角色授予所需超级用户权限；
+  不要修改其他任务的既有角色，也不要为此把数据库暴露到公网。
+- 唯一的测试与验证入口是 `root@100.120.14.84` 上按任务隔离的远程目录。不得在
+  Owner 的 mac、`main` 工作区或任何非测试服务器上执行测试、数据库或服务命令。
+- 仓库不配置在 GitHub Runner 或任何非指定机器上执行测试、构建或服务检查的 CI；
+  推送只保存代码和文档，验证结果必须来自测试服务器的隔离环境。
 - 执行前检查是否有可沿用的测试容器；无需创建时沿用现有环境。若需创建新容器，
   先清理本任务遗留的旧容器，确认名称不属于其他任务后启动新容器。
 - 执行后停止并删除本次创建的容器及远程测试目录；测试失败的诊断需要保留现场时，
@@ -107,7 +127,7 @@ DATABASE_URL='postgresql+psycopg://stocks:<random-test-value>@127.0.0.1:55432/st
 
 | 条件 | 预期处理 |
 | --- | --- |
-| SSH 不可连接 | 停止远程验证，明确记录环境不可用 |
+| SSH 不可连接 | 停止验证并保留未验证状态；不得回退到本机，明确记录环境不可用 |
 | 远程无 Docker | 安装 Docker Engine，确认守护进程可执行 |
 | 镜像不存在 | 拉取 `pgvector/pgvector:0.8.7-pg17-bookworm` |
 | 测试容器名冲突 | 确认归属；本任务遗留容器先清理，其他任务或归属不明容器不删除并更换名称 |
@@ -117,10 +137,11 @@ DATABASE_URL='postgresql+psycopg://stocks:<random-test-value>@127.0.0.1:55432/st
 
 ## Good / Base / Bad Cases
 
-- Good：复用一个已核验的持久 Python 3.12/`uv` 环境，同时使用独立远程代码目录、
+- Good：在测试服务器上复用一个已核验的持久 Python 3.12/`uv` 环境，同时使用独立远程代码目录、
   随机测试密码、隔离容器、相关 pytest 文件和全新数据库初始化。
-- Base：纯文档任务不启动远程资源；只记录未运行测试的原因。
-- Bad：在 `main` 主目录直接运行测试、使用生产数据库、在仓库中记录 root 密码、用 Python 3.9 的结果冒充 Python 3.12 验证。
+- Base：纯文档任务可说明无需运行测试，但不运行验证时不要启动远程资源。
+- Bad：在本机执行 pytest、数据库或服务；在 `main` 主目录直接运行测试、使用生产数据库、
+  在仓库中记录 root 密码、用 Python 3.9 的结果冒充 Python 3.12 验证。
 
 ## Tests Required
 
@@ -170,7 +191,7 @@ DATABASE_URL='postgresql+psycopg://stocks:<random-test-value>@127.0.0.1:55432/st
 ### Wrong
 
 ```bash
-# 由本地不存在的运行时或错误 Python 版本产生虚假“未验证”结论
+# 禁止：在本机或主工作区运行测试
 cd backend && python -m pytest -q
 ```
 
@@ -178,9 +199,8 @@ cd backend && python -m pytest -q
 
 ```bash
 ssh root@100.120.14.84
-cd /tmp/stocks-test-<task-slug>/backend
-python3.12 -m venv .venv
-.venv/bin/pip install -e '.[dev]'
+cd /tmp/stocks-v0-XX-<task-slug>-<run>/backend
+ln -s /opt/stocks-test-runtime/tool-venvs/stock-tools .venv
 .venv/bin/python -m pytest -q tests/<相关文件>.py
 ```
 

@@ -28,7 +28,10 @@ Document 版本保存当次实际取得的不可变证据元数据；相同原�
 
 `backend/alembic/env.py` 使用 `Base.metadata`；`backend/alembic/versions/0001_initial.py` 是新数据库的初始化结构。开发阶段修改模型时同步修改这份初始化定义，必要时重建开发数据库。不新增历史版本升级迁移、回填、双写或旧结构兼容代码。
 
-结构变更后，在全新数据库运行 `alembic upgrade head` 与 `alembic check`，核对初始化结果和模型；命令见 `docs/quickstart.md`。这项检查只在结构变更时需要，不能替代相关行为测试。
+结构变更后，必须在**测试服务器**的任务隔离环境中对全新数据库运行
+`alembic upgrade head` 与 `alembic check`，核对初始化结果和模型；禁止使用本机
+数据库或把本机结果当作验证。命令与环境清理见
+[测试环境](testing-guidelines.md)。这项检查只在结构变更时需要，不能替代相关行为测试。
 
 ## pgvector 查询
 

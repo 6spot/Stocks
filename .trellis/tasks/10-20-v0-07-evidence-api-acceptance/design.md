@@ -11,9 +11,10 @@
 - `backend/src/stocks/s3.py`
 - `compose.yaml`
 - `docs/quickstart.md`
-- `.github/workflows/ci.yml`
 
 标注拟新增或随前置任务确定的路径是建议，不代表代码已存在；后续以实际模块组织为准。
+仓库不使用 GitHub Runner CI；API、Compose 和部署检查只在测试服务器执行，已有说明见
+`docs/quickstart.md` 与后端的远程测试规范。
 
 ## 输入输出与契约
 
