@@ -1,0 +1,40 @@
+{
+  "id": "stocks-roadmap",
+  "name": "stocks-roadmap",
+  "title": "Stocks 分阶段交付路线图",
+  "description": "依据现有领域设计拆分 V0 真实研究闭环、V1 日常运行、V2 研究深化，建立任务依赖与分阶段验收。",
+  "status": "planning",
+  "dev_type": "docs",
+  "scope": null,
+  "package": null,
+  "priority": "P1",
+  "creator": "me",
+  "assignee": "me",
+  "createdAt": "2026-10-20",
+  "completedAt": null,
+  "branch": null,
+  "base_branch": "main",
+  "worktree_path": null,
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [
+    "10-20-stocks-v0",
+    "10-20-stocks-v1",
+    "10-20-stocks-v2"
+  ],
+  "parent": null,
+  "relatedFiles": [
+    "docs/architecture.md",
+    "docs/validation.md"
+  ],
+  "notes": "本轮仅规划；依赖写入 meta.depends_on 及规划文档，Trellis 父子关系不会自动调度。开工前复核现状和技术细节并取得该子任务的实施确认。",
+  "meta": {
+    "milestone": "roadmap",
+    "kind": "coordination",
+    "depends_on": [],
+    "planning_review": "pending",
+    "planning_depth": "coordination",
+    "implementation_authorized": false
+  }
+}

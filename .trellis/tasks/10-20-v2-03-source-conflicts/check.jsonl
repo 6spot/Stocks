@@ -1,0 +1,15 @@
+{"file": "AGENTS.md", "reason": "通用边界、初始开发不迁移不兼容及最小必要验证"}
+{"file": "docs/architecture.md", "reason": "architecture 领域契约及阶段边界，设计不等于实现"}
+{"file": "docs/research.md", "reason": "research 领域契约及阶段边界，设计不等于实现"}
+{"file": "docs/data.md", "reason": "data 领域契约及阶段边界，设计不等于实现"}
+{"file": "docs/validation.md", "reason": "validation 领域契约及阶段边界，设计不等于实现"}
+{"file": ".trellis/spec/backend/index.md", "reason": "后端实现/数据库/错误与必要验证约定"}
+{"file": ".trellis/spec/backend/directory-structure.md", "reason": "后端实现/数据库/错误与必要验证约定"}
+{"file": ".trellis/spec/backend/database-guidelines.md", "reason": "后端实现/数据库/错误与必要验证约定"}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "后端实现/数据库/错误与必要验证约定"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "后端实现/数据库/错误与必要验证约定"}
+{"file": ".trellis/spec/frontend/index.md", "reason": "前端组件、类型与验证约定"}
+{"file": ".trellis/spec/frontend/component-guidelines.md", "reason": "前端组件、类型与验证约定"}
+{"file": ".trellis/spec/frontend/type-safety.md", "reason": "前端组件、类型与验证约定"}
+{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "前端组件、类型与验证约定"}
+{"file": ".trellis/tasks/10-20-stocks-roadmap/research/baseline.md", "reason": "本轮代码现状与分期依据，后续开工需复核"}

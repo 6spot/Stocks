@@ -1,0 +1,41 @@
+{
+  "id": "v1-06-incremental-evidence",
+  "name": "v1-06-incremental-evidence",
+  "title": "V1-06 Document Fact 统一增量取材与覆盖",
+  "description": "研究统一读取新增变化和历史背景，合并同一证据链并如实报告扫描覆盖。",
+  "status": "planning",
+  "dev_type": "backend",
+  "scope": null,
+  "package": null,
+  "priority": "P2",
+  "creator": "me",
+  "assignee": "me",
+  "createdAt": "2026-10-20",
+  "completedAt": null,
+  "branch": null,
+  "base_branch": "main",
+  "worktree_path": null,
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [],
+  "parent": "10-20-stocks-v1",
+  "relatedFiles": [
+    "docs/architecture.md",
+    "docs/research.md",
+    "docs/data.md",
+    "docs/execution.md",
+    "docs/validation.md"
+  ],
+  "notes": "本轮仅规划；依赖写入 meta.depends_on 及规划文档，Trellis 父子关系不会自动调度。开工前复核现状和技术细节并取得该子任务的实施确认。",
+  "meta": {
+    "milestone": "V1",
+    "kind": "delivery",
+    "depends_on": [
+      ".trellis/tasks/10-20-v1-05-committed-change-cursors"
+    ],
+    "planning_review": "pending",
+    "planning_depth": "delivery-plan",
+    "implementation_authorized": false
+  }
+}

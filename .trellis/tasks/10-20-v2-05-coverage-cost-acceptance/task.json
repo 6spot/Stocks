@@ -1,0 +1,42 @@
+{
+  "id": "v2-05-coverage-cost-acceptance",
+  "name": "v2-05-coverage-cost-acceptance",
+  "title": "V2-05 覆盖费用与异常分析及 V2 验收",
+  "description": "Owner 能理解研究覆盖、模型使用和异常成本，完成研究深化的阶段验收。",
+  "status": "planning",
+  "dev_type": "fullstack",
+  "scope": null,
+  "package": null,
+  "priority": "P3",
+  "creator": "me",
+  "assignee": "me",
+  "createdAt": "2026-10-20",
+  "completedAt": null,
+  "branch": null,
+  "base_branch": "main",
+  "worktree_path": null,
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [],
+  "parent": "10-20-stocks-v2",
+  "relatedFiles": [
+    "docs/architecture.md",
+    "docs/interface.md",
+    "docs/research.md",
+    "docs/execution.md",
+    "docs/validation.md"
+  ],
+  "notes": "本轮仅规划；依赖写入 meta.depends_on 及规划文档，Trellis 父子关系不会自动调度。开工前复核现状和技术细节并取得该子任务的实施确认。",
+  "meta": {
+    "milestone": "V2",
+    "kind": "delivery",
+    "depends_on": [
+      ".trellis/tasks/10-20-v2-02-source-parser-expansion",
+      ".trellis/tasks/10-20-v2-04-report-comparison"
+    ],
+    "planning_review": "pending",
+    "planning_depth": "delivery-plan",
+    "implementation_authorized": false
+  }
+}

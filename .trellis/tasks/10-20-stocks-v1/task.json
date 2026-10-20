@@ -1,0 +1,48 @@
+{
+  "id": "stocks-v1",
+  "name": "stocks-v1",
+  "title": "V1：日常运行",
+  "description": "独立计划采集与研究，可靠增量与 Fact，受保护控制台和目标 ARM 部署及恢复。",
+  "status": "planning",
+  "dev_type": "docs",
+  "scope": null,
+  "package": null,
+  "priority": "P2",
+  "creator": "me",
+  "assignee": "me",
+  "createdAt": "2026-10-20",
+  "completedAt": null,
+  "branch": null,
+  "base_branch": "main",
+  "worktree_path": null,
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [
+    "10-20-v1-01-worker-scheduling",
+    "10-20-v1-02-processing-recovery",
+    "10-20-v1-03-classification",
+    "10-20-v1-04-facts-api-mapping",
+    "10-20-v1-05-committed-change-cursors",
+    "10-20-v1-06-incremental-evidence",
+    "10-20-v1-07-owner-console-api",
+    "10-20-v1-08-web-console",
+    "10-20-v1-09-arm-deployment-acceptance"
+  ],
+  "parent": "10-20-stocks-roadmap",
+  "relatedFiles": [
+    "docs/architecture.md",
+    "docs/validation.md"
+  ],
+  "notes": "本轮仅规划；依赖写入 meta.depends_on 及规划文档，Trellis 父子关系不会自动调度。开工前复核现状和技术细节并取得该子任务的实施确认。",
+  "meta": {
+    "milestone": "V1",
+    "kind": "milestone",
+    "depends_on": [
+      ".trellis/tasks/10-20-v0-07-evidence-api-acceptance"
+    ],
+    "planning_review": "pending",
+    "planning_depth": "coordination",
+    "implementation_authorized": false
+  }
+}

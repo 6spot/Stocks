@@ -1,0 +1,41 @@
+{
+  "id": "v1-09-arm-deployment-acceptance",
+  "name": "v1-09-arm-deployment-acceptance",
+  "title": "V1-09 ARM Compose 部署与 V1 日常运行验收",
+  "description": "在目标单机环境运行受保护控制台、API 与 Worker，完成日常运行和恢复验收。",
+  "status": "planning",
+  "dev_type": "fullstack",
+  "scope": null,
+  "package": null,
+  "priority": "P2",
+  "creator": "me",
+  "assignee": "me",
+  "createdAt": "2026-10-20",
+  "completedAt": null,
+  "branch": null,
+  "base_branch": "main",
+  "worktree_path": null,
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [],
+  "parent": "10-20-stocks-v1",
+  "relatedFiles": [
+    "docs/architecture.md",
+    "docs/execution.md",
+    "docs/interface.md",
+    "docs/validation.md",
+    "docs/quickstart.md"
+  ],
+  "notes": "本轮仅规划；依赖写入 meta.depends_on 及规划文档，Trellis 父子关系不会自动调度。开工前复核现状和技术细节并取得该子任务的实施确认。",
+  "meta": {
+    "milestone": "V1",
+    "kind": "delivery",
+    "depends_on": [
+      ".trellis/tasks/10-20-v1-08-web-console"
+    ],
+    "planning_review": "pending",
+    "planning_depth": "delivery-plan",
+    "implementation_authorized": false
+  }
+}

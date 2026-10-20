@@ -1,0 +1,42 @@
+{
+  "id": "v0-07-evidence-api-acceptance",
+  "name": "v0-07-evidence-api-acceptance",
+  "title": "V0-07 报告证据读取 API 与 V0 真实闭环验收",
+  "description": "Owner 通过本机 API 阅读成功报告并打开报告实际使用的片段和原件。",
+  "status": "planning",
+  "dev_type": "backend",
+  "scope": null,
+  "package": null,
+  "priority": "P1",
+  "creator": "me",
+  "assignee": "me",
+  "createdAt": "2026-10-20",
+  "completedAt": null,
+  "branch": null,
+  "base_branch": "main",
+  "worktree_path": null,
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [],
+  "parent": "10-20-stocks-v0",
+  "relatedFiles": [
+    "docs/architecture.md",
+    "docs/interface.md",
+    "docs/research.md",
+    "docs/validation.md",
+    "docs/quickstart.md"
+  ],
+  "notes": "本轮仅规划；依赖写入 meta.depends_on 及规划文档，Trellis 父子关系不会自动调度。开工前复核现状和技术细节并取得该子任务的实施确认。",
+  "meta": {
+    "milestone": "V0",
+    "kind": "delivery",
+    "depends_on": [
+      ".trellis/tasks/10-20-v0-02-real-source-collection",
+      ".trellis/tasks/10-20-v0-06-evidence-analysis-report"
+    ],
+    "planning_review": "pending",
+    "planning_depth": "delivery-plan",
+    "implementation_authorized": false
+  }
+}
