@@ -222,3 +222,49 @@ Delivered configured manual research Task/Run execution with immutable snapshots
 ### Next Steps
 
 - Start V0-06 evidence package, analysis, and report persistence, reusing the same test server without deleting other tasks' containers.
+
+
+## Session 8: V0-06 evidence package, analysis and report persistence
+<!-- trellis-session: v=2 fp=6c67ef29d59b2e60 -->
+
+**Date**: 2026-10-20
+**Task**: V0-06 evidence package, analysis and report persistence
+**Branch**: `feat/v0-06-evidence-analysis-report`
+
+### Summary
+
+Persist a per-Run Evidence Package and derive Analysis plus Report from it, with citation validation enforced inside the model route; all verification ran on the test server.
+
+### Main Changes
+
+- Added stocks.research.service: bounded select_evidence queries persist objective/scope/as_of/rule version/budget, per-query role and gaps, and selected Chunk Document/parse-batch versions; unknown candidate counts stay null.
+- research_agent now consumes only the saved package; findings are validated against selected citations inside the provider call, and Analysis plus deterministic Markdown Report commit atomically with the succeeded StepResult.
+- Renamed the repository_search step kind to select_evidence across config validation, tasks.yaml, fresh-schema definitions and docs; evidence refs in StepResult/Analysis/Report store identity fields only.
+- Tracked Trellis tooling (scripts, bundled skills, agents config, workflow.md, spec/guides) and planned V0-08 archive review fixes for the version pointer, partial-retry, malformed feed URL and charset defects.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `1aad2fb` | chore(trellis): track project workflow tooling |
+| `fe2c349` | docs(trellis): plan V0-08 archive review fixes |
+| `36b467d` | feat: persist evidence packages, analyses and reports |
+| `0afafde` | docs(trellis): record constraint parity and host tool gaps |
+| `c38c59f` | chore(task): record V0-06 implementation and acceptance |
+| `91de27a` | chore(task): archive 10-20-v0-06-evidence-analysis-report |
+| `165db9e` | docs(trellis): repair task links after archiving |
+
+### Testing
+
+- [OK] [OK] Test server 100.120.14.84 isolated dir, Python 3.12.15 + PostgreSQL 17.11/pgvector 0.8.7: tests/test_research.py + tests/test_execution.py 59 passed.
+- [OK] [OK] Affected suites (embeddings, search_cli, repository, processing, api, collection, providers, s3) 102 passed; compileall passed.
+- [OK] [OK] Fresh database alembic upgrade head plus alembic check reported no drift; 16 public tables and uq_evidence_packages_run / uq_analyses_run / uq_reports_run confirmed.
+- [OK] [BLOCKED] No real model Provider credentials on the test server, so the real closed-loop report remains unverified; V0-07 owns it.
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- V0-08 collection and version fixes must land before V0-07 final end-to-end acceptance; V0-07 adds the report/evidence read API and the real source plus real model run.
