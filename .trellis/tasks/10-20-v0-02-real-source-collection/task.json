@@ -3,7 +3,7 @@
   "name": "v0-02-real-source-collection",
   "title": "V0-02 统一采集入口与首个真实来源",
   "description": "Owner 能手动从一个真实已配置来源取得文章正文并通过统一入口保存。",
-  "status": "planning",
+  "status": "in_progress",
   "dev_type": "backend",
   "scope": null,
   "package": null,
@@ -12,7 +12,7 @@
   "assignee": "me",
   "createdAt": "2026-10-20",
   "completedAt": null,
-  "branch": null,
+  "branch": "feat/v0-02-real-source-collection",
   "base_branch": "main",
   "worktree_path": null,
   "commit": null,
@@ -26,15 +26,15 @@
     "docs/execution.md",
     "docs/validation.md"
   ],
-  "notes": "本轮仅规划；依赖写入 meta.depends_on 及规划文档，Trellis 父子关系不会自动调度。开工前复核现状和技术细节并取得该子任务的实施确认。",
+  "notes": "已通过最终质量检查与真实 SEC/S3 验收，详见 acceptance.md；等待提交与归档。",
   "meta": {
     "milestone": "V0",
     "kind": "delivery",
     "depends_on": [
       ".trellis/tasks/10-20-v0-01-raw-document-versions"
     ],
-    "planning_review": "pending",
+    "planning_review": "approved",
     "planning_depth": "delivery-plan",
-    "implementation_authorized": false
+    "implementation_authorized": "true"
   }
 }

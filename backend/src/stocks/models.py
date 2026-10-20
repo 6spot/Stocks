@@ -2,6 +2,7 @@ from datetime import datetime
 from uuid import UUID, uuid4
 from pgvector.sqlalchemy import Vector
 from sqlalchemy import (
+    CheckConstraint,
     DateTime,
     ForeignKey,
     Index,
@@ -33,6 +34,10 @@ class Source(Base):
 class Document(Base):
     __tablename__ = "documents"
     __table_args__ = (
+        CheckConstraint(
+            "completeness IN ('complete', 'partial')",
+            name="ck_documents_completeness",
+        ),
         UniqueConstraint(
             "source_id",
             "dedupe_key",
@@ -58,12 +63,43 @@ class Document(Base):
     source_updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     collected_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     summary: Mapped[str | None] = mapped_column(Text, nullable=True)
+    completeness: Mapped[str] = mapped_column(String(16))
+    fetch_error: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     content_type: Mapped[str] = mapped_column(String(255))
     content_size: Mapped[int] = mapped_column(Integer)
     content_hash: Mapped[str] = mapped_column(String(64))
     snapshot_key: Mapped[str] = mapped_column(Text)
     trust_tier_snapshot: Mapped[str] = mapped_column(String(8))
     extra: Mapped[dict] = mapped_column(JSONB, default=dict, server_default=text("'{}'::jsonb"))
+
+
+class DocumentCollectionState(Base):
+    __tablename__ = "document_collection_states"
+    __table_args__ = (
+        CheckConstraint(
+            "completeness IN ('complete', 'partial')",
+            name="ck_document_collection_states_completeness",
+        ),
+    )
+    source_id: Mapped[str] = mapped_column(
+        ForeignKey("sources.id"), primary_key=True
+    )
+    dedupe_key: Mapped[str] = mapped_column(String(255), primary_key=True)
+    latest_document_id: Mapped[UUID] = mapped_column(
+        ForeignKey("documents.id"), nullable=False
+    )
+    completeness: Mapped[str] = mapped_column(String(16))
+    fetch_error: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    published_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    source_updated_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    last_attempted_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
 
 
 class DocumentChunk(Base):

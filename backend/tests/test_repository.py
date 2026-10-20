@@ -6,9 +6,10 @@ import pytest
 from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session
 
-from stocks.models import Base, Document, Source
+from stocks.models import Base, Document, DocumentCollectionState, Source
 from stocks.repository import (
     DocumentInput,
+    get_collection_state,
     ingest_document,
     list_document_versions,
     read_document_bytes,
@@ -35,6 +36,7 @@ def make_item(**overrides) -> DocumentInput:
         "collected_at": datetime(2026, 10, 20, 1, tzinfo=timezone.utc),
         "published_at": datetime(2026, 10, 19, tzinfo=timezone.utc),
         "source_updated_at": datetime(2026, 10, 19, 1, tzinfo=timezone.utc),
+        "completeness": "complete",
     }
     values.update(overrides)
     return DocumentInput(**values)
@@ -76,7 +78,7 @@ def storage():
     return objects, calls, store, read
 
 
-def test_ingest_preserves_versions_and_ignores_metadata_only_update(
+def test_ingest_reuses_immutable_version_and_updates_collection_state(
     engine, storage, monkeypatch
 ):
     _, calls, store, read = storage
@@ -112,6 +114,7 @@ def test_ingest_preserves_versions_and_ignores_metadata_only_update(
         )
 
         versions = list_document_versions(session, "sec", "filing-1")
+        state = get_collection_state(session, "sec", "filing-1")
         assert first.created is True
         assert duplicate.created is False
         assert duplicate.document.id == first.document.id
@@ -119,7 +122,16 @@ def test_ingest_preserves_versions_and_ignores_metadata_only_update(
         assert [document.version for document in versions] == [1, 2]
         assert versions[0].content_type == "text/plain"
         assert versions[1].content_type == "text/html"
+        assert versions[0].completeness == "complete"
+        assert versions[0].fetch_error is None
+        assert versions[0].source_updated_at == datetime(
+            2026, 10, 19, 1, tzinfo=timezone.utc
+        )
+        assert state is not None
+        assert state.latest_document_id == versions[1].id
+        assert state.source_updated_at == duplicate.document.source_updated_at
         assert len(session.scalars(select(Document)).all()) == 2
+        assert len(session.scalars(select(DocumentCollectionState)).all()) == 1
         assert len(calls) == 2
         assert read(config, versions[0].snapshot_key) == b"first version"
         assert read_document_bytes(config, versions[1]) == b"second version"
@@ -166,3 +178,100 @@ def test_invalid_identity_is_rejected_before_storage(engine, storage):
             )
 
     assert calls == []
+
+
+def test_partial_content_requires_and_persists_fetch_error(engine, storage):
+    _, calls, store, _ = storage
+    error = {
+        "code": "HTTP_STATUS",
+        "message": "Remote server returned an unsuccessful status",
+        "url": "https://www.sec.gov/news/example",
+        "status": 503,
+    }
+    with Session(engine) as session:
+        session.add(Source(id="sec", name="SEC", connector="rss", trust_tier="T1"))
+        session.commit()
+
+        result = ingest_document(
+            session,
+            make_config(),
+            make_item(
+                payload=b'{"summary":"available"}',
+                content_type="text/plain; charset=utf-8",
+                completeness="partial",
+                fetch_error=error,
+            ),
+            store=store,
+        )
+
+        assert result.document.completeness == "partial"
+        assert result.document.fetch_error == error
+        assert len(calls) == 1
+
+        with pytest.raises(ValueError, match="must include fetch_error"):
+            ingest_document(
+                session,
+                make_config(),
+                make_item(
+                    dedupe_key="missing-error",
+                    completeness="partial",
+                ),
+                store=store,
+            )
+
+    assert len(calls) == 1
+
+
+def test_repeated_partial_bytes_reuse_version_and_update_collection_state(
+    engine, storage,
+):
+    _, calls, store, _ = storage
+    first_error = {
+        "code": "HTTP_STATUS",
+        "message": "Remote server returned an unsuccessful status",
+        "status": 503,
+    }
+    second_error = {
+        "code": "TIMEOUT",
+        "message": "Request exceeded its timeout",
+    }
+    payload = b'{"title":"Article","summary":"Available summary"}'
+    with Session(engine) as session:
+        session.add(Source(id="sec", name="SEC", connector="rss", trust_tier="T1"))
+        session.commit()
+
+        partial = ingest_document(
+            session,
+            make_config(),
+            make_item(
+                payload=payload,
+                content_type="text/plain; charset=utf-8",
+                completeness="partial",
+                fetch_error=first_error,
+            ),
+            store=store,
+        )
+        repeated = ingest_document(
+            session,
+            make_config(),
+            make_item(
+                payload=payload,
+                content_type="text/plain; charset=utf-8",
+                completeness="partial",
+                fetch_error=second_error,
+            ),
+            store=store,
+        )
+
+        versions = list_document_versions(session, "sec", "filing-1")
+        state = get_collection_state(session, "sec", "filing-1")
+        assert partial.created is True
+        assert repeated.created is False
+        assert len(versions) == 1
+        assert versions[0].version == 1
+        assert versions[0].completeness == "partial"
+        assert versions[0].fetch_error == first_error
+        assert state is not None
+        assert state.completeness == "partial"
+        assert state.fetch_error == second_error
+    assert len(calls) == 1

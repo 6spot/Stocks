@@ -36,12 +36,18 @@ def upgrade():
         sa.Column("source_updated_at", sa.DateTime(timezone=True)),
         sa.Column("collected_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("now()")),
         sa.Column("summary", sa.Text()),
+        sa.Column("completeness", sa.String(16), nullable=False),
+        sa.Column("fetch_error", JSONB()),
         sa.Column("content_type", sa.String(255), nullable=False),
         sa.Column("content_size", sa.Integer(), nullable=False),
         sa.Column("content_hash", sa.String(64), nullable=False),
         sa.Column("snapshot_key", sa.Text(), nullable=False),
         sa.Column("trust_tier_snapshot", sa.String(8), nullable=False),
         sa.Column("extra", JSONB(), nullable=False, server_default=sa.text("'{}'::jsonb")),
+        sa.CheckConstraint(
+            "completeness IN ('complete', 'partial')",
+            name="ck_documents_completeness",
+        ),
         sa.UniqueConstraint(
             "source_id",
             "dedupe_key",
@@ -56,6 +62,22 @@ def upgrade():
         ))
     op.create_index("ix_documents_collected", "documents", ["collected_at"])
     op.create_index("ix_documents_source_published", "documents", ["source_id", "published_at"])
+    op.create_table(
+        "document_collection_states",
+        sa.Column("source_id", sa.String(120), sa.ForeignKey("sources.id"), primary_key=True),
+        sa.Column("dedupe_key", sa.String(255), primary_key=True),
+        sa.Column("latest_document_id", UUID(as_uuid=True), sa.ForeignKey("documents.id"), nullable=False),
+        sa.Column("completeness", sa.String(16), nullable=False),
+        sa.Column("fetch_error", JSONB()),
+        sa.Column("published_at", sa.DateTime(timezone=True)),
+        sa.Column("source_updated_at", sa.DateTime(timezone=True)),
+        sa.Column("last_attempted_at", sa.DateTime(timezone=True), nullable=False),
+        sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("now()")),
+        sa.CheckConstraint(
+            "completeness IN ('complete', 'partial')",
+            name="ck_document_collection_states_completeness",
+        ),
+    )
     op.create_table("document_chunks",
         sa.Column("id", UUID(as_uuid=True), primary_key=True),
         sa.Column("document_id", UUID(as_uuid=True), sa.ForeignKey("documents.id", ondelete="CASCADE"), nullable=False),
@@ -69,6 +91,7 @@ def upgrade():
 
 def downgrade():
     op.drop_table("document_chunks")
+    op.drop_table("document_collection_states")
     op.drop_index("ix_documents_source_published", table_name="documents")
     op.drop_index("ix_documents_collected", table_name="documents")
     op.drop_table("documents")
