@@ -8,12 +8,12 @@
 
 | 任务 | 交付 | 前置依赖 |
 | --- | --- | --- |
-| [V0-01](../10-20-v0-01-raw-document-versions/prd.md) | 原件持久化与 Document 不可变版本 | 无 |
-| [V0-02](../10-20-v0-02-real-source-collection/prd.md) | 统一采集入口与首个真实来源 | V0-01 |
-| [V0-03](../10-20-v0-03-parsing-chunks/prd.md) | 正文解析与可定位的持久 Chunk | V0-01 |
-| [V0-04](../10-20-v0-04-vector-search/prd.md) | Embedding 与 pgvector 语义和精确检索 | V0-03 |
-| [V0-05](../10-20-v0-05-manual-task-agent/prd.md) | 手动 Task Run 与可配置研究 Agent | 无 |
-| [V0-06](../10-20-v0-06-evidence-analysis-report/prd.md) | 最小 Evidence Package 与 Analysis Report | V0-04, V0-05 |
+| [V0-01](../archive/2026-10/10-20-v0-01-raw-document-versions/prd.md) | 原件持久化与 Document 不可变版本 | 无 |
+| [V0-02](../archive/2026-10/10-20-v0-02-real-source-collection/prd.md) | 统一采集入口与首个真实来源 | V0-01 |
+| [V0-03](../archive/2026-10/10-20-v0-03-parsing-chunks/prd.md) | 正文解析与可定位的持久 Chunk | V0-01 |
+| [V0-04](../archive/2026-10/10-20-v0-04-vector-search/prd.md) | Embedding 与 pgvector 语义和精确检索 | V0-03 |
+| [V0-05](../archive/2026-10/10-20-v0-05-manual-task-agent/prd.md) | 手动 Task Run 与可配置研究 Agent | 无 |
+| [V0-06](../archive/2026-10/10-20-v0-06-evidence-analysis-report/prd.md) | 最小 Evidence Package 与 Analysis Report | V0-04, V0-05 |
 | [V0-07](../10-20-v0-07-evidence-api-acceptance/prd.md) | 报告证据读取 API 与 V0 真实闭环验收 | V0-02, V0-06, V0-08 |
 | [V0-08](../10-20-v0-08-document-collection-fixes/prd.md) | 原件版本与采集边界缺陷修复 | V0-01, V0-02 |
 | [V1-01](../10-20-v1-01-worker-scheduling/prd.md) | 独立 Worker 定时调度与 Run 恢复 | V0-07 |

@@ -6,11 +6,11 @@ Owner 能手动从一个真实已配置来源取得文章正文并通过统一�
 
 ## 背景与依据
 
-阶段：V0。归属契约：`docs/data.md`, `docs/execution.md`, `docs/validation.md`。代码现状见[基线](../10-20-stocks-roadmap/research/baseline.md)，现有模型/helper 不等于业务闭环。
+阶段：V0。归属契约：`docs/data.md`, `docs/execution.md`, `docs/validation.md`。代码现状见[基线](../../../10-20-stocks-roadmap/research/baseline.md)，现有模型/helper 不等于业务闭环。
 
 ## 前置依赖
 
-[V0-01](../archive/2026-10/10-20-v0-01-raw-document-versions/prd.md)
+[V0-01](../10-20-v0-01-raw-document-versions/prd.md)
 
 依赖是实施顺序，不由 Trellis 父子关系自动执行。跨阶段依赖先通过前一阶段验收。
 

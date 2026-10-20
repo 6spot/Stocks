@@ -6,7 +6,7 @@
 
 ## 背景与依据
 
-阶段：V0。归属契约：`docs/execution.md`, `docs/research.md`, `docs/validation.md`。代码现状见[基线](../10-20-stocks-roadmap/research/baseline.md)，现有模型/helper 不等于业务闭环。
+阶段：V0。归属契约：`docs/execution.md`, `docs/research.md`, `docs/validation.md`。代码现状见[基线](../../../10-20-stocks-roadmap/research/baseline.md)，现有模型/helper 不等于业务闭环。
 
 ## 前置依赖
 

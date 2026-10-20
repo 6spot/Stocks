@@ -17,7 +17,7 @@
 
 - cd backend && python -m pytest -q tests/test_repository.py tests/test_s3.py
 - 隔离的新开发库：`alembic upgrade head`；随后 `alembic check`；未使用或清理已有证据库。
-- 本机缺少 Python 3.12/Docker 或 PostgreSQL 时，按[测试环境规范](../../spec/backend/testing-guidelines.md)使用远程 Docker 测试机；不得用 Python 3.9 结果替代。
+- 本机缺少 Python 3.12/Docker 或 PostgreSQL 时，按[测试环境规范](../../../../spec/backend/testing-guidelines.md)使用远程 Docker 测试机；不得用 Python 3.9 结果替代。
 
 实际验证：远程 Python 3.12 容器执行全新 pgvector 数据库
 `alembic upgrade head` 成功，`alembic check` 无差异；后端全量测试

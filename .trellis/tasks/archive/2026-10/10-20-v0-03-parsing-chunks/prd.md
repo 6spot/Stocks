@@ -6,14 +6,14 @@
 
 ## 背景与依据
 
-阶段：V0。归属契约：`docs/data.md`, `docs/research.md`, `docs/validation.md`。代码现状见[基线](../10-20-stocks-roadmap/research/baseline.md)，现有模型/helper 不等于业务闭环。
+阶段：V0。归属契约：`docs/data.md`, `docs/research.md`, `docs/validation.md`。代码现状见[基线](../../../10-20-stocks-roadmap/research/baseline.md)，现有模型/helper 不等于业务闭环。
 
 ## 前置依赖
 
 以下任务均已完成并归档：
 
-- [V0-01 原件持久化与 Document 不可变版本](../archive/2026-10/10-20-v0-01-raw-document-versions/prd.md)
-- [V0-02 真实来源采集](../archive/2026-10/10-20-v0-02-real-source-collection/prd.md)
+- [V0-01 原件持久化与 Document 不可变版本](../10-20-v0-01-raw-document-versions/prd.md)
+- [V0-02 真实来源采集](../10-20-v0-02-real-source-collection/prd.md)
 
 依赖是实施顺序，不由 Trellis 父子关系自动执行。V0-03 只读取已提交的 Document
 版本和 S3 原件；采集结果尚不存在的 Document 不属于本任务输入。

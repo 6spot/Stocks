@@ -2,7 +2,7 @@
 
 ## 开工条件
 
-- [x] 复核 PRD 与最新领域契约；前置任务：[V0-01](../archive/2026-10/10-20-v0-01-raw-document-versions/prd.md) 已完成归档。
+- [x] 复核 PRD 与最新领域契约；前置任务：[V0-01](../10-20-v0-01-raw-document-versions/prd.md) 已完成归档。
 - [x] 重新检查现有代码及测试，落实建议路径、具体 Schema 和必要技术决策。
 - [x] 用户明确要求按任务顺序开始开发；V0-02 已获实施授权。
 - [x] implement.jsonl / check.jsonl 已提供真实规范与基线；补充测试环境与共享 thinking guides 后启动。

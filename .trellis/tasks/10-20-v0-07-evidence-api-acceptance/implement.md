@@ -2,7 +2,7 @@
 
 ## 开工条件
 
-- [ ] 复核 PRD 与最新领域契约；前置任务：[V0-02](../archive/2026-10/10-20-v0-02-real-source-collection/prd.md), [V0-06](../10-20-v0-06-evidence-analysis-report/prd.md), [V0-08](../10-20-v0-08-document-collection-fixes/prd.md)
+- [ ] 复核 PRD 与最新领域契约；前置任务：[V0-02](../archive/2026-10/10-20-v0-02-real-source-collection/prd.md), [V0-06](../archive/2026-10/10-20-v0-06-evidence-analysis-report/prd.md), [V0-08](../10-20-v0-08-document-collection-fixes/prd.md)
 - [ ] 重新检查现有代码及测试，落实建议路径、具体 Schema 和必要技术决策。
 - [ ] 用户确认本子任务的最终实施范围；之后才运行 task.py start。当前未授权实施。
 - [ ] implement.jsonl / check.jsonl 已提供真实规范与基线，派发前按实际改动裁剪复核。
