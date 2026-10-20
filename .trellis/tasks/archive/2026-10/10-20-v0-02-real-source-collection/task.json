@@ -26,7 +26,7 @@
     "docs/execution.md",
     "docs/validation.md"
   ],
-  "notes": "已通过最终质量检查与真实 SEC/S3 验收，详见 acceptance.md；等待提交与归档。",
+  "notes": "已通过最终质量检查与真实 SEC/S3 验收，详见 acceptance.md。2026-10-20 归档审查发现畸形文章链接错误边界与声明编码丢失两处缺陷，由 V0-08 修复；原验收记录保留当时实际执行的检查范围。",
   "meta": {
     "milestone": "V0",
     "kind": "delivery",

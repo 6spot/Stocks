@@ -25,7 +25,7 @@
     "docs/data.md",
     "docs/validation.md"
   ],
-  "notes": "本轮仅规划；依赖写入 meta.depends_on 及规划文档，Trellis 父子关系不会自动调度。开工前复核现状和技术细节并取得该子任务的实施确认。",
+  "notes": "已实现并归档，验收见 acceptance.md。2026-10-20 归档审查发现最近内容指针按最大版本号读取、部分内容重试依赖时间字段两处缺陷，由 V0-08 修复；历史记录保留当时的实际验证边界。",
   "meta": {
     "milestone": "V0",
     "kind": "delivery",
