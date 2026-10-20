@@ -3,7 +3,7 @@
   "name": "v0-08-document-collection-fixes",
   "title": "V0-08 原件版本与采集边界缺陷修复",
   "description": "修复 V0-01/V0-02 归档审查发现的版本指针、失败重试、畸形 URL 与字符编码问题，并补齐回归和归档记录。",
-  "status": "planning",
+  "status": "in_progress",
   "dev_type": "backend",
   "scope": null,
   "package": null,
@@ -12,8 +12,8 @@
   "assignee": "me",
   "createdAt": "2026-10-20",
   "completedAt": null,
-  "branch": null,
-  "base_branch": "main",
+  "branch": "feat/v0-08-document-collection-fixes",
+  "base_branch": "feat/v0-06-evidence-analysis-report",
   "worktree_path": null,
   "commit": null,
   "pr_url": null,
@@ -33,16 +33,16 @@
     ".trellis/tasks/archive/2026-10/10-20-v0-01-raw-document-versions",
     ".trellis/tasks/archive/2026-10/10-20-v0-02-real-source-collection"
   ],
-  "notes": "2026-10-20 归档审查修复规划；用户仅授权创建任务。四处功能缺陷与归档说明待修复，尚未实施或运行复验；须先于 V0-07 最终验收完成。",
+  "notes": "2026-10-20 归档审查修复已实施并在测试服务器 100.120.14.84 隔离环境验证：最近内容指针改用采集状态、部分内容无条件重试、畸形文章链接按单项失败、保留声明 charset，并修正 V0-01/V0-02 归档说明。远程 168 passed，全新库 alembic upgrade head 与 check 无差异。验收中发现 V0-03 解析器在正文直接位于 article/main/body 时逐字符换行的既有缺陷，未在本任务修改，需另立任务。所有运行验证仅使用测试服务器，本机只编辑与打包。",
   "meta": {
     "milestone": "V0",
     "kind": "remediation",
-    "planning_review": "pending",
+    "planning_review": "approved",
     "planning_depth": "delivery-plan",
     "depends_on": [
       ".trellis/tasks/archive/2026-10/10-20-v0-01-raw-document-versions",
       ".trellis/tasks/archive/2026-10/10-20-v0-02-real-source-collection"
     ],
-    "implementation_authorized": false
+    "implementation_authorized": true
   }
 }
