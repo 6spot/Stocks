@@ -1,15 +1,22 @@
 import hashlib
+from collections.abc import Callable
 from copy import deepcopy
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Callable
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from stocks.models import Document, DocumentCollectionState, Source
+from stocks.models import (
+    Document,
+    DocumentChunk,
+    DocumentCollectionState,
+    DocumentParseBatch,
+    DocumentParseState,
+    Source,
+)
 from stocks.s3 import read_snapshot, store_snapshot
 from stocks.settings import Settings
 
@@ -34,6 +41,19 @@ class DocumentInput:
 class IngestResult:
     document: Document
     created: bool
+
+
+@dataclass(frozen=True)
+class ParseChunkInput:
+    text: str
+    locator: dict
+
+
+@dataclass(frozen=True)
+class ParseBatchResult:
+    batch: DocumentParseBatch
+    state: DocumentParseState
+    reused: bool = False
 
 
 def ingest_document(
@@ -198,3 +218,167 @@ def list_document_versions(session: Session, source_id: str, dedupe_key: str) ->
 
 def read_document_bytes(config: Settings, document: Document) -> bytes:
     return read_snapshot(config, document.snapshot_key)
+
+
+def find_parse_batch(
+    session: Session,
+    document_id: UUID,
+    *,
+    processor_version: str,
+    config_fingerprint: str,
+) -> DocumentParseBatch | None:
+    return session.scalar(
+        select(DocumentParseBatch)
+        .where(
+            DocumentParseBatch.document_id == document_id,
+            DocumentParseBatch.processor_version == processor_version,
+            DocumentParseBatch.config_fingerprint == config_fingerprint,
+        )
+        .order_by(DocumentParseBatch.attempt_number.desc())
+        .limit(1)
+    )
+
+
+def get_parse_state(session: Session, document_id: UUID) -> DocumentParseState | None:
+    return session.get(DocumentParseState, document_id)
+
+
+def get_parse_batch(session: Session, batch_id: UUID) -> DocumentParseBatch | None:
+    return session.get(DocumentParseBatch, batch_id)
+
+
+def list_parse_batches(
+    session: Session, document_id: UUID
+) -> list[DocumentParseBatch]:
+    return list(
+        session.scalars(
+            select(DocumentParseBatch)
+            .where(DocumentParseBatch.document_id == document_id)
+            .order_by(DocumentParseBatch.attempt_number)
+        ).all()
+    )
+
+
+def list_parse_chunks(
+    session: Session,
+    document_id: UUID,
+    *,
+    batch_id: UUID | None = None,
+    current: bool = True,
+) -> list[DocumentChunk]:
+    selected_batch = batch_id
+    if selected_batch is None:
+        state = get_parse_state(session, document_id)
+        if state is None:
+            return []
+        selected_batch = (
+            state.current_batch_id if current else state.latest_batch_id
+        )
+    if selected_batch is None:
+        return []
+    return list(
+        session.scalars(
+            select(DocumentChunk)
+            .where(
+                DocumentChunk.document_id == document_id,
+                DocumentChunk.parse_batch_id == selected_batch,
+            )
+            .order_by(DocumentChunk.position)
+        ).all()
+    )
+
+
+def persist_parse_result(
+    session: Session,
+    document_id: UUID,
+    *,
+    processor_version: str,
+    config_fingerprint: str,
+    content_hash: str,
+    status: str,
+    error: dict | None,
+    chunks: tuple[ParseChunkInput, ...],
+    attempted_at: datetime,
+) -> ParseBatchResult:
+    if status not in {"completed", "failed", "unsupported"}:
+        raise ValueError("invalid parse status")
+    if status == "completed" and (not chunks or error is not None):
+        raise ValueError("completed parse must contain chunks and no error")
+    if status != "completed" and chunks:
+        raise ValueError("failed or unsupported parse must not contain chunks")
+    if status != "completed" and error is None:
+        raise ValueError("failed or unsupported parse must include an error")
+    if any(not chunk.text.strip() for chunk in chunks):
+        raise ValueError("chunk text must not be empty")
+
+    document = session.scalar(
+        select(Document).where(Document.id == document_id).with_for_update()
+    )
+    if document is None:
+        raise ValueError(f"Unknown document: {document_id}")
+    if document.content_hash != content_hash:
+        raise ValueError("Document content hash changed during processing")
+    attempt_number = (
+        session.scalar(
+            select(func.max(DocumentParseBatch.attempt_number)).where(
+                DocumentParseBatch.document_id == document_id,
+            )
+        )
+        or 0
+    ) + 1
+    batch = DocumentParseBatch(
+        document_id=document_id,
+        processor_version=processor_version,
+        config_fingerprint=config_fingerprint,
+        content_hash=content_hash,
+        attempt_number=attempt_number,
+        status=status,
+        error=deepcopy(error),
+        chunk_count=len(chunks),
+        created_at=attempted_at,
+    )
+    session.add(batch)
+    try:
+        session.flush()
+        for position, chunk in enumerate(chunks):
+            session.add(
+                DocumentChunk(
+                    document_id=document_id,
+                    parse_batch_id=batch.id,
+                    position=position,
+                    text=chunk.text,
+                    locator=deepcopy(chunk.locator),
+                )
+            )
+        state = session.get(DocumentParseState, document_id)
+        if state is None:
+            state = DocumentParseState(
+                document_id=document_id,
+                status=status,
+                processor_version=processor_version,
+                config_fingerprint=config_fingerprint,
+                latest_batch_id=batch.id,
+                current_batch_id=batch.id if status == "completed" else None,
+                error=deepcopy(error),
+                chunk_count=len(chunks),
+                attempted_at=attempted_at,
+            )
+            session.add(state)
+        else:
+            state.status = status
+            state.processor_version = processor_version
+            state.config_fingerprint = config_fingerprint
+            state.latest_batch_id = batch.id
+            if status == "completed":
+                state.current_batch_id = batch.id
+            state.error = deepcopy(error)
+            state.chunk_count = len(chunks)
+            state.attempted_at = attempted_at
+        session.commit()
+    except Exception:
+        session.rollback()
+        raise
+    session.refresh(batch)
+    assert state is not None
+    session.refresh(state)
+    return ParseBatchResult(batch=batch, state=state)

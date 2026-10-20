@@ -4,11 +4,10 @@ Revision ID: 0001
 Revises:
 """
 
-from alembic import op
 import sqlalchemy as sa
-from sqlalchemy.dialects.postgresql import JSONB, UUID
+from alembic import op
 from pgvector.sqlalchemy import Vector
-
+from sqlalchemy.dialects.postgresql import JSONB, UUID
 
 revision = "0001"
 down_revision = None
@@ -78,19 +77,80 @@ def upgrade():
             name="ck_document_collection_states_completeness",
         ),
     )
-    op.create_table("document_chunks",
+    op.create_table(
+        "document_parse_batches",
         sa.Column("id", UUID(as_uuid=True), primary_key=True),
         sa.Column("document_id", UUID(as_uuid=True), sa.ForeignKey("documents.id", ondelete="CASCADE"), nullable=False),
+        sa.Column("processor_version", sa.String(80), nullable=False),
+        sa.Column("config_fingerprint", sa.String(64), nullable=False),
+        sa.Column("content_hash", sa.String(64), nullable=False),
+        sa.Column("attempt_number", sa.Integer(), nullable=False),
+        sa.Column("status", sa.String(16), nullable=False),
+        sa.Column("error", JSONB()),
+        sa.Column("chunk_count", sa.Integer(), nullable=False),
+        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
+        sa.CheckConstraint(
+            "status IN ('completed', 'failed', 'unsupported')",
+            name="ck_document_parse_batches_status",
+        ),
+        sa.CheckConstraint(
+            "chunk_count >= 0",
+            name="ck_document_parse_batches_chunk_count",
+        ),
+        sa.UniqueConstraint(
+            "document_id",
+            "processor_version",
+            "config_fingerprint",
+            "attempt_number",
+            name="uq_document_parse_batches_attempt",
+        ),
+    )
+    op.create_index(
+        "ix_document_parse_batches_document_created",
+        "document_parse_batches",
+        ["document_id", "created_at"],
+    )
+    op.create_table(
+        "document_parse_states",
+        sa.Column("document_id", UUID(as_uuid=True), sa.ForeignKey("documents.id", ondelete="CASCADE"), primary_key=True),
+        sa.Column("status", sa.String(16), nullable=False),
+        sa.Column("processor_version", sa.String(80), nullable=False),
+        sa.Column("config_fingerprint", sa.String(64), nullable=False),
+        sa.Column("latest_batch_id", UUID(as_uuid=True), sa.ForeignKey("document_parse_batches.id")),
+        sa.Column("current_batch_id", UUID(as_uuid=True), sa.ForeignKey("document_parse_batches.id")),
+        sa.Column("error", JSONB()),
+        sa.Column("chunk_count", sa.Integer(), nullable=False),
+        sa.Column("attempted_at", sa.DateTime(timezone=True), nullable=False),
+        sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("now()")),
+        sa.CheckConstraint(
+            "status IN ('pending', 'completed', 'failed', 'unsupported')",
+            name="ck_document_parse_states_status",
+        ),
+    )
+    op.create_table(
+        "document_chunks",
+        sa.Column("id", UUID(as_uuid=True), primary_key=True),
+        sa.Column("document_id", UUID(as_uuid=True), sa.ForeignKey("documents.id", ondelete="CASCADE"), nullable=False),
+        sa.Column("parse_batch_id", UUID(as_uuid=True), sa.ForeignKey("document_parse_batches.id", ondelete="CASCADE"), nullable=False),
         sa.Column("position", sa.Integer(), nullable=False),
         sa.Column("text", sa.Text(), nullable=False),
+        sa.Column("locator", JSONB(), nullable=False),
         sa.Column("embedding", Vector()),
         sa.Column("embedding_model", sa.String(255)),
         sa.Column("embedding_dimensions", sa.Integer()),
-        sa.UniqueConstraint("document_id", "position", name="uq_document_chunks_position"))
+        sa.UniqueConstraint(
+            "parse_batch_id",
+            "position",
+            name="uq_document_chunks_batch_position",
+        ),
+    )
 
 
 def downgrade():
     op.drop_table("document_chunks")
+    op.drop_table("document_parse_states")
+    op.drop_index("ix_document_parse_batches_document_created", table_name="document_parse_batches")
+    op.drop_table("document_parse_batches")
     op.drop_table("document_collection_states")
     op.drop_index("ix_documents_source_published", table_name="documents")
     op.drop_index("ix_documents_collected", table_name="documents")

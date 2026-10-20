@@ -114,7 +114,7 @@ RSS 条目和搜索结果可用于发现链接；实际文章仍以取得的文�
 
 当前后端提供 `stocks.repository.ingest_document()` 作为这条入库链的最小实现。调用方提交 `DocumentInput`，Repository 校验 Source、内容类型、完整性状态及获取错误，按 `(source_id, dedupe_key)` 查找现有版本；新哈希先保存不可变 S3 原件，再提交下一版本号。同一内容版本不原位改写：每次取得结果分别记录在该 Document 的 `completeness`/`fetch_error`，并在 `document_collection_states` 保存资料身份最近一次尝试所对应的 Document、完整性、错误、来源时间和采集时间，用于展示最近采集状态及决定是否重试；相同原始字节仍复用内容版本，只更新这份采集状态。数据库提交失败时回滚 Document 事务，已写入但未被登记的对象不视为可用证据。`get_document()`、`get_latest_document()`、`get_collection_state()`、`list_document_versions()` 与 `read_document_bytes()` 提供按版本读取及当前采集状态。
 
-V0 已提供 `config/sources.yaml` 配置的 RSS/Atom 手动采集入口。`stocks.collection.collect_source()` 先发现 Feed 条目，只对没有本地版本的条目或来源 `updated` / `pubDate` 信号发生变化的条目请求文章页；完整 HTML/文本字节直接交给 `ingest_document()`。文章请求失败或正文为空时，以实际取得的 Feed 标题和摘要生成 `text/plain` 部分内容，记录 `completeness = partial` 与脱敏 `fetch_error`，并在后续运行重试。相同原始字节复用内容版本；重试得到正文时因字节不同形成新版本。当前未实现定时采集、采集游标、后台解析、分类、Fact、Embedding/索引或证据阅读 API。
+V0 已提供 `config/sources.yaml` 配置的 RSS/Atom 手动采集入口。`stocks.collection.collect_source()` 先发现 Feed 条目，只对没有本地版本的条目或来源 `updated` / `pubDate` 信号发生变化的条目请求文章页；完整 HTML/文本字节直接交给 `ingest_document()`。文章请求失败或正文为空时，以实际取得的 Feed 标题和摘要生成 `text/plain` 部分内容，记录 `completeness = partial` 与脱敏 `fetch_error`，并在后续运行重试。相同原始字节复用内容版本；重试得到正文时因字节不同形成新版本。当前未实现定时采集、采集游标、分类、Fact、Embedding/索引或证据阅读 API。
 
 ### 后台解析、片段与索引
 
@@ -135,6 +135,10 @@ Chunk 至少关联 Document 及其内容版本，保存片段文本、顺序和�
 
 已成功处理的同一内容版本直接复用。原文更新或 Owner 明确重新处理时，才重新解析或索引；更换 Embedding 模型只需读取已有片段重新生成向量，无须重新下载、重复抽取 Fact。重新处理不能使历史报告的实际证据失效，已被报告引用的片段不得原位改写或删除，报告仍使用其已保存的输入片段与版本。上述操作沿用现有任务与状态，不增加处理历史平台。
 
+V0-03 的后台解析入口是 `stocks.processing`，目前由手动 CLI 调用。它按 `text/html`、`application/xhtml+xml`、`text/plain` 选择解析器；HTML 优先读取语义正文容器并排除脚本、导航、表单等噪声，保留标题、段落、列表和表格行文本，表格按行与单元格关联；纯文本按段落保留原位置。每个成功 Chunk 保存文本与 `locator`：纯文本在元素级 `char_start` / `char_end` 保存严格解码文本的字符范围，`segments[].locator.source_ranges` 保存切片实际可见文本的原文范围，普通连续文本可合并范围；HTML 元素级范围为原始解码 HTML 字符范围，实体字符的来源范围覆盖完整实体写法，表格行还保存单元格原文边界。表格拼接的空格和 `|` 以及 HTML 语义分块之间的 `\n` 由系统生成，表格分隔符在 `locator.separators` 显式标记，不能用元素级范围冒充原文。HTML 源码按纯文本安全解码显示，不执行原始标记。分块大小/重叠由 `PARSE_CHUNK_SIZE` / `PARSE_CHUNK_OVERLAP` 配置，不按来源建立独立字段。
+
+解析结果采用不可变批次。`document_parse_batches` 记录每次处理的内容哈希、处理器版本、配置指纹、`completed | failed | unsupported` 状态、错误与 Chunk 数；`document_parse_states` 分别指向最近尝试批次和当前成功批次。相同 Document、处理器版本、配置指纹的普通运行复用已有结果；Owner 显式重处理创建新批次。重处理失败只更新最近尝试状态，不改变当前成功批次及其 Chunk；重处理成功切换当前批次，同时保留旧批次和 Chunk 供历史引用。无效编码、无可见正文等记为失败，不支持 MIME 记为 `unsupported`；都不能伪造空正文成功，原件不变。当前还没有 PDF/JSON/XML、OCR、Embedding、检索或前端读取入口。
+
 ### 核心数据与公司/股票标签
 
 Stocks 围绕长期积累和研究分析保存资料；公司名称、股票代码只是检索字段，不为公司、证券、代码历史或逐条提及记录建立独立主数据表。
@@ -144,7 +148,7 @@ Stocks 围绕长期积累和研究分析保存资料；公司名称、股票代�
 | `sources`、采集游标及运行记录 | 来源配置、增量采集、失败和覆盖情况 |
 | `documents` | 原始文章/API 响应的来源、时间、内容版本、S3 原件引用；当前 `classification` JSONB、解析/分类/抽取/索引状态及公司/股票等检索标签 |
 | `facts`（V1） | LLM 从原文抽取或 API 直接解析的事实、数值、时间口径和证据位置，每条关联来源 Document 版本 |
-| Document Chunk / Embedding（V0 必须） | 入库后后台解析得到的片段、原始位置与相应向量，供 pgvector 召回、研究和证据阅读；Embedding 失败不丢片段或 Document，索引状态可恢复 |
+| Document Chunk / Embedding（V0 必须） | 入库后后台解析得到的片段、原始位置与相应向量，供 pgvector 召回、研究和证据阅读；当前已有不可变批次与文本/HTML 定位 Chunk，向量由 V0-04 生成，Embedding 失败不丢片段或 Document，索引状态可恢复 |
 | Task/Run、Analysis/Report 记录 | V0 手动执行、实际取材快照、分析与报告、来源引用；V1 增加定时运行与增量进度 |
 
 **公司与股票的最小规则：**

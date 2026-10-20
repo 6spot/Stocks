@@ -1,6 +1,8 @@
 import hashlib
+
 import boto3
 from botocore.client import Config
+
 from stocks.settings import Settings
 
 
@@ -9,6 +11,16 @@ def store_snapshot(
 ) -> tuple[str, str]:
     if not config.s3_endpoint_url:
         raise RuntimeError("S3_ENDPOINT_URL must be configured to collect data")
+    if not config.s3_bucket.strip():
+        raise RuntimeError("S3_BUCKET must be configured for snapshot storage")
+    if bool(config.s3_access_key) != bool(config.s3_secret_key):
+        raise RuntimeError(
+            "S3_ACCESS_KEY and S3_SECRET_KEY must be configured together"
+        )
+    if not config.s3_access_key and not config.s3_secret_key:
+        raise RuntimeError(
+            "S3_ACCESS_KEY and S3_SECRET_KEY must be configured for snapshot storage"
+        )
     digest = hashlib.sha256(payload).hexdigest()
     key = f"sources/{source_id}/{digest}"
     options = {
@@ -31,6 +43,16 @@ def store_snapshot(
 def read_snapshot(config: Settings, object_key: str) -> bytes:
     if not config.s3_endpoint_url:
         raise RuntimeError("S3_ENDPOINT_URL must be configured to collect data")
+    if not config.s3_bucket.strip():
+        raise RuntimeError("S3_BUCKET must be configured for snapshot storage")
+    if bool(config.s3_access_key) != bool(config.s3_secret_key):
+        raise RuntimeError(
+            "S3_ACCESS_KEY and S3_SECRET_KEY must be configured together"
+        )
+    if not config.s3_access_key and not config.s3_secret_key:
+        raise RuntimeError(
+            "S3_ACCESS_KEY and S3_SECRET_KEY must be configured for snapshot storage"
+        )
     options = {
         "endpoint_url": config.s3_endpoint_url,
         "region_name": config.s3_region,

@@ -23,6 +23,8 @@ def make_config() -> Settings:
         database_url="postgresql+psycopg://unused/unused",
         s3_endpoint_url="https://storage.example",
         s3_bucket="evidence",
+        s3_access_key="test-access",
+        s3_secret_key="test-secret",
     )
 
 

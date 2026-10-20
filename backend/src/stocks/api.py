@@ -1,7 +1,8 @@
 from fastapi import FastAPI, Query
 from sqlalchemy import select
+
 from stocks.db import session_factory
-from stocks.models import Document, DocumentCollectionState
+from stocks.models import Document, DocumentCollectionState, DocumentParseState
 
 app = FastAPI(title="Stocks", version="0.1.0")
 
@@ -25,6 +26,16 @@ def documents(limit: int = Query(50, ge=1, le=200)) -> list[dict]:
                 )
             ).all()
         }
+        parse_states = {
+            state.document_id: state
+            for state in session.scalars(
+                select(DocumentParseState).where(
+                    DocumentParseState.document_id.in_(
+                        [document.id for document in rows]
+                    )
+                )
+            ).all()
+        }
         return [
             {
                 "id": str(d.id),
@@ -39,6 +50,7 @@ def documents(limit: int = Query(50, ge=1, le=200)) -> list[dict]:
                 "completeness": d.completeness,
                 "fetch_error": d.fetch_error,
                 "collection_state": _collection_state(states, d),
+                "parse_state": _parse_state(parse_states.get(d.id)),
                 "content_type": d.content_type,
                 "content_size": d.content_size,
                 "content_hash": d.content_hash,
@@ -59,4 +71,22 @@ def _collection_state(
         "completeness": state.completeness,
         "fetch_error": state.fetch_error,
         "last_attempted_at": state.last_attempted_at,
+    }
+
+
+def _parse_state(state: DocumentParseState | None) -> dict[str, object] | None:
+    if state is None:
+        return None
+    return {
+        "status": state.status,
+        "processor_version": state.processor_version,
+        "latest_batch_id": (
+            str(state.latest_batch_id) if state.latest_batch_id else None
+        ),
+        "current_batch_id": (
+            str(state.current_batch_id) if state.current_batch_id else None
+        ),
+        "chunk_count": state.chunk_count,
+        "error": state.error,
+        "attempted_at": state.attempted_at,
     }
