@@ -156,3 +156,28 @@ Implemented immutable parse batches and locatable HTML/plain-text Chunks with CL
 ### Next Steps
 
 - Start V0-04 only on a later user instruction.
+
+
+## Session 6: V0-04 embedding indexing and pgvector search
+<!-- trellis-session: v=2 fp=c567eca7c8fb9fc3 -->
+
+**Date**: 2026-10-20
+**Task**: V0-04 embedding indexing and pgvector search
+**Branch**: `feat/v0-04-vector-search`
+
+### Summary
+
+Implemented current-batch Chunk embeddings, filtered pgvector semantic search, bounded exact search, adjacent context reads, visible index coverage, provider compatibility checks, and focused PostgreSQL tests. Verified 59 focused tests, fresh-schema Alembic consistency, pgvector HNSW configuration, and documented the remaining limit that no live external Embedding Provider was called.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `7056ff6` | feat: add pgvector embedding indexing and evidence search |
+| `b786454` | docs(trellis): capture vector search testing rules |
+| `9152598` | docs: plan staged delivery boundaries |
+| `6e4b12c` | chore(task): record V0-04 implementation progress |
+
+### Status
+
+[OK] **Completed**
