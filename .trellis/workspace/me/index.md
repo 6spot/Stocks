@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 3
+- **Total Sessions**: 4
 - **Last Active**: 2026-10-20
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~96 | Active |
+| `journal-1.md` | ~119 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 4 | 2026-10-20 | V0-02 real source collection and frontend testing guidelines | `9496d61`, `0a34055` | `feat/v0-02-real-source-collection` |
 | 3 | 2026-10-20 | V0-01 raw document versions | `5309ae5`, `79f2f6f` | `main` |
 | 2 | 2026-10-20 | Plan V0 V1 V2 delivery roadmap | `45ba7e5` | `main` |
 | 1 | 2026-10-20 | Bootstrap development guidelines | `354a843` | `main` |

@@ -94,3 +94,26 @@ Implemented versioned raw Document ingestion with S3-first immutable snapshots, 
 ### Status
 
 [OK] **Completed**
+
+
+## Session 4: V0-02 real source collection and frontend testing guidelines
+<!-- trellis-session: v=2 fp=2eece081fe3fd2fe -->
+
+**Date**: 2026-10-20
+**Task**: V0-02 real source collection and frontend testing guidelines
+**Branch**: `feat/v0-02-real-source-collection`
+
+### Summary
+
+Implemented safe SEC RSS/Atom collection with article snapshot persistence, immutable Document versions plus separate collection state, partial/error handling, SSRF and resource limits. Documented backend collection/testing rules and completed the archived bootstrap frontend spec set. Verified fresh pgvector schema and related tests in the remote Python 3.12 environment.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `9496d61` | feat: collect complete article snapshots from SEC |
+| `0a34055` | docs(trellis): capture collection and frontend testing rules |
+
+### Status
+
+[OK] **Completed**
