@@ -29,3 +29,13 @@ Document 版本保存当次实际取得的不可变证据元数据；相同原�
 `backend/alembic/env.py` 使用 `Base.metadata`；`backend/alembic/versions/0001_initial.py` 是新数据库的初始化结构。开发阶段修改模型时同步修改这份初始化定义，必要时重建开发数据库。不新增历史版本升级迁移、回填、双写或旧结构兼容代码。
 
 结构变更后，在全新数据库运行 `alembic upgrade head` 与 `alembic check`，核对初始化结果和模型；命令见 `docs/quickstart.md`。这项检查只在结构变更时需要，不能替代相关行为测试。
+
+## pgvector 查询
+
+向量召回从 `document_chunk_embeddings` 出发，按 `chunk_id`、`document_id` 和当前
+解析批次逐级连接，并在同一查询中过滤当前模型、维度和来源/时间条件。HNSW 索引可能
+包含保留的旧模型向量，过滤条件也会排除候选；执行带过滤的 `ORDER BY distance
+LIMIT` 查询时，先 `LOAD 'vector'` 注册扩展参数，再在事务内设置
+`hnsw.iterative_scan = strict_order`，避免首批图候选被过滤后少于请求数量。测试
+应使用真实 pgvector 覆盖当前批次、模型/维度隔离和过滤后的召回，不能用纯 Mock
+代替。
