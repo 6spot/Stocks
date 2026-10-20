@@ -25,7 +25,8 @@
     "10-20-v0-04-vector-search",
     "10-20-v0-05-manual-task-agent",
     "10-20-v0-06-evidence-analysis-report",
-    "10-20-v0-07-evidence-api-acceptance"
+    "10-20-v0-07-evidence-api-acceptance",
+    "10-20-v0-08-document-collection-fixes"
   ],
   "parent": "10-20-stocks-roadmap",
   "relatedFiles": [

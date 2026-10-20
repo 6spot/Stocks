@@ -11,5 +11,6 @@
 - [V0-05](../10-20-v0-05-manual-task-agent/prd.md)：手动 Task Run 与可配置研究 Agent
 - [V0-06](../10-20-v0-06-evidence-analysis-report/prd.md)：最小 Evidence Package 与 Analysis Report
 - [V0-07](../10-20-v0-07-evidence-api-acceptance/prd.md)：报告证据读取 API 与 V0 真实闭环验收
+- [V0-08](../10-20-v0-08-document-collection-fixes/prd.md)：原件版本与采集边界缺陷修复；依赖已归档 V0-01/V0-02，须在 V0-07 最终验收前完成。
 
 阶段父任务不直接实施；各子任务写有建议落点、契约来源和风险。初始化结构直接修改当前定义，不迁移旧库；运行期原件和引用持续保留。更换已确认的阶段范围必须回到领域文档和阶段验收一起调整。

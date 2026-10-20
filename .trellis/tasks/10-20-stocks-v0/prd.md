@@ -22,7 +22,10 @@
 | [V0-04](../10-20-v0-04-vector-search/prd.md) | Embedding 与 pgvector 语义和精确检索 | V0-03 |
 | [V0-05](../10-20-v0-05-manual-task-agent/prd.md) | 手动 Task Run 与可配置研究 Agent | 无 |
 | [V0-06](../10-20-v0-06-evidence-analysis-report/prd.md) | 最小 Evidence Package 与 Analysis Report | V0-04, V0-05 |
-| [V0-07](../10-20-v0-07-evidence-api-acceptance/prd.md) | 报告证据读取 API 与 V0 真实闭环验收 | V0-02, V0-06 |
+| [V0-07](../10-20-v0-07-evidence-api-acceptance/prd.md) | 报告证据读取 API 与 V0 真实闭环验收 | V0-02, V0-06, V0-08 |
+| [V0-08](../10-20-v0-08-document-collection-fixes/prd.md) | V0-01/V0-02 归档审查缺陷修复与回归 | V0-01, V0-02 |
+
+V0-08 为归档审查后追加的修复任务，须先于 V0-07 最终验收完成；编号不表示执行顺序。
 
 ## 阶段退出条件
 
@@ -35,4 +38,4 @@
 
 定时调度、Fact、可靠增量、完整控制台和外部补证。
 
-各阶段共同不建设证券主数据、Fan-out、全文检索、自动交易或复杂编排；开发迭代不迁移不兼容。所有任务当前仅 planning。
+各阶段共同不建设证券主数据、Fan-out、全文检索、自动交易或复杂编排；开发迭代不迁移不兼容。各任务当前状态以其 task.json 为准，本次追加的 V0-08 保持 planning。

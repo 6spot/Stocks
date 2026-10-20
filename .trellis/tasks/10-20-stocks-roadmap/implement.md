@@ -2,7 +2,7 @@
 
 ## 使用方式
 
-当前 25 项记录全部 planning。本轮未激活任何任务；后续选择实际交付叶子复核规划、满足依赖并确认实施，再运行 task.py start。不要 start 路线图或阶段父任务来一次实现全部功能。优先从 V0-01 开始；V0-05 没有业务前置，可独立细化。
+路线图初始规划为 25 项记录，追加 V0-08 后共 26 项；各记录状态以 task.json 为准。本次仅创建修复规划，未激活任务。后续选择实际交付叶子复核规划、满足依赖并确认实施，再运行 task.py start。不要 start 路线图或阶段父任务来一次实现全部功能。V0-08 必须先于 V0-07 最终闭环验收完成。
 
 ## 完整任务与依赖
 
@@ -14,7 +14,8 @@
 | [V0-04](../10-20-v0-04-vector-search/prd.md) | Embedding 与 pgvector 语义和精确检索 | V0-03 |
 | [V0-05](../10-20-v0-05-manual-task-agent/prd.md) | 手动 Task Run 与可配置研究 Agent | 无 |
 | [V0-06](../10-20-v0-06-evidence-analysis-report/prd.md) | 最小 Evidence Package 与 Analysis Report | V0-04, V0-05 |
-| [V0-07](../10-20-v0-07-evidence-api-acceptance/prd.md) | 报告证据读取 API 与 V0 真实闭环验收 | V0-02, V0-06 |
+| [V0-07](../10-20-v0-07-evidence-api-acceptance/prd.md) | 报告证据读取 API 与 V0 真实闭环验收 | V0-02, V0-06, V0-08 |
+| [V0-08](../10-20-v0-08-document-collection-fixes/prd.md) | 原件版本与采集边界缺陷修复 | V0-01, V0-02 |
 | [V1-01](../10-20-v1-01-worker-scheduling/prd.md) | 独立 Worker 定时调度与 Run 恢复 | V0-07 |
 | [V1-02](../10-20-v1-02-processing-recovery/prd.md) | 统一后台处理状态与积压重试 | V1-01 |
 | [V1-03](../10-20-v1-03-classification/prd.md) | Decision Model 轻量分类与受控标签 | V1-02 |
@@ -36,8 +37,8 @@
 
 | 来源条件（docs/validation.md） | 主要责任任务 | 集成验收 |
 | --- | --- | --- |
-| V0 真实原件 | V0-01、V0-02 | V0-07 |
-| V0 身份与版本 | V0-01、V0-03 | V0-07 |
+| V0 真实原件 | V0-01、V0-02、V0-08 | V0-07 |
+| V0 身份与版本 | V0-01、V0-03、V0-08 | V0-07 |
 | V0 可检索证据 | V0-03、V0-04 | V0-07 |
 | V0 手动研究 | V0-05、V0-06 | V0-07 |
 | V0 证据阅读、运行边界 | V0-06、V0-07 | V0-07 |
@@ -53,7 +54,7 @@
 | V2 历史和覆盖 | V2-04、V2-05 | V2-05 |
 | 所有阶段共同遵守 | 全部任务的约束和排除项 | 每阶段最后一项 |
 
-## 本轮规划检查
+## 初始规划检查（历史记录）
 
 - [x] 读取全部任务 JSON，验证父子互链、阶段标签和依赖无环。
 - [x] 用 task.py validate 验证 implement/check 上下文文件存在且非占位。

@@ -1,0 +1,48 @@
+{
+  "id": "v0-08-document-collection-fixes",
+  "name": "v0-08-document-collection-fixes",
+  "title": "V0-08 原件版本与采集边界缺陷修复",
+  "description": "修复 V0-01/V0-02 归档审查发现的版本指针、失败重试、畸形 URL 与字符编码问题，并补齐回归和归档记录。",
+  "status": "planning",
+  "dev_type": "backend",
+  "scope": null,
+  "package": null,
+  "priority": "P1",
+  "creator": "me",
+  "assignee": "me",
+  "createdAt": "2026-10-20",
+  "completedAt": null,
+  "branch": null,
+  "base_branch": "main",
+  "worktree_path": null,
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [],
+  "parent": "10-20-stocks-v0",
+  "relatedFiles": [
+    "backend/src/stocks/repository.py",
+    "backend/src/stocks/collection/service.py",
+    "backend/src/stocks/collection/feed.py",
+    "backend/src/stocks/collection/http.py",
+    "backend/tests/test_repository.py",
+    "backend/tests/test_collection.py",
+    "backend/src/stocks/processing/parser.py",
+    "docs/data.md",
+    "docs/validation.md",
+    ".trellis/tasks/archive/2026-10/10-20-v0-01-raw-document-versions",
+    ".trellis/tasks/archive/2026-10/10-20-v0-02-real-source-collection"
+  ],
+  "notes": "2026-10-20 归档审查修复规划；用户仅授权创建任务。四处功能缺陷与归档说明待修复，尚未实施或运行复验；须先于 V0-07 最终验收完成。",
+  "meta": {
+    "milestone": "V0",
+    "kind": "remediation",
+    "planning_review": "pending",
+    "planning_depth": "delivery-plan",
+    "depends_on": [
+      ".trellis/tasks/archive/2026-10/10-20-v0-01-raw-document-versions",
+      ".trellis/tasks/archive/2026-10/10-20-v0-02-real-source-collection"
+    ],
+    "implementation_authorized": false
+  }
+}

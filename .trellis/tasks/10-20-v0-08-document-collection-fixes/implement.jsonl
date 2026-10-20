@@ -1,0 +1,11 @@
+{"file": "AGENTS.md", "reason": "初始开发不迁移不兼容、证据保护与远程最小验证边界"}
+{"file": "docs/data.md", "reason": "内容版本、最新采集状态、失败重试、原件与编码契约；须完整读取"}
+{"file": "docs/validation.md", "reason": "V0 真实原件、不可变版本与历史证据验收底线"}
+{"file": ".trellis/spec/backend/index.md", "reason": "后端工程规范导航"}
+{"file": ".trellis/spec/backend/database-guidelines.md", "reason": "事务、内容去重、采集状态与新库初始化规则"}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "CollectionError、单项错误隔离与脱敏输出"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "必要回归与代码文档一致性"}
+{"file": ".trellis/spec/backend/testing-guidelines.md", "reason": "测试服务器隔离环境与 SSH 不可用时保持未验证"}
+{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "HTTP 类型到持久化再到解析的跨层检查"}
+{"file": ".trellis/tasks/archive/2026-10/10-20-v0-01-raw-document-versions/prd.md", "reason": "原归档任务的版本与完整性要求、遗留状态说明"}
+{"file": ".trellis/tasks/archive/2026-10/10-20-v0-02-real-source-collection/acceptance.md", "reason": "原采集历史验证及限制，不能当成本轮运行结果"}
