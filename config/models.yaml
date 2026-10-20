@@ -4,13 +4,29 @@ providers:
     protocol: openai_compatible
     base_url: ${MODEL_API_BASE_URL}
     api_key: ${MODEL_API_KEY}
+    capabilities: [chat, text, structured_output]
+    timeout_seconds: 60
 models:
   fast:
     provider: default
     name: ${MODEL_NAME}
+    capabilities: [chat, text, structured_output]
+  research:
+    provider: default
+    name: ${MODEL_NAME}
+    capabilities: [chat, text, structured_output]
   embedding:
     provider: default
     name: ${EMBEDDING_MODEL_NAME}
     dimensions: 1536
 embedding:
   models: [embedding]
+agents:
+  research:
+    routing:
+      primary: research
+      fallbacks: []
+      required_capabilities: [chat, text, structured_output]
+      timeout_seconds: 60
+      retries: 1
+      retry_backoff_seconds: 0

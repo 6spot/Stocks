@@ -24,6 +24,16 @@ Task 属性：
 
 研究的取材、游标、分析与报告共用 `run.scope`，步骤不再另定义一份研究范围；补充查询可带具体检索条件以查找直接资料或相关背景，但不能修改 Run 的研究范围。采集轮询由采集 Task 的 `trigger` 唯一调度，Source 只保存获取参数和可选更新预期，不另设第二个调度入口。
 
+**V0 已实现的手动研究子集：** YAML 只接受 `repository_search` 与 `research_agent` 两种步骤，研究 Task 的最后一个步骤必须是 `research_agent`。`repository_search` 读取已保存的当前 Chunk 和检索结果，可选 `source_ids` 最多 20 个且必须去重；不配置时查询全部来源。`research_agent` 只接收该 Run 内前序搜索结果；`tools` 必须为空，不执行外部 Tool/MCP。`when` 只允许引用更早的 `repository_search` 结果，并仅支持以下白名单判断：
+
+| `op` | 允许的 `field` | 语义 |
+| --- | --- | --- |
+| `exists` | 不配置 | 引用的前序步骤执行成功 |
+| `nonempty` | `output`、`output.items`、`output.coverage`、`evidence_refs` | 对应结构化结果为非空 |
+| `equals` / `not_equals` | `output.truncated` | 与显式布尔值比较 |
+
+条件不满足时保存 `skipped` 的 StepResult。配置拒绝未知字段、未知步骤/类型、未知 Agent、重复步骤 ID、向前引用、未声明 Schema 关键字以及未实现的 Tool。公开示例位于 `config/tasks.yaml`，分别覆盖成功执行、条件跳过和无证据失败。
+
 统一执行结果：
 
 ~~~text
@@ -37,9 +47,12 @@ StepResult:
 
 按任务记录配置/策略/模型/提示词快照，便于解释历史研究结果。Task 使用独立运行记录，Worker 与 Web API 分进程；待执行记录及任务运行占用保存在 PostgreSQL。外部调用需有超时、有限重试和幂等键。原始资料及处理状态成功持久化后，Worker 才处理相应待办步骤；这不触发逐篇研究，综合研究仍由自身的 manual/schedule 触发。
 
+V0 Run 在创建时快照 Task 的 objective、strategy、scope、步骤/Agent 配置、research prompt 和 Research Agent 模型路由，也快照 Repository 搜索使用的 Embedding 路由（别名、模型、维度、能力、超时及可用于核对配置是否有变化的端点哈希）。执行时重新取得环境凭据，并核对当前路由与快照；发生不兼容变化时步骤失败，不静默换成另一模型或向量空间。Task 和 Run 不保存 endpoint 明文、API key 或 Authorization。每个 StepResult 保存结构化 output、持久证据引用、usage 和结构化 error；ModelCall 保存请求/实际 alias 与模型名、供应商返回模型名、耗时、Token、回退原因和安全错误，不保存请求或响应正文。
+
 ### 同一任务运行与异常处理
 
 - **同一个 Task 同时只允许一个待执行或正在运行的 Run。** 手动触发、定时触发与重试共用同一入口，由数据库原子检查并占用；任务已占用时不再创建新 Run，手动请求返回现有运行信息，定时触发跳过本次。不同 Task 可以独立运行。
+- V0 的手动 CLI 在一个命令中完成原子创建、领取和执行。数据库对 `status IN ('queued', 'running')` 建立每个 Task 唯一的条件索引；重复触发若已有活跃 Run，立即输出该 Run 的 JSON 摘要并以成功退出码返回，不查询模型凭据、不等待或抢占其他进程。新 Run 结束后才可创建下一次 Run。所有权令牌只标识当前执行进程，普通触发不会接管其他进程已领取的 Run。
 - V1 起，Run 未正常结束、Worker 中断或处理失败时，保留已保存的进度、结果和错误，供控制台统一查看。Owner 确认旧执行已停止后，可结束异常 Run，再重试或继续处理；不要求自动租约接管或复杂崩溃恢复调度。
 - 解析、分类、抽取、索引和取材积压使用 Task/Run 或 Document 处理状态管理；有限自动重试后，可由 Owner 在控制台手动重试或继续处理，不另建积压管理服务。交互见[界面设计](interface.md)。
 
@@ -174,7 +187,7 @@ tasks:
 
 ## Agent、HTTP 模型与回退
 
-Agent 配置包括：id、role、prompt、model_ref、tools[]，以及按职责需要的结构化输出契约。**Decision Model 是模型能力类别，不是 Jev、Clef 等特定品牌的别名**：Jev、Cloudflare Clef/Clef-flash 或符合相同需求的其他模型均可配置为分类/决策模型。分类步骤对预定义问题做单选、多选或是/否判断，包括 `should_extract`，并统一归一化为 Stocks 的业务 Schema；如 Provider 返回各选项概率，仅作为决策输入/诊断信息，不自动作为事实可信度或投资评分。Generation Model 则用于按需生成事实抽取结果、研究文本及授权 Tool 调用请求。不同模型类型通过协议 Adapter 接入，不强行假设所有模型都能输出长文、原生工具调用或 JSON Schema。
+Agent 配置包括：id、role、prompt、model_ref、tools[]，以及按职责需要的结构化输出契约。`model_ref` 指向 `config/models.yaml` 中的 Agent 路由名；该路由的 `primary` / `fallbacks` 是模型别名，不要求与 Agent 的 `model_ref` 同名。**Decision Model 是模型能力类别，不是 Jev、Clef 等特定品牌的别名**：Jev、Cloudflare Clef/Clef-flash 或符合相同需求的其他模型均可配置为分类/决策模型。分类步骤对预定义问题做单选、多选或是/否判断，包括 `should_extract`，并统一归一化为 Stocks 的业务 Schema；如 Provider 返回各选项概率，仅作为决策输入/诊断信息，不自动作为事实可信度或投资评分。Generation Model 则用于按需生成事实抽取结果、研究文本及授权 Tool 调用请求。不同模型类型通过协议 Adapter 接入，不强行假设所有模型都能输出长文、原生工具调用或 JSON Schema。
 
 Provider 定义 protocol、HTTP endpoint、认证方式、默认超时等。**决策模型的有界问题/选项接口与普通 OpenAI-compatible `chat/completions` 并不必然相同**；按实际 Provider 协议通过薄 Adapter 归一化服务端格式。文中的模型名称仅作可配置角色的示例，不代表协议兼容性已经验证或相应 Adapter 已实现。对于不确定、无效或调用失败的决策，保留原文与未完成状态，不能默认解释成 `should_extract=false`。Provider 不承担 Agent 逻辑，任何私有部署、官方服务或模型聚合服务都只是一个 Provider 配置实例，不构成系统依赖，不引入独立模型调度服务。
 
@@ -185,6 +198,7 @@ Embedding 同样通过 Provider 和模型引用配置，声明向量生成能力
 - 主模型遇额度耗尽、限流、服务错误、连接失败或超时等可回退故障时，尝试备用模型。
 - 配置错误、认证错误、能力不支持或错误请求等不进行盲目回退。
 - 回退模型必须满足当前步骤所需能力；全部失败则记录并按 Task 策略处理失败。
+- 每个候选模型使用自身配置的请求超时；`retries` 是每个候选在切换到下一候选前的最大重试次数，回合总数受有限上限约束。
 - 不做模型质量动态打分、成本自动选路或无限重试。
 - 记录请求的 Provider/模型、实际可获得的返回模型标识、耗时、Token、可获得费用及回退原因。
 

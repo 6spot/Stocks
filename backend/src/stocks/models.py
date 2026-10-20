@@ -36,6 +36,165 @@ class Source(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
+class TaskDefinition(Base):
+    __tablename__ = "task_definitions"
+    __table_args__ = (
+        CheckConstraint(
+            "trigger = 'manual'",
+            name="ck_task_definitions_manual_trigger",
+        ),
+    )
+    id: Mapped[str] = mapped_column(String(120), primary_key=True)
+    name: Mapped[str] = mapped_column(String(255))
+    type: Mapped[str] = mapped_column(String(40))
+    trigger: Mapped[str] = mapped_column(String(16))
+    enabled: Mapped[bool] = mapped_column(default=True)
+    strategy: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    scope: Mapped[dict] = mapped_column(JSONB)
+    config_snapshot: Mapped[dict] = mapped_column(JSONB)
+    config_hash: Mapped[str] = mapped_column(String(64))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+class TaskRun(Base):
+    __tablename__ = "task_runs"
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('queued', 'running', 'succeeded', 'failed')",
+            name="ck_task_runs_status",
+        ),
+        CheckConstraint(
+            "status != 'running' OR process_token IS NOT NULL",
+            name="ck_task_runs_running_owner",
+        ),
+        CheckConstraint(
+            "status NOT IN ('queued', 'succeeded', 'failed') "
+            "OR process_token IS NULL",
+            name="ck_task_runs_closed_owner",
+        ),
+        Index(
+            "uq_task_runs_one_active",
+            "task_id",
+            unique=True,
+            postgresql_where=text("status IN ('queued', 'running')"),
+        ),
+        Index("ix_task_runs_task_created", "task_id", "created_at"),
+    )
+    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, default=uuid4)
+    task_id: Mapped[str] = mapped_column(ForeignKey("task_definitions.id"))
+    status: Mapped[str] = mapped_column(String(16))
+    process_token: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    objective: Mapped[str] = mapped_column(Text)
+    strategy: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    scope: Mapped[dict] = mapped_column(JSONB)
+    config_snapshot: Mapped[dict] = mapped_column(JSONB)
+    model_snapshot: Mapped[dict] = mapped_column(JSONB)
+    prompt_snapshot: Mapped[dict] = mapped_column(JSONB)
+    config_hash: Mapped[str] = mapped_column(String(64))
+    output: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    error: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    started_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    finished_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
+
+class TaskStepResult(Base):
+    __tablename__ = "task_step_results"
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('succeeded', 'failed', 'skipped', 'cancelled')",
+            name="ck_task_step_results_status",
+        ),
+        UniqueConstraint(
+            "run_id",
+            "step_id",
+            name="uq_task_step_results_run_step",
+        ),
+        UniqueConstraint(
+            "run_id",
+            "position",
+            name="uq_task_step_results_run_position",
+        ),
+        Index("ix_task_step_results_run_created", "run_id", "created_at"),
+    )
+    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, default=uuid4)
+    run_id: Mapped[UUID] = mapped_column(
+        ForeignKey("task_runs.id", ondelete="CASCADE")
+    )
+    step_id: Mapped[str] = mapped_column(String(120))
+    position: Mapped[int] = mapped_column(Integer)
+    step_type: Mapped[str] = mapped_column(String(80))
+    status: Mapped[str] = mapped_column(String(16))
+    output: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    evidence_refs: Mapped[list] = mapped_column(
+        JSONB, default=list, server_default=text("'[]'::jsonb")
+    )
+    usage: Mapped[dict] = mapped_column(
+        JSONB, default=dict, server_default=text("'{}'::jsonb")
+    )
+    error: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+class ModelCall(Base):
+    __tablename__ = "model_calls"
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('succeeded', 'failed')",
+            name="ck_model_calls_status",
+        ),
+        CheckConstraint(
+            "duration_ms >= 0",
+            name="ck_model_calls_duration",
+        ),
+        UniqueConstraint(
+            "run_id",
+            "step_id",
+            "attempt_number",
+            name="uq_model_calls_run_step_attempt",
+        ),
+        Index("ix_model_calls_run_created", "run_id", "created_at"),
+        CheckConstraint(
+            "prompt_tokens IS NULL OR prompt_tokens >= 0",
+            name="ck_model_calls_prompt_tokens",
+        ),
+        CheckConstraint(
+            "completion_tokens IS NULL OR completion_tokens >= 0",
+            name="ck_model_calls_completion_tokens",
+        ),
+        CheckConstraint(
+            "total_tokens IS NULL OR total_tokens >= 0",
+            name="ck_model_calls_total_tokens",
+        ),
+    )
+    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, default=uuid4)
+    run_id: Mapped[UUID] = mapped_column(
+        ForeignKey("task_runs.id", ondelete="CASCADE")
+    )
+    step_id: Mapped[str] = mapped_column(String(120))
+    attempt_number: Mapped[int] = mapped_column(Integer)
+    requested_alias: Mapped[str] = mapped_column(String(120))
+    attempt_alias: Mapped[str] = mapped_column(String(120))
+    requested_model_name: Mapped[str] = mapped_column(String(255))
+    attempt_model_name: Mapped[str] = mapped_column(String(255))
+    reported_model_name: Mapped[str | None] = mapped_column(
+        String(255), nullable=True
+    )
+    status: Mapped[str] = mapped_column(String(16))
+    duration_ms: Mapped[int] = mapped_column(Integer)
+    prompt_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    completion_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    total_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    fallback_reason: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    error: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
 class Document(Base):
     __tablename__ = "documents"
     __table_args__ = (

@@ -9,7 +9,7 @@ Requires Docker Compose. An S3-compatible endpoint is needed to collect and pers
 5. Verify: http://127.0.0.1:8000/health
 6. View stored records: http://127.0.0.1:8000/api/documents (empty on a fresh database).
 
-The current implementation provides Source/Document/Chunk models, fresh-database initialization, a versioned Document repository, configured RSS/Atom discovery, safe HTTP article acquisition, a manual collection CLI, a manual HTML/text parsing CLI, manual pgvector indexing and semantic/exact search CLI, a document-list API, a generic S3 snapshot helper, and an HTTP model client. The repository checks `(source_id, dedupe_key)` and SHA-256 before writing storage, reuses an immutable Document version and updates a separate collection state for identical bytes, and creates the next immutable Document version for changed bytes. Classification, Fact extraction, the Task/Agent runner, reports, and the Web console remain to be implemented.
+The current implementation provides Source/Document/Chunk models, fresh-database initialization, a versioned Document repository, configured RSS/Atom discovery, safe HTTP article acquisition, a manual collection CLI, a manual HTML/text parsing CLI, manual pgvector indexing and semantic/exact search CLI, a document-list API, a generic S3 snapshot helper, an HTTP model client, and a manual configured research Task runner. The repository checks `(source_id, dedupe_key)` and SHA-256 before writing storage, reuses an immutable Document version and updates a separate collection state for identical bytes, and creates the next immutable Document version for changed bytes. Classification, Fact extraction, Evidence Package, Analysis/Report persistence, scheduled execution, and the Web console remain to be implemented.
 
 The snapshot helper stores the exact bytes supplied by its caller, computes their SHA-256 hash, and uses the supplied content type; it does not assume XML or a particular collection channel. `stocks.repository.ingest_document()` remains the only Document write entry point.
 
@@ -53,7 +53,9 @@ successful batch and its Chunks remain readable and unchanged; a later success b
 the current batch without deleting history. Unsupported formats and documents with no
 extractable evidence text are recorded as `unsupported` or `failed`; they are never
 stored as empty successful chunks. PDF/JSON/XML parsing, OCR, classification, Facts,
-Task/Run execution, reports, and the Web console remain future work.
+scheduled execution, Evidence Package and Analysis/Report persistence, and the Web
+console remain future work. The separate manual Task runner is implemented; see
+[Manual research Task](#manual-research-task).
 
 ## Manual embedding indexing and search
 
@@ -96,6 +98,58 @@ and therefore reports `coverage: null`. An embedding failure leaves the original
 Document and Chunks intact and reports a visible gap. The CLI does not read S3, parse
 Documents, or create document vectors while searching.
 
-Install local development dependencies: cd backend && pip install -e '.[dev]'. Run only tests relevant to the change, for example: python -m pytest -q tests/test_s3.py; use -k to narrow the selection when needed. Follow AGENTS.md for when broader checks are warranted; do not run the full suite by default.
+All tests and runtime verification must run on the designated test server
+`100.120.14.84` in the isolated directory for the current task. The Owner's machine is
+only for editing and packaging code: do not run pytest, PostgreSQL/pgvector, Alembic,
+Docker, API smoke tests, external integrations, or deployment checks there, even when
+equivalent tools happen to be installed. Run only checks relevant to the change on the
+test server, for example `.venv/bin/python -m pytest -q tests/test_s3.py`; use `-k` when
+needed. Follow AGENTS.md and the backend testing specification for environment reuse,
+container cleanup, and when broader checks are warranted. If the test server is not
+reachable, report the checks as unverified and do not fall back to the local machine.
+
+## Manual research Task
+
+`config/tasks.yaml` defines the controlled step/Agent registry and
+`config/models.yaml` defines the research model routing. The current runner supports
+ordered `repository_search` steps and a final `research_agent` step. It reads the
+current saved Chunks; it does not collect, parse, index, call external Tools, or create
+Evidence Packages/Analysis/Reports. The Agent input is sent as untrusted JSON data and
+the configured `tools` list must be empty.
+
+After PostgreSQL and the intended embedding index are ready:
+
+```bash
+docker compose run --rm api python -m stocks.execution \
+  --config config/tasks.yaml \
+  --models-config config/models.yaml \
+  --task saved_evidence_brief
+```
+
+The command prints one JSON object containing `run_id`, `status`, `created`,
+`executed`, the objective/scope snapshots, ordered step results, and safe model-call
+metadata. Exit code `0` means the newly executed Run succeeded, or that an existing
+queued/running Run was returned; `1` means a newly executed Run failed; `2` means
+configuration or execution initialization failed and the safe error is printed to
+stderr. Repeated triggering while a Run is queued or running returns that Run and exits
+`0` without taking ownership. A new Run becomes possible only after the previous Run
+has ended.
+
+Each `repository_search` step may set `source_ids` to limit the search to up to 20
+saved sources. `empty_evidence_skip` filters on a deliberately absent source, so its
+configured condition remains unmet and the Agent step is persisted as `skipped`.
+`unavailable_evidence_failure` uses the same absent source and demonstrates a persisted
+failed Run when the Agent has no usable saved evidence. A failed Run never overwrites
+an earlier successful Run.
+
+Research and Repository-search embedding calls use their configured routes in
+`config/models.yaml`, with request timeouts and safe error classes; the research route
+adds bounded retries and strict JSON-Schema output. Rate limits, service/network
+failures, timeouts, schema-invalid responses, and references outside the selected
+evidence may retry or fall back on the research route; each candidate uses its own
+configured request timeout. Authentication, invalid requests, and missing model
+capabilities stop before another target is called.
+Run snapshots and ModelCall rows omit API keys, Authorization headers, endpoint
+plaintext, and model response bodies.
 
 This early API has no application-level authentication. The sample binds it only to 127.0.0.1; do not expose it publicly until access control is added. Tailscale or equivalent private network routing to S3 must be independently configured.
