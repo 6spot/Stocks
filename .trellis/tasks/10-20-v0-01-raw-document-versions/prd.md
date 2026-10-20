@@ -23,9 +23,9 @@
 
 ## 验收条件
 
-- [ ] AC-1: 同资料重复写入原始字节不增版，修改字节保留两个可读取版本；仅更新时间改变不增版。
-- [ ] AC-2: S3 写失败不产生虚假的可用 Document；时间、哈希、MIME、完整性及原件引用可核对。
-- [ ] AC-3: 全新 PostgreSQL 初始化成功且 alembic check 与当前模型一致。
+- [x] AC-1: 同资料重复写入原始字节不增版，修改字节保留两个可读取版本；仅更新时间改变不增版。已由 `tests/test_repository.py` 验证。
+- [x] AC-2: S3 写失败不产生虚假的可用 Document；时间、哈希、MIME、完整性及原件引用可核对。已由 Repository/S3 测试验证。
+- [x] AC-3: 全新 PostgreSQL 初始化成功且 alembic check 与当前模型一致。已在远程隔离 pgvector 空库验证。
 
 ## 不在范围内
 

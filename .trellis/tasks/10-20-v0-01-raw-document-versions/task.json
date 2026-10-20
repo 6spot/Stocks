@@ -3,7 +3,7 @@
   "name": "v0-01-raw-document-versions",
   "title": "V0-01 原件持久化与 Document 不可变版本",
   "description": "让同一资料的原始字节、来源和内容版本可可靠保存并长期引用。",
-  "status": "planning",
+  "status": "in_progress",
   "dev_type": "backend",
   "scope": null,
   "package": null,
@@ -12,7 +12,7 @@
   "assignee": "me",
   "createdAt": "2026-10-20",
   "completedAt": null,
-  "branch": null,
+  "branch": "main",
   "base_branch": "main",
   "worktree_path": null,
   "commit": null,
@@ -30,8 +30,8 @@
     "milestone": "V0",
     "kind": "delivery",
     "depends_on": [],
-    "planning_review": "pending",
+    "planning_review": "complete",
     "planning_depth": "delivery-plan",
-    "implementation_authorized": false
+    "implementation_authorized": "true"
   }
 }
