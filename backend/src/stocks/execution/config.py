@@ -137,16 +137,26 @@ class StepCondition(BaseModel):
         return self
 
 
-class SearchStepConfig(BaseModel):
+class EvidenceStepConfig(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
-    kind: Literal["repository_search"]
-    query: str = Field(min_length=1, max_length=4000)
-    limit: int = Field(default=8, ge=1, le=50)
+    kind: Literal["select_evidence"]
+    queries: list[str] = Field(default_factory=list, max_length=8)
+    limit_per_query: int = Field(default=8, ge=1, le=50)
     source_ids: list[str] = Field(default_factory=list, max_length=20)
+    max_tokens: int = Field(default=30_000, ge=1, le=64_000)
 
     @model_validator(mode="after")
-    def validate_source_ids(self) -> SearchStepConfig:
+    def validate_inputs(self) -> EvidenceStepConfig:
+        if any(
+            not isinstance(query, str)
+            or not query.strip()
+            or len(query) > 4000
+            for query in self.queries
+        ):
+            raise ValueError(
+                "queries must contain non-empty strings of at most 4000 chars"
+            )
         if any(
             not source_id
             or len(source_id) > 120
@@ -171,19 +181,19 @@ class TaskStepConfig(BaseModel):
 
     id: str = Field(pattern=r"^[A-Za-z0-9_-]+$", max_length=120)
     when: StepCondition | None = None
-    repository_search: SearchStepConfig | None = None
+    select_evidence: EvidenceStepConfig | None = None
     research_agent: AgentStepConfig | None = None
 
     @model_validator(mode="after")
     def validate_kind(self) -> TaskStepConfig:
         kinds = [
-            self.repository_search is not None,
+            self.select_evidence is not None,
             self.research_agent is not None,
         ]
         if sum(kinds) != 1:
             raise ValueError("each step must define exactly one supported step kind")
-        if self.repository_search is not None:
-            assert self.repository_search.kind == "repository_search"
+        if self.select_evidence is not None:
+            assert self.select_evidence.kind == "select_evidence"
         if self.research_agent is not None:
             assert self.research_agent.kind == "research_agent"
         return self
@@ -194,8 +204,8 @@ class TaskStepConfig(BaseModel):
 
     @property
     def kind(self) -> str:
-        if self.repository_search is not None:
-            return "repository_search"
+        if self.select_evidence is not None:
+            return "select_evidence"
         return "research_agent"
 
 
@@ -303,10 +313,10 @@ class TaskConfiguration(BaseModel):
                     referenced = next(
                         item for item in task.steps if item.id == condition.step
                     )
-                    if referenced.repository_search is None:
+                    if referenced.select_evidence is None:
                         raise ValueError(
                             f"step {step.id} condition may inspect only a "
-                            "repository search result"
+                            "Evidence Selection result"
                         )
                 if (
                     step.research_agent is not None
@@ -319,9 +329,9 @@ class TaskConfiguration(BaseModel):
                     source_kind = self._referenced_step_kind(
                         task, step.research_agent.input
                     )
-                    if source_kind != "repository_search":
+                    if source_kind != "select_evidence":
                         raise ValueError(
-                            f"step {step.id} input must reference a repository search"
+                            f"step {step.id} input must reference Evidence Selection"
                         )
                     source_step = next(
                         item

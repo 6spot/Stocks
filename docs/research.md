@@ -103,6 +103,8 @@ evidence_package:
 
 以上为**格式示例，非实际采集与运行结果**。实际包还应保存研究输入引用、数据版本及运行配置的稳定快照；正文片段可通过持久 Chunk 引用获得，避免重复存储全文。表与 JSONB 如何组织属于实现选择，不要求为 Evidence Package 新建独立物理表。包内的筛选统计来自实际查询过程，不允许 Agent 虚构补齐。
 
+V0 当前实现使用每次 Run 一份持久 Evidence Package：保存 objective、`run.scope`、`as_of`、规则版本、预算、每条实际 Query 及角色（`direct | background`）、所选 Chunk 的 Document/parse batch 版本与原始位置、选择理由、索引覆盖和缺口。有界语义查询无法得知候选总数时，`candidates_discovered` 与 `unexamined_count` 为 `null`；每条 Query 单独记录返回数、截断和缺口。直接资料与背景资料分开查询及标记，不要求 Scope 全部维度同时 AND。包通过持久 Chunk 引用读取正文，不复制整篇原文。
+
 ### Agent 补充检索与故障边界
 
 本节授权外部补证从 V2 起适用；V0/V1 的研究只使用已保存的 Repository 资料。
@@ -154,3 +156,5 @@ Research Agent 从去重后的 Evidence Package 形成 Analysis，再生成 Repo
 **Report 保存：** 标题、研究范围、时间、可阅读正文/章节、真实数据引用和必要的来源/版本。市场、行业和个股共用报告契约，不强制固定栏目；无显著变化时可以如实说明。将原始数据、媒体观点与模型推断明确区分，资料缺失或冲突时直接说明，不能自动宣称“已核实”。
 
 报告在成功保存后可被后续 Task 参考，失败不覆盖最后成功报告；V2 的历史报告对照可以从简单比较开始，不为复杂关系提前建表或设计 UI。图表如需生成，数字必须来自 Repository 实际记录，而非 LLM 虚构。
+
+V0 当前实现要求每个 finding 明确标记为 `fact`、`source_opinion` 或 `model_inference`，至少引用一个本轮 Evidence Package 中选中的持久 Chunk，并保存理由与不确定性。输出结构和引用在模型调用内校验；非法引用按 Research Agent 路由有限重试或回退，最终仍非法则 Run/Step 失败，不静默写报告。Analysis 与由其确定性生成的 Markdown Report 在同一成功事务中保存；下游失败保留 Evidence Package 和此前成功的 Analysis/Report。新 Document 版本不会改变旧报告记录的 Document/Chunk 版本与原件。

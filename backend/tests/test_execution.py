@@ -5,7 +5,7 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime
 from pathlib import Path
 from threading import Barrier, Lock
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import httpx
 import pytest
@@ -36,8 +36,16 @@ from stocks.providers import (
     ModelTarget,
 )
 from stocks.models import (
+    Analysis,
     Base,
+    Document,
+    DocumentChunk,
+    DocumentParseBatch,
+    DocumentParseState,
+    EvidencePackage,
     ModelCall,
+    Report,
+    Source,
     TaskDefinition,
     TaskRun,
     TaskStepResult,
@@ -120,10 +128,10 @@ tasks:
     scope: {{topics: [macro]}}
     steps:
       - id: evidence
-        repository_search:
-          kind: repository_search
-          query: inflation
-          limit: 2
+        select_evidence:
+          kind: select_evidence
+          queries: [inflation, macro policy]
+          limit_per_query: 2
       - id: research
 {condition_yaml}
         research_agent:
@@ -138,7 +146,7 @@ agents:
     input_schema:
       type: object
       additionalProperties: false
-      required: [run_id, objective, strategy, scope, evidence, coverage, truncated]
+      required: [run_id, objective, strategy, scope, as_of, evidence_package_id, evidence, coverage, truncated]
       properties:
         run_id: {{type: string}}
         objective: {{type: string}}
@@ -147,6 +155,8 @@ agents:
             - {{type: string}}
             - {{type: "null"}}
         scope: {{type: object, additionalProperties: true}}
+        as_of: {{type: string}}
+        evidence_package_id: {{type: string}}
         evidence:
           type: array
           items: {{type: object, additionalProperties: true}}
@@ -158,7 +168,27 @@ agents:
       required: [summary, findings, open_questions, evidence_refs]
       properties:
         summary: {{type: string}}
-        findings: {{type: array, items: {{type: string}}}}
+        findings:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required: [kind, statement, rationale, uncertainty, evidence_refs]
+            properties:
+              kind: {{type: string}}
+              statement: {{type: string}}
+              rationale: {{type: string}}
+              uncertainty: {{type: string}}
+              evidence_refs:
+                type: array
+                minItems: 1
+                items:
+                  type: object
+                  additionalProperties: false
+                  required: [chunk_id, document_id]
+                  properties:
+                    chunk_id: {{type: string}}
+                    document_id: {{type: string}}
         open_questions: {{type: array, items: {{type: string}}}}
         evidence_refs:
           type: array
@@ -181,12 +211,16 @@ def test_config_accepts_bounded_source_filters(tmp_path):
         valid = stream.read()
     path.write_text(
         valid.replace(
-            "query: inflation\n          limit: 2",
-            "query: inflation\n          limit: 2\n          source_ids: [sec, media]",
+            "queries: [inflation, macro policy]\n          limit_per_query: 2",
+            (
+                "queries: [inflation, macro policy]\n"
+                "          limit_per_query: 2\n"
+                "          source_ids: [sec, media]"
+            ),
         ),
         encoding="utf-8",
     )
-    search = load_task_configuration(path).tasks[0].steps[0].repository_search
+    search = load_task_configuration(path).tasks[0].steps[0].select_evidence
     assert search is not None
     assert search.source_ids == ["sec", "media"]
 
@@ -197,10 +231,10 @@ def test_config_rejects_duplicate_source_filters(tmp_path):
         valid = stream.read()
     path.write_text(
         valid.replace(
-            "query: inflation\n          limit: 2",
+            "queries: [inflation, macro policy]\n          limit_per_query: 2",
             (
-                "query: inflation\n"
-                "          limit: 2\n"
+                "queries: [inflation, macro policy]\n"
+                "          limit_per_query: 2\n"
                 "          source_ids: [sec, sec]"
             ),
         ),
@@ -351,7 +385,7 @@ def test_condition_evaluation_uses_only_whitelisted_values(field, value, matches
         run_id=uuid4(),
         step_id="evidence",
         position=0,
-        step_type="repository_search",
+        step_type="select_evidence",
         status="succeeded",
         output={"items": [], "truncated": False},
         evidence_refs=[],
@@ -379,9 +413,9 @@ tasks:
     scope: {topics: [x]}
     steps:
       - id: same
-        repository_search: {kind: repository_search, query: one}
+        select_evidence: {kind: select_evidence, queries: [one]}
       - id: same
-        repository_search: {kind: repository_search, query: two}
+        select_evidence: {kind: select_evidence, queries: [two]}
     unexpected: true
 agents: []
 """,
@@ -405,7 +439,7 @@ tasks:
     scope: {topics: [x]}
     steps:
       - id: evidence
-        repository_search: {kind: repository_search, query: one}
+        select_evidence: {kind: select_evidence, queries: [one]}
 agents: []
 """,
         encoding="utf-8",
@@ -443,7 +477,7 @@ tasks:
     scope: {topics: [x]}
     steps:
       - id: evidence
-        repository_search: {kind: repository_search, query: one}
+        select_evidence: {kind: select_evidence, queries: [one]}
 agents: []
 """,
         encoding="utf-8",
@@ -503,7 +537,7 @@ def test_condition_whitelist_skips_later_step(tmp_path):
         run_id=uuid4(),
         step_id="evidence",
         position=0,
-        step_type="repository_search",
+        step_type="select_evidence",
         status="succeeded",
         output={"items": []},
         evidence_refs=[],
@@ -550,7 +584,20 @@ def _mock_transport(output_content: str | None = None, statuses=None):
         content = output_content or json.dumps(
             {
                 "summary": "summary",
-                "findings": ["finding"],
+                "findings": [
+                    {
+                        "kind": "fact",
+                        "statement": "finding",
+                        "rationale": "selected evidence supports it",
+                        "uncertainty": "low",
+                        "evidence_refs": [
+                            {
+                                "chunk_id": chunk_id,
+                                "document_id": document_id,
+                            }
+                        ],
+                    }
+                ],
                 "open_questions": [],
                 "evidence_refs": [
                     {"chunk_id": chunk_id, "document_id": document_id}
@@ -572,6 +619,135 @@ def _mock_transport(output_content: str | None = None, statuses=None):
         )
 
     return httpx.MockTransport(handler)
+
+
+EVIDENCE_CHUNK_ID = "00000000-0000-0000-0000-000000000001"
+EVIDENCE_DOCUMENT_ID = "00000000-0000-0000-0000-000000000002"
+EVIDENCE_BATCH_ID = "00000000-0000-0000-0000-000000000003"
+
+
+def _add_saved_evidence(session):
+    """Persist one Document version with a single current Chunk."""
+    session.add(
+        Source(
+            id="sec",
+            name="SEC",
+            connector="rss",
+            publisher="SEC",
+            trust_tier="T1",
+        )
+    )
+    session.flush()
+    document = Document(
+        id=UUID(EVIDENCE_DOCUMENT_ID),
+        source_id="sec",
+        dedupe_key="doc-1",
+        version=1,
+        title="Evidence",
+        collected_at=datetime.now(UTC),
+        completeness="complete",
+        content_type="text/plain",
+        content_size=1,
+        content_hash="a" * 64,
+        snapshot_key="snapshot",
+        trust_tier_snapshot="T1",
+    )
+    session.add(document)
+    session.flush()
+    batch = DocumentParseBatch(
+        id=UUID(EVIDENCE_BATCH_ID),
+        document_id=document.id,
+        processor_version="test",
+        config_fingerprint="f" * 64,
+        content_hash=document.content_hash,
+        attempt_number=1,
+        status="completed",
+        chunk_count=1,
+        created_at=datetime.now(UTC),
+    )
+    session.add(batch)
+    session.flush()
+    session.add(
+        DocumentChunk(
+            id=UUID(EVIDENCE_CHUNK_ID),
+            document_id=document.id,
+            parse_batch_id=batch.id,
+            position=0,
+            text="Evidence",
+            locator={},
+        )
+    )
+    session.add(
+        DocumentParseState(
+            document_id=document.id,
+            status="completed",
+            processor_version="test",
+            config_fingerprint="f" * 64,
+            latest_batch_id=batch.id,
+            current_batch_id=batch.id,
+            chunk_count=1,
+            attempted_at=datetime.now(UTC),
+        )
+    )
+    session.commit()
+
+
+def _evidence_selection_result(
+    session,
+    run,
+    *,
+    selected_chunks: list[dict],
+    gaps: list[str],
+):
+    """Stand in for Evidence Selection, persisting the package for this Run."""
+    package = EvidencePackage(
+        run_id=run.id,
+        objective=run.objective,
+        scope=run.scope,
+        as_of=run.created_at,
+        selection_policy_version="test",
+        selection_budget={"max_tokens": 1000},
+        queries=[],
+        selected_chunks=selected_chunks,
+        coverage={"gaps": gaps},
+        candidates_discovered=None,
+        candidates_screened=len(selected_chunks),
+        selected_count=len(selected_chunks),
+        unexamined_count=None,
+        retrieval_truncated=False,
+        created_at=run.created_at,
+    )
+    session.add(package)
+    session.commit()
+    output = {
+        "evidence_package_id": str(package.id),
+        "items": selected_chunks,
+        "coverage": package.coverage,
+        "truncated": False,
+    }
+    refs = [
+        {
+            "chunk_id": item["chunk_id"],
+            "document_id": item["document_id"],
+            "parse_batch_id": item["parse_batch_id"],
+            "document_version": item["document_version"],
+            "source_id": item["source_id"],
+            "position": item["position"],
+        }
+        for item in selected_chunks
+    ]
+    return output, refs
+
+
+def _selected_evidence_chunk():
+    return {
+        "chunk_id": EVIDENCE_CHUNK_ID,
+        "document_id": EVIDENCE_DOCUMENT_ID,
+        "parse_batch_id": EVIDENCE_BATCH_ID,
+        "document_version": 1,
+        "source_id": "sec",
+        "position": 0,
+    }
 
 
 def test_active_run_is_atomic_and_new_run_after_completion(engine, tmp_path):
@@ -810,43 +986,29 @@ def test_successful_run_persists_snapshot_steps_and_never_overwrites_success(
             )
         )
 
+        _add_saved_evidence(session)
+        selected_chunk = _selected_evidence_chunk()
+
         def fake_search(
             session,
             settings,
             config_path,
             step,
             *,
+            run,
             model_snapshot=None,
             model_transport=None,
             embed=None,
         ):
-            return (
-                {
-                    "items": [
-                        {
-                            "chunk_id": "00000000-0000-0000-0000-000000000001",
-                            "document_id": "00000000-0000-0000-0000-000000000002",
-                            "parse_batch_id": "00000000-0000-0000-0000-000000000003",
-                            "version": 1,
-                            "source_id": "sec",
-                        }
-                    ],
-                    "coverage": {},
-                    "truncated": False,
-                },
-                [
-                    {
-                        "chunk_id": "00000000-0000-0000-0000-000000000001",
-                        "document_id": "00000000-0000-0000-0000-000000000002",
-                        "parse_batch_id": "00000000-0000-0000-0000-000000000003",
-                        "version": 1,
-                        "source_id": "sec",
-                    }
-                ],
+            return _evidence_selection_result(
+                session,
+                run,
+                selected_chunks=[selected_chunk],
+                gaps=[],
             )
 
-        original_search = execution_service._run_search
-        execution_service._run_search = fake_search
+        original_search = execution_service._run_evidence_selection
+        execution_service._run_evidence_selection = fake_search
         try:
             completed = execute_claimed_run(
                 ExecutionContext(
@@ -859,7 +1021,7 @@ def test_successful_run_persists_snapshot_steps_and_never_overwrites_success(
                 process_token=PROCESS_A,
             )
         finally:
-            execution_service._run_search = original_search
+            execution_service._run_evidence_selection = original_search
         assert completed.status == "succeeded"
         assert completed.model_snapshot
         assert {
@@ -874,15 +1036,22 @@ def test_successful_run_persists_snapshot_steps_and_never_overwrites_success(
             .order_by(TaskStepResult.position)
         ).all()
         assert [result.status for result in results] == ["succeeded", "succeeded"]
-        assert results[1].evidence_refs == [
-            {
-                "chunk_id": "00000000-0000-0000-0000-000000000001",
-                "document_id": "00000000-0000-0000-0000-000000000002",
-                "parse_batch_id": "00000000-0000-0000-0000-000000000003",
-                "version": 1,
-                "source_id": "sec",
-            }
-        ]
+        assert results[1].evidence_refs == [selected_chunk]
+        package = session.scalar(
+            select(EvidencePackage).where(EvidencePackage.run_id == run_id)
+        )
+        analysis = session.scalar(
+            select(Analysis).where(Analysis.run_id == run_id)
+        )
+        report = session.scalar(select(Report).where(Report.run_id == run_id))
+        assert package is not None and analysis is not None and report is not None
+        assert analysis.evidence_package_id == package.id
+        assert report.analysis_id == analysis.id
+        assert report.content.startswith("# Brief\n")
+        assert selected_chunk["document_id"] in report.content
+        assert selected_chunk["chunk_id"] in report.content
+        assert completed.output["analysis_id"] == str(analysis.id)
+        assert completed.output["report_id"] == str(report.id)
         calls = session.scalars(
             select(ModelCall).where(ModelCall.run_id == run_id)
         ).all()
@@ -956,11 +1125,16 @@ def test_empty_evidence_fails_without_overwriting_success(engine, tmp_path):
             process_token=PROCESS_A,
         )
 
-        original_search = execution_service._run_search
-        execution_service._run_search = lambda *args, **kwargs: (
-            {"items": [], "coverage": {}, "truncated": False},
-            [],
-        )
+        def empty_evidence(session, settings, config_path, step, *, run, **kwargs):
+            return _evidence_selection_result(
+                session,
+                run,
+                selected_chunks=[],
+                gaps=["no_selected_evidence"],
+            )
+
+        original_search = execution_service._run_evidence_selection
+        execution_service._run_evidence_selection = empty_evidence
         try:
             completed = execute_claimed_run(
                 ExecutionContext(
@@ -972,7 +1146,7 @@ def test_empty_evidence_fails_without_overwriting_success(engine, tmp_path):
                 process_token=PROCESS_A,
             )
         finally:
-            execution_service._run_search = original_search
+            execution_service._run_evidence_selection = original_search
 
         assert completed.status == "failed"
         assert completed.output is None
@@ -1008,11 +1182,16 @@ def test_skipped_step_is_persisted(engine, tmp_path):
             claimed.run.id,
             process_token=PROCESS_A,
         )
-        original_search = execution_service._run_search
-        execution_service._run_search = lambda *args, **kwargs: (
-            {"items": [], "coverage": {}, "truncated": False},
-            [],
-        )
+        def empty_evidence(session, settings, config_path, step, *, run, **kwargs):
+            return _evidence_selection_result(
+                session,
+                run,
+                selected_chunks=[],
+                gaps=["no_selected_evidence"],
+            )
+
+        original_search = execution_service._run_evidence_selection
+        execution_service._run_evidence_selection = empty_evidence
         try:
             completed = execute_claimed_run(
                 ExecutionContext(
@@ -1024,7 +1203,7 @@ def test_skipped_step_is_persisted(engine, tmp_path):
                 process_token=PROCESS_A,
             )
         finally:
-            execution_service._run_search = original_search
+            execution_service._run_evidence_selection = original_search
         results = session.scalars(
             select(TaskStepResult).where(TaskStepResult.run_id == completed.id)
         ).all()
@@ -1033,6 +1212,143 @@ def test_skipped_step_is_persisted(engine, tmp_path):
             "evidence": "succeeded",
             "research": "skipped",
         }
+
+
+def test_fabricated_citation_fails_and_keeps_package_and_previous_report(
+    engine, tmp_path
+):
+    config = _make_task_config(tmp_path)
+    task = config.tasks[0]
+    models_path = write_models_config(tmp_path)
+    fabricated = json.dumps(
+        {
+            "summary": "invented",
+            "findings": [
+                {
+                    "kind": "fact",
+                    "statement": "an unsourced claim",
+                    "rationale": "no selected evidence",
+                    "uncertainty": "high",
+                    "evidence_refs": [
+                        {
+                            "chunk_id": str(uuid4()),
+                            "document_id": str(uuid4()),
+                        }
+                    ],
+                }
+            ],
+            "open_questions": [],
+            "evidence_refs": [
+                {"chunk_id": str(uuid4()), "document_id": str(uuid4())}
+            ],
+        }
+    )
+
+    with Session(engine) as session:
+        previous = create_or_get_run(session, task, list(config.agents), config_path=models_path)
+        previous_id = previous.run.id
+        previous.run.status = "succeeded"
+        previous.run.process_token = None
+        previous.run.output = {"summary": "last success"}
+        previous.run.finished_at = datetime.now(UTC)
+        session.commit()
+        earlier_package = EvidencePackage(
+            run_id=previous_id,
+            objective=task.objective,
+            scope=task.scope,
+            as_of=previous.run.created_at,
+            selection_policy_version="test",
+            selection_budget={"max_tokens": 1000},
+            queries=[],
+            selected_chunks=[],
+            coverage={"gaps": []},
+            candidates_discovered=0,
+            candidates_screened=0,
+            selected_count=0,
+            unexamined_count=0,
+            retrieval_truncated=False,
+            created_at=previous.run.created_at,
+        )
+        session.add(earlier_package)
+        session.flush()
+        earlier_analysis = Analysis(
+            run_id=previous_id,
+            evidence_package_id=earlier_package.id,
+            summary="earlier analysis",
+            findings=[],
+            open_questions=[],
+            evidence_refs=[],
+            coverage={"gaps": []},
+            created_at=datetime.now(UTC),
+        )
+        session.add(earlier_analysis)
+        session.flush()
+        session.add(
+            Report(
+                run_id=previous_id,
+                analysis_id=earlier_analysis.id,
+                task_id=task.id,
+                title="Earlier report",
+                content="# Earlier report\n",
+                created_at=datetime.now(UTC),
+            )
+        )
+        session.commit()
+
+        claimed = create_or_get_run(session, task, list(config.agents), config_path=models_path)
+        assert claim_run(session, claimed.run.id, process_token=PROCESS_A)
+        _add_saved_evidence(session)
+        selected_chunks = [_selected_evidence_chunk()]
+
+        def fake_search(session, settings, config_path, step, *, run, **kwargs):
+            return _evidence_selection_result(
+                session,
+                run,
+                selected_chunks=selected_chunks,
+                gaps=[],
+            )
+
+        original_search = execution_service._run_evidence_selection
+        execution_service._run_evidence_selection = fake_search
+        try:
+            completed = execute_claimed_run(
+                ExecutionContext(
+                    session=session,
+                    settings=make_config(),
+                    config_path=str(models_path),
+                    model_transport=_mock_transport(fabricated, statuses=[200] * 4),
+                ),
+                claimed.run.id,
+                process_token=PROCESS_A,
+            )
+        finally:
+            execution_service._run_evidence_selection = original_search
+
+        assert completed.status == "failed"
+        assert completed.output is None
+        step = session.scalar(
+            select(TaskStepResult).where(
+                TaskStepResult.run_id == completed.id,
+                TaskStepResult.step_id == "research",
+            )
+        )
+        assert step.status == "failed"
+        assert step.error["code"] == "MODEL_RESPONSE_INVALID"
+        # The Evidence Package stays reviewable and no report is written or swapped.
+        package = session.scalar(
+            select(EvidencePackage).where(EvidencePackage.run_id == completed.id)
+        )
+        assert package is not None
+        assert package.selected_count == 1
+        assert session.scalar(
+            select(Analysis).where(Analysis.run_id == completed.id)
+        ) is None
+        assert session.scalar(
+            select(Report).where(Report.run_id == completed.id)
+        ) is None
+        earlier = session.get(TaskRun, previous_id)
+        assert earlier.output == {"summary": "last success"}
+        assert session.scalar(select(Report).where(Report.run_id == previous_id)) is not None
 
 
 def test_model_calls_never_persist_credentials(engine):

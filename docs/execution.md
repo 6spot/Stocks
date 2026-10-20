@@ -24,7 +24,7 @@ Task 属性：
 
 研究的取材、游标、分析与报告共用 `run.scope`，步骤不再另定义一份研究范围；补充查询可带具体检索条件以查找直接资料或相关背景，但不能修改 Run 的研究范围。采集轮询由采集 Task 的 `trigger` 唯一调度，Source 只保存获取参数和可选更新预期，不另设第二个调度入口。
 
-**V0 已实现的手动研究子集：** YAML 只接受 `repository_search` 与 `research_agent` 两种步骤，研究 Task 的最后一个步骤必须是 `research_agent`。`repository_search` 读取已保存的当前 Chunk 和检索结果，可选 `source_ids` 最多 20 个且必须去重；不配置时查询全部来源。`research_agent` 只接收该 Run 内前序搜索结果；`tools` 必须为空，不执行外部 Tool/MCP。`when` 只允许引用更早的 `repository_search` 结果，并仅支持以下白名单判断：
+**V0 已实现的手动研究子集：** YAML 只接受 `select_evidence` 与 `research_agent` 两种步骤，研究 Task 的最后一个步骤必须是 `research_agent`。`select_evidence` 从已保存的当前 Chunk 中生成并持久化 Evidence Package；可配置最多 8 条 `queries`、每条候选上限 `limit_per_query`、总估算 Token 预算 `max_tokens`，以及最多 20 个去重的 `source_ids`。未配置 `queries` 时按 `run.scope` 生成直接研究和背景查询。`research_agent` 只接收该 Run 已保存的 Evidence Package；成功结果在同一事务中保存 Analysis 与 Report；`tools` 必须为空，不执行外部 Tool/MCP。`when` 只允许引用更早的 `select_evidence` 结果，并仅支持以下白名单判断：
 
 | `op` | 允许的 `field` | 语义 |
 | --- | --- | --- |
@@ -44,6 +44,12 @@ StepResult:
   usage: tokens, duration, cost (where available)
   error: structured error | null
 ~~~
+
+V0 `EvidencePackage` 的持久字段为：Run、objective、scope、`as_of`、`selection_policy_version`、selection budget、实际执行的 queries、所选持久 Chunk 的 Document/Chunk/parse batch 版本、选择角色与理由、候选/筛选/选中/未检查数量和索引覆盖。候选总数无法从当前有界查询确定时为 `null`，不得填零；每条 Query 单独记录截断及缺口原因。
+
+StepResult、Analysis 与 finding 保存的证据引用只保留可回查的身份字段：`chunk_id`、`document_id`、`parse_batch_id`、`document_version`、`source_id`、`position`。正文、标题、定位器与来源时间通过该引用从 Repository 读取，不在运行结果里复制原文，避免同一份证据随 Run、Analysis 与 Report 重复堆积。
+
+`Analysis` 按 Run 保存 summary、结构化 findings、open questions、实际证据引用与覆盖缺口；每个 finding 的 `kind` 为 `fact | source_opinion | model_inference`，并至少包含一个所选 Chunk 引用、理由与不确定性。`Report` 由已保存 Analysis 确定性生成可阅读 Markdown。引用在保存 Analysis 前再次匹配持久 Document 版本、Chunk 和 parse batch；非法引用按模型响应错误有限重试，最终失败不写入或替换 Analysis/Report。同一 Run 已有 Evidence Package 时重试沿用该快照。
 
 按任务记录配置/策略/模型/提示词快照，便于解释历史研究结果。Task 使用独立运行记录，Worker 与 Web API 分进程；待执行记录及任务运行占用保存在 PostgreSQL。外部调用需有超时、有限重试和幂等键。原始资料及处理状态成功持久化后，Worker 才处理相应待办步骤；这不触发逐篇研究，综合研究仍由自身的 manual/schedule 触发。
 

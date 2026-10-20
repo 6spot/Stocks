@@ -11,10 +11,13 @@ tasks:
       topics: [macro, policy, market_sentiment]
     steps:
       - id: evidence
-        repository_search:
-          kind: repository_search
-          query: recent US macro policy and market sentiment evidence
-          limit: 8
+        select_evidence:
+          kind: select_evidence
+          queries:
+            - recent US macro policy and market sentiment evidence
+            - US Federal Reserve inflation policy developments
+          limit_per_query: 8
+          max_tokens: 30000
       - id: research
         research_agent:
           kind: research_agent
@@ -31,10 +34,10 @@ tasks:
       topics: [condition_example]
     steps:
       - id: evidence
-        repository_search:
-          kind: repository_search
-          query: deliberately unmatched manual condition example
-          limit: 1
+        select_evidence:
+          kind: select_evidence
+          queries: [deliberately unmatched manual condition example]
+          limit_per_query: 1
           source_ids: [__example_missing_saved_source__]
       - id: research
         when:
@@ -56,10 +59,10 @@ tasks:
       topics: [failure_example]
     steps:
       - id: evidence
-        repository_search:
-          kind: repository_search
-          query: deliberately unavailable evidence failure example
-          limit: 1
+        select_evidence:
+          kind: select_evidence
+          queries: [deliberately unavailable evidence failure example]
+          limit_per_query: 1
           source_ids: [__example_missing_saved_source__]
       - id: research
         research_agent:
@@ -72,14 +75,15 @@ agents:
     role: Research writer
     prompt: >-
       Analyze only the supplied saved evidence. Distinguish facts from
-      interpretation, mention coverage gaps, and return concise structured
-      findings with the exact evidence references used.
+      source opinions and model inference. Mention coverage gaps, and return
+      concise structured findings with the exact evidence references used by
+      each finding.
     model_ref: research
     tools: []
     input_schema:
       type: object
       additionalProperties: false
-      required: [run_id, objective, strategy, scope, evidence, coverage, truncated]
+      required: [run_id, objective, strategy, scope, as_of, evidence_package_id, evidence, coverage, truncated]
       properties:
         run_id:
           type: string
@@ -92,6 +96,10 @@ agents:
         scope:
           type: object
           additionalProperties: true
+        as_of:
+          type: string
+        evidence_package_id:
+          type: string
         evidence:
           type: array
           minItems: 1
@@ -114,7 +122,31 @@ agents:
         findings:
           type: array
           items:
-            type: string
+            type: object
+            additionalProperties: false
+            required: [kind, statement, rationale, uncertainty, evidence_refs]
+            properties:
+              kind:
+                type: string
+                enum: [fact, source_opinion, model_inference]
+              statement:
+                type: string
+              rationale:
+                type: string
+              uncertainty:
+                type: string
+              evidence_refs:
+                type: array
+                minItems: 1
+                items:
+                  type: object
+                  additionalProperties: false
+                  required: [chunk_id, document_id]
+                  properties:
+                    chunk_id:
+                      type: string
+                    document_id:
+                      type: string
         open_questions:
           type: array
           items:

@@ -21,7 +21,15 @@ from stocks.execution.config import (
     snapshot_hash,
     snapshot_payload,
 )
-from stocks.models import ModelCall, TaskDefinition, TaskRun, TaskStepResult
+from stocks.models import (
+    Analysis,
+    EvidencePackage,
+    ModelCall,
+    Report,
+    TaskDefinition,
+    TaskRun,
+    TaskStepResult,
+)
 from stocks.providers import (
     ChatRouting,
     EmbeddingError,
@@ -35,8 +43,14 @@ from stocks.providers import (
     load_embedding_targets,
     model_route_snapshot,
 )
-from stocks.repository import SearchFilters, SearchHit
-from stocks.search.service import semantic_search
+from stocks.research.service import (
+    durable_evidence_ref,
+    parse_agent_output,
+    render_report,
+    select_evidence,
+    validate_analysis_content,
+    validate_selected_versions,
+)
 from stocks.settings import Settings
 
 
@@ -114,7 +128,7 @@ def create_or_get_run(
                     model_ref=agent.model_ref,
                 )
             if any(
-                step.repository_search is not None for step in task.steps
+                step.select_evidence is not None for step in task.steps
             ):
                 model_snapshot["embedding"] = embedding_route_snapshot(
                     load_embedding_targets(config_path)
@@ -410,16 +424,30 @@ def execute_claimed_run(
                 results[step.id] = result
                 continue
             try:
-                if step.repository_search is not None:
-                    output, evidence_refs = _run_search(
-                        session,
-                        context.settings,
-                        context.config_path,
-                        step,
-                        model_snapshot=run.model_snapshot.get("embedding"),
-                        model_transport=context.model_transport,
-                        embed=embed,
+                saved_results: tuple[Any, ...] = ()
+                if step.select_evidence is not None:
+                    existing_package = session.scalar(
+                        select(EvidencePackage).where(
+                            EvidencePackage.run_id == run.id
+                        )
                     )
+                    if existing_package is None:
+                        output, evidence_refs = _run_evidence_selection(
+                            session,
+                            context.settings,
+                            context.config_path,
+                            step,
+                            run=run,
+                            model_snapshot=run.model_snapshot.get("embedding"),
+                            model_transport=context.model_transport,
+                            embed=embed,
+                        )
+                    else:
+                        output = _evidence_package_output(existing_package)
+                        evidence_refs = [
+                            durable_evidence_ref(item)
+                            for item in existing_package.selected_chunks
+                        ]
                     usage = {}
                 else:
                     agent_step = step.research_agent
@@ -441,6 +469,12 @@ def execute_claimed_run(
                         context.config_path,
                         model_snapshot=run.model_snapshot,
                         model_transport=context.model_transport,
+                    )
+                    saved_results = _analysis_and_report(
+                        session,
+                        run,
+                        task,
+                        output,
                     )
             except _StepFailure as exc:
                 terminal_error = exc.to_dict()
@@ -510,6 +544,7 @@ def execute_claimed_run(
                 run,
                 step,
                 position,
+                additional=saved_results,
                 status="succeeded",
                 output=output,
                 evidence_refs=evidence_refs,
@@ -519,7 +554,7 @@ def execute_claimed_run(
             results[step.id] = result
 
         if terminal_error is None:
-            final_output = _final_output(task, results)
+            final_output = _final_output(session, run, task, results)
             _finish_run(
                 session,
                 run,
@@ -641,6 +676,7 @@ def _persist_step(
     evidence_refs: list[dict],
     usage: dict,
     error: dict | None,
+    additional: tuple[Any, ...] = (),
 ) -> TaskStepResult:
     result = TaskStepResult(
         run_id=run.id,
@@ -655,6 +691,8 @@ def _persist_step(
         created_at=_now(),
     )
     session.add(result)
+    for item in additional:
+        session.add(item)
     try:
         session.flush()
         result_id = result.id
@@ -696,18 +734,19 @@ def _evaluate_condition(
     return value != condition.value
 
 
-def _run_search(
+def _run_evidence_selection(
     session: Session,
     config: Settings,
     config_path: str,
     step: TaskStepConfig,
     *,
+    run: TaskRun,
     model_snapshot: dict | None,
     model_transport=None,
     embed=None,
 ) -> tuple[dict, list[dict]]:
-    search = step.repository_search
-    assert search is not None
+    selection = step.select_evidence
+    assert selection is not None
     targets = _embedding_targets_from_snapshot(
         config_path,
         model_snapshot,
@@ -722,32 +761,47 @@ def _run_search(
         from stocks.indexing.service import embed_texts
 
         search_embed = embed_texts
-    result = semantic_search(
-        session,
-        config,
-        targets,
-        client,
-        search.query,
-        filters=SearchFilters(source_ids=tuple(search.source_ids)),
-        limit=search.limit,
-        embed=search_embed,
-    )
-    hits = list(result.hits)
-    refs = [_evidence_ref(hit) for hit in hits]
-    coverage = result.coverage
-    output = {
-        "items": _compact_hits(hits),
-        "coverage": {
-            "current_documents": coverage.current_documents,
-            "indexed_documents": coverage.indexed_documents,
-            "failed_documents": coverage.failed_documents,
-            "current_chunks": coverage.current_chunks,
-            "indexed_chunks": coverage.indexed_chunks,
-            "unindexed_chunks": coverage.unindexed_chunks,
-        },
-        "truncated": result.truncated,
+    try:
+        package_result = select_evidence(
+            session,
+            config,
+            targets,
+            client,
+            run_id=run.id,
+            objective=run.objective,
+            scope=run.scope,
+            as_of=run.created_at,
+            queries=selection.queries,
+            limit_per_query=selection.limit_per_query,
+            source_ids=tuple(selection.source_ids),
+            max_tokens=selection.max_tokens,
+            embed=search_embed,
+        )
+    except EmbeddingError:
+        raise
+    except ValueError as exc:
+        raise _StepFailure(
+            "EVIDENCE_SELECTION_FAILED",
+            "Evidence Selection could not query saved Chunks",
+        ) from exc
+    package = package_result.package
+    refs = list(package_result.refs)
+    return _evidence_package_output(package), refs
+
+
+def _evidence_package_output(package: EvidencePackage) -> dict:
+    return {
+        "evidence_package_id": str(package.id),
+        "objective": package.objective,
+        "scope": deepcopy(package.scope),
+        "as_of": package.as_of.isoformat(),
+        "selection_policy_version": package.selection_policy_version,
+        "selection_budget": deepcopy(package.selection_budget),
+        "queries": deepcopy(package.queries),
+        "items": deepcopy(package.selected_chunks),
+        "coverage": deepcopy(package.coverage),
+        "truncated": package.retrieval_truncated,
     }
-    return output, refs
 
 
 def _embedding_targets_from_snapshot(
@@ -757,7 +811,7 @@ def _embedding_targets_from_snapshot(
     if not isinstance(snapshot, dict):
         raise _StepFailure(
             "EMBEDDING_ROUTE_SNAPSHOT_UNAVAILABLE",
-            "Repository search routing snapshot is unavailable",
+            "Evidence Selection embedding routing snapshot is unavailable",
         )
     aliases = snapshot.get("aliases")
     raw_targets = snapshot.get("targets")
@@ -771,14 +825,14 @@ def _embedding_targets_from_snapshot(
     ):
         raise _StepFailure(
             "EMBEDDING_ROUTE_SNAPSHOT_INVALID",
-            "Repository search routing snapshot is invalid",
+            "Evidence Selection embedding routing snapshot is invalid",
         )
     try:
         configured = load_embedding_targets(config_path)
     except ValueError as exc:
         raise _StepFailure(
             "EMBEDDING_ROUTE_UNAVAILABLE",
-            "Repository search model configuration is unavailable",
+            "Evidence Selection model configuration is unavailable",
         ) from exc
     if configured.aliases != tuple(aliases):
         raise _StepFailure(
@@ -818,43 +872,6 @@ def _embedding_targets_from_snapshot(
             )
         selected.append(target)
     return EmbeddingTargets(aliases=tuple(aliases), targets=tuple(selected))
-
-
-def _compact_hits(hits: list[SearchHit]) -> list[dict]:
-    return [
-        {
-            "chunk_id": str(hit.chunk_id),
-            "document_id": str(hit.document_id),
-            "parse_batch_id": str(hit.parse_batch_id),
-            "title": hit.title,
-            "source_id": hit.source_id,
-            "version": hit.version,
-            "position": hit.position,
-            "text": hit.text,
-            "published_at": (
-                hit.published_at.isoformat() if hit.published_at else None
-            ),
-            "source_updated_at": (
-                hit.source_updated_at.isoformat()
-                if hit.source_updated_at
-                else None
-            ),
-            "collected_at": hit.collected_at.isoformat(),
-            "completeness": hit.completeness,
-            "similarity": hit.similarity,
-        }
-        for hit in hits
-    ]
-
-
-def _evidence_ref(hit: SearchHit) -> dict:
-    return {
-        "chunk_id": str(hit.chunk_id),
-        "document_id": str(hit.document_id),
-        "parse_batch_id": str(hit.parse_batch_id),
-        "version": hit.version,
-        "source_id": hit.source_id,
-    }
 
 
 def _snapshot_routing(
@@ -951,8 +968,37 @@ def _run_agent(
     model_transport=None,
 ) -> tuple[dict, list[dict], dict]:
     source_output = source_result.output or {}
-    evidence = source_output.get("items")
-    if not isinstance(evidence, list) or not evidence:
+    package_id = source_output.get("evidence_package_id")
+    if not isinstance(package_id, str):
+        raise _StepFailure(
+            "EVIDENCE_PACKAGE_UNAVAILABLE",
+            "Research Agent requires a persisted Evidence Package",
+        )
+    try:
+        package_uuid = UUID(package_id)
+    except ValueError as exc:
+        raise _StepFailure(
+            "EVIDENCE_PACKAGE_UNAVAILABLE",
+            "Research Agent Evidence Package reference is invalid",
+        ) from exc
+    package = session.get(EvidencePackage, package_uuid)
+    if package is None or package.run_id != run.id:
+        raise _StepFailure(
+            "EVIDENCE_PACKAGE_UNAVAILABLE",
+            "Research Agent Evidence Package was not found for this Run",
+        )
+    try:
+        allowed_refs = validate_selected_versions(
+            session,
+            package.selected_chunks,
+        )
+    except ValueError as exc:
+        raise _StepFailure(
+            "EVIDENCE_PACKAGE_INVALID",
+            "Evidence Package does not match saved Document and Chunk versions",
+        ) from exc
+    evidence = list(allowed_refs.values())
+    if not evidence:
         raise _StepFailure(
             "EVIDENCE_UNAVAILABLE",
             "Research Agent requires non-empty Repository evidence",
@@ -1032,6 +1078,8 @@ def _run_agent(
         "objective": run.objective,
         "strategy": run.strategy,
         "scope": deepcopy(run.scope),
+        "as_of": package.as_of.isoformat(),
+        "evidence_package_id": str(package.id),
         "evidence": evidence,
         "coverage": deepcopy(source_output.get("coverage")),
         "truncated": source_output.get("truncated", False),
@@ -1061,17 +1109,9 @@ def _run_agent(
             ),
         },
     ]
-    allowed_refs = _selected_evidence_refs(
-        evidence,
-        source_result.evidence_refs,
-    )
 
     def validate_content(content: str) -> None:
-        _parse_agent_output(
-            content,
-            agent.output_schema,
-            allowed_refs,
-        )
+        parse_agent_output(content, agent.output_schema, allowed_refs)
 
     try:
         response = asyncio.run(
@@ -1095,9 +1135,13 @@ def _run_agent(
         raise
     _persist_model_attempts(session, run, step, routing, targets, response.attempts)
     try:
-        output, refs = _parse_agent_output(
+        output, refs = parse_agent_output(
             response.content,
             agent.output_schema,
+            allowed_refs,
+        )
+        normalized_findings, normalized_open_questions = validate_analysis_content(
+            output,
             allowed_refs,
         )
     except (TypeError, ValueError) as exc:
@@ -1106,88 +1150,15 @@ def _run_agent(
             "Model response did not match the required schema",
             attempts=response.attempts,
         ) from exc
+    output["findings"] = normalized_findings
+    output["open_questions"] = normalized_open_questions
+    output["evidence_refs"] = refs
     usage = {
         **response.usage,
         "duration_ms": sum(attempt.duration_ms for attempt in response.attempts),
         "model_attempts": len(response.attempts),
     }
     return output, refs, usage
-
-
-def _parse_agent_output(
-    content: str,
-    schema: dict,
-    allowed_refs: dict[tuple[str, str], dict],
-) -> tuple[dict, list[dict]]:
-    try:
-        output = json.loads(content)
-    except json.JSONDecodeError as exc:
-        raise ValueError("Research output is not valid JSON") from exc
-    if not isinstance(output, dict):
-        raise ValueError("Research output must be an object")
-    _validate_json_schema(output, schema)
-    raw_refs = output.get("evidence_refs", [])
-    if not isinstance(raw_refs, list):
-        raise ValueError("Research output evidence_refs must be a list")
-    refs: list[dict] = []
-    seen_refs: set[tuple[str, str]] = set()
-    for ref in raw_refs:
-        if not isinstance(ref, dict):
-            raise ValueError("Research output contains an invalid evidence reference")
-        key = (ref.get("chunk_id"), ref.get("document_id"))
-        if key not in allowed_refs:
-            raise ValueError(
-                "Research output references evidence outside the selected input"
-            )
-        if key not in seen_refs:
-            refs.append(deepcopy(allowed_refs[key]))
-            seen_refs.add(key)
-    return output, refs
-
-
-def _selected_evidence_refs(
-    evidence: list,
-    source_refs: list[dict],
-) -> dict[tuple[str, str], dict]:
-    durable_fields = (
-        "chunk_id",
-        "document_id",
-        "parse_batch_id",
-        "version",
-        "source_id",
-    )
-    references: dict[tuple[str, str], dict] = {}
-    for item in evidence:
-        if not isinstance(item, dict):
-            continue
-        key = (
-            item.get("chunk_id"),
-            item.get("document_id"),
-        )
-        if not all(isinstance(value, str) for value in key):
-            continue
-        references[key] = {
-            field: deepcopy(item[field])
-            for field in durable_fields
-            if field in item
-        }
-    for item in source_refs:
-        if not isinstance(item, dict):
-            continue
-        key = (
-            item.get("chunk_id"),
-            item.get("document_id"),
-        )
-        if key not in references:
-            continue
-        references[key].update(
-            {
-                field: deepcopy(item[field])
-                for field in durable_fields
-                if field in item
-            }
-        )
-    return references
 
 
 def _persist_model_attempts(
@@ -1267,15 +1238,108 @@ def _usage_from_attempts(attempts) -> dict:
     }
 
 
+def _analysis_and_report(
+    session: Session,
+    run: TaskRun,
+    task: TaskConfig,
+    output: dict,
+) -> tuple[Any, ...]:
+    """Build the Analysis and its Report for this Run, or reject the output.
+
+    The rows are committed together with the succeeded StepResult so a Run
+    never records a Research Agent step as succeeded without its report.
+    """
+    existing_analysis = session.scalar(select(Analysis).where(Analysis.run_id == run.id))
+    if existing_analysis is not None:
+        existing_report = session.scalar(
+            select(Report).where(Report.run_id == run.id)
+        )
+        if existing_report is None:
+            raise _StepFailure(
+                "ANALYSIS_INCOMPLETE",
+                "Saved Analysis is missing its Report",
+            )
+        return (existing_analysis, existing_report)
+    package = session.scalar(
+        select(EvidencePackage).where(EvidencePackage.run_id == run.id)
+    )
+    if package is None:
+        raise _StepFailure(
+            "EVIDENCE_PACKAGE_UNAVAILABLE",
+            "Research output cannot be saved without an Evidence Package",
+        )
+    findings = output.get("findings")
+    open_questions = output.get("open_questions")
+    summary = output.get("summary")
+    evidence_refs = output.get("evidence_refs")
+    if (
+        not isinstance(summary, str)
+        or not summary.strip()
+        or not isinstance(findings, list)
+        or not isinstance(open_questions, list)
+        or not isinstance(evidence_refs, list)
+    ):
+        raise _StepFailure(
+            "ANALYSIS_INVALID",
+            "Research output cannot be converted into an Analysis",
+        )
+    created_at = _now()
+    analysis = Analysis(
+        run_id=run.id,
+        evidence_package_id=package.id,
+        summary=summary,
+        findings=deepcopy(findings),
+        open_questions=deepcopy(open_questions),
+        evidence_refs=deepcopy(evidence_refs),
+        coverage=deepcopy(package.coverage),
+        created_at=created_at,
+    )
+    # The Report references the Analysis id, which SQLAlchemy assigns on flush.
+    # Flushing here stays inside the transaction committed with the StepResult.
+    session.add(analysis)
+    session.flush()
+    report = Report(
+        run_id=run.id,
+        analysis_id=analysis.id,
+        task_id=task.id,
+        title=task.name,
+        content=render_report(
+            title=task.name,
+            objective=run.objective,
+            scope=run.scope,
+            as_of=package.as_of,
+            analysis=analysis,
+        ),
+        created_at=created_at,
+    )
+    return (analysis, report)
+
+
 def _final_output(
-    task: TaskConfig, results: dict[str, TaskStepResult]
+    session: Session,
+    run: TaskRun,
+    task: TaskConfig,
+    results: dict[str, TaskStepResult],
 ) -> dict:
     last = task.steps[-1]
     result = results.get(last.id)
-    return {
+    payload = {
         "step_id": last.id,
         "output": deepcopy(result.output) if result and result.output else None,
     }
+    if result is not None and result.status == "succeeded":
+        analysis = session.scalar(
+            select(Analysis).where(Analysis.run_id == run.id)
+        )
+        report = session.scalar(select(Report).where(Report.run_id == run.id))
+        if analysis is not None and report is not None:
+            payload.update(
+                {
+                    "analysis_id": str(analysis.id),
+                    "report_id": str(report.id),
+                }
+            )
+    return payload
 
 
 class _StepFailure(Exception):

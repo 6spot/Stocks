@@ -270,7 +270,7 @@ V0 的 Repository 查询 Document Chunk：使用 **pgvector 语义召回**，结
 
 **pgvector 是首版必备能力**：Document/Chunk 的 Embedding 记录模型标识和维度；查询使用兼容的向量模型与相应索引，不混合不同模型的向量距离结果。原始内容可读与向量可检索是两个状态，分类及抽取失败也不阻止向量索引任务。
 
-当前 `stocks.search` 提供两条读取路径。语义查询只为本次查询文本生成向量，通过当前模型和维度的 HNSW 余弦索引结合来源、发布时间或采集时间过滤，返回当前解析批次中的持久 Chunk、Document 版本、来源和相似度；精确查询只接受 64 字符以内的股票代码或指标编号形式，使用词边界正则在有界结果集中匹配已存 Chunk，不依赖 Embedding 或分类。两条路径都返回实际过滤条件和 `truncated`；语义查询还返回当前解析批次的向量索引覆盖，精确查询不需要 Provider 或向量空间，因此不报告由模型决定的向量覆盖。`truncated` 表示返回数量达到上限，未扫描数量在未知时保持未知；精确查询要求至少存在已解析的当前 Chunk。Document 命中后可用 `--chunk-id` 读取当前批次的相邻已存片段。当前未实现 `search_changes`、Evidence Selection 或公开证据 API。
+当前 `stocks.search` 提供两条读取路径。语义查询只为本次查询文本生成向量，通过当前模型和维度的 HNSW 余弦索引结合来源、发布时间或采集时间过滤，返回当前解析批次中的持久 Chunk、Document 版本、来源和相似度；精确查询只接受 64 字符以内的股票代码或指标编号形式，使用词边界正则在有界结果集中匹配已存 Chunk，不依赖 Embedding 或分类。两条路径都返回实际过滤条件和 `truncated`；语义查询还返回当前解析批次的向量索引覆盖，精确查询不需要 Provider 或向量空间，因此不报告由模型决定的向量覆盖。`truncated` 表示返回数量达到上限，未扫描数量在未知时保持未知；精确查询要求至少存在已解析的当前 Chunk。Document 命中后可用 `--chunk-id` 读取当前批次的相邻已存片段。`stocks.research.select_evidence` 基于这些结果形成持久 Evidence Package；当前尚未实现 `search_changes`、公开证据 API 或跨 Document/Fact 去重。
 
 Embedding 模型引用、维度及分块参数通过配置指定；首版使用一个当前模型及其对应向量索引即可。模型切换后的重建属于后台处理，完成前明确显示索引覆盖状态，不以无结果掩盖重建缺口。结构化 Fact 查询不以其是否已生成向量为前提。
 

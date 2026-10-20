@@ -3,6 +3,7 @@ from uuid import UUID, uuid4
 
 from pgvector.sqlalchemy import Vector
 from sqlalchemy import (
+    Boolean,
     CheckConstraint,
     DateTime,
     ForeignKey,
@@ -101,6 +102,106 @@ class TaskRun(Base):
     finished_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+
+
+class EvidencePackage(Base):
+    __tablename__ = "evidence_packages"
+    __table_args__ = (
+        UniqueConstraint("run_id", name="uq_evidence_packages_run"),
+        CheckConstraint(
+            "selection_policy_version ~ '^[A-Za-z0-9._-]+$'",
+            name="ck_evidence_packages_policy_version",
+        ),
+        CheckConstraint(
+            "(selection_budget ->> 'max_tokens')::integer > 0",
+            name="ck_evidence_packages_max_tokens",
+        ),
+        CheckConstraint(
+            "candidates_discovered IS NULL "
+            "OR candidates_discovered >= 0",
+            name="ck_evidence_packages_discovered",
+        ),
+        CheckConstraint(
+            "candidates_screened IS NULL "
+            "OR candidates_screened >= 0",
+            name="ck_evidence_packages_screened",
+        ),
+        CheckConstraint(
+            "selected_count >= 0",
+            name="ck_evidence_packages_selected_count",
+        ),
+        CheckConstraint(
+            "unexamined_count IS NULL OR unexamined_count >= 0",
+            name="ck_evidence_packages_unexamined_count",
+        ),
+    )
+    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, default=uuid4)
+    run_id: Mapped[UUID] = mapped_column(
+        ForeignKey("task_runs.id", ondelete="CASCADE")
+    )
+    objective: Mapped[str] = mapped_column(Text)
+    scope: Mapped[dict] = mapped_column(JSONB)
+    as_of: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    selection_policy_version: Mapped[str] = mapped_column(String(120))
+    selection_budget: Mapped[dict] = mapped_column(JSONB)
+    queries: Mapped[list] = mapped_column(JSONB)
+    selected_chunks: Mapped[list] = mapped_column(JSONB)
+    coverage: Mapped[dict] = mapped_column(JSONB)
+    candidates_discovered: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    candidates_screened: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    selected_count: Mapped[int] = mapped_column(Integer)
+    unexamined_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    retrieval_truncated: Mapped[bool] = mapped_column(Boolean)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+class Analysis(Base):
+    __tablename__ = "analyses"
+    __table_args__ = (
+        UniqueConstraint("run_id", name="uq_analyses_run"),
+        CheckConstraint(
+            "jsonb_typeof(findings) = 'array'",
+            name="ck_analyses_findings_array",
+        ),
+        CheckConstraint(
+            "jsonb_typeof(open_questions) = 'array'",
+            name="ck_analyses_open_questions_array",
+        ),
+    )
+    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, default=uuid4)
+    run_id: Mapped[UUID] = mapped_column(
+        ForeignKey("task_runs.id", ondelete="CASCADE")
+    )
+    evidence_package_id: Mapped[UUID] = mapped_column(
+        ForeignKey("evidence_packages.id"),
+    )
+    summary: Mapped[str] = mapped_column(Text)
+    findings: Mapped[list] = mapped_column(JSONB)
+    open_questions: Mapped[list] = mapped_column(JSONB)
+    evidence_refs: Mapped[list] = mapped_column(JSONB)
+    coverage: Mapped[dict] = mapped_column(JSONB)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+class Report(Base):
+    __tablename__ = "reports"
+    __table_args__ = (
+        UniqueConstraint("run_id", name="uq_reports_run"),
+        Index("ix_reports_task_created", "task_id", "created_at"),
+    )
+    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, default=uuid4)
+    run_id: Mapped[UUID] = mapped_column(
+        ForeignKey("task_runs.id", ondelete="CASCADE")
+    )
+    analysis_id: Mapped[UUID] = mapped_column(
+        ForeignKey("analyses.id")
+    )
+    task_id: Mapped[str] = mapped_column(
+        ForeignKey("task_definitions.id")
+    )
+    title: Mapped[str] = mapped_column(Text)
+    content: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
 
 
 class TaskStepResult(Base):

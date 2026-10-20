@@ -89,6 +89,118 @@ def upgrade():
     )
     op.create_index("ix_task_runs_task_created", "task_runs", ["task_id", "created_at"])
     op.create_table(
+        "evidence_packages",
+        sa.Column("id", UUID(as_uuid=True), primary_key=True),
+        sa.Column(
+            "run_id",
+            UUID(as_uuid=True),
+            sa.ForeignKey("task_runs.id", ondelete="CASCADE"),
+            nullable=False,
+        ),
+        sa.Column("objective", sa.Text(), nullable=False),
+        sa.Column("scope", JSONB(), nullable=False),
+        sa.Column("as_of", sa.DateTime(timezone=True), nullable=False),
+        sa.Column("selection_policy_version", sa.String(120), nullable=False),
+        sa.Column("selection_budget", JSONB(), nullable=False),
+        sa.Column("queries", JSONB(), nullable=False),
+        sa.Column("selected_chunks", JSONB(), nullable=False),
+        sa.Column("coverage", JSONB(), nullable=False),
+        sa.Column("candidates_discovered", sa.Integer()),
+        sa.Column("candidates_screened", sa.Integer()),
+        sa.Column("selected_count", sa.Integer(), nullable=False),
+        sa.Column("unexamined_count", sa.Integer()),
+        sa.Column("retrieval_truncated", sa.Boolean(), nullable=False),
+        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
+        sa.CheckConstraint(
+            "selection_policy_version ~ '^[A-Za-z0-9._-]+$'",
+            name="ck_evidence_packages_policy_version",
+        ),
+        sa.CheckConstraint(
+            "(selection_budget ->> 'max_tokens')::integer > 0",
+            name="ck_evidence_packages_max_tokens",
+        ),
+        sa.UniqueConstraint(
+            "run_id",
+            name="uq_evidence_packages_run",
+        ),
+        sa.CheckConstraint(
+            "candidates_discovered IS NULL "
+            "OR candidates_discovered >= 0",
+            name="ck_evidence_packages_discovered",
+        ),
+        sa.CheckConstraint(
+            "candidates_screened IS NULL "
+            "OR candidates_screened >= 0",
+            name="ck_evidence_packages_screened",
+        ),
+        sa.CheckConstraint(
+            "selected_count >= 0",
+            name="ck_evidence_packages_selected_count",
+        ),
+        sa.CheckConstraint(
+            "unexamined_count IS NULL OR unexamined_count >= 0",
+            name="ck_evidence_packages_unexamined_count",
+        ),
+    )
+    op.create_table(
+        "analyses",
+        sa.Column("id", UUID(as_uuid=True), primary_key=True),
+        sa.Column(
+            "run_id",
+            UUID(as_uuid=True),
+            sa.ForeignKey("task_runs.id", ondelete="CASCADE"),
+            nullable=False,
+        ),
+        sa.UniqueConstraint("run_id", name="uq_analyses_run"),
+        sa.Column(
+            "evidence_package_id",
+            UUID(as_uuid=True),
+            sa.ForeignKey("evidence_packages.id"),
+            nullable=False,
+        ),
+        sa.Column("summary", sa.Text(), nullable=False),
+        sa.Column("findings", JSONB(), nullable=False),
+        sa.Column("open_questions", JSONB(), nullable=False),
+        sa.Column("evidence_refs", JSONB(), nullable=False),
+        sa.Column("coverage", JSONB(), nullable=False),
+        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
+        sa.CheckConstraint(
+            "jsonb_typeof(findings) = 'array'",
+            name="ck_analyses_findings_array",
+        ),
+        sa.CheckConstraint(
+            "jsonb_typeof(open_questions) = 'array'",
+            name="ck_analyses_open_questions_array",
+        ),
+    )
+    op.create_table(
+        "reports",
+        sa.Column("id", UUID(as_uuid=True), primary_key=True),
+        sa.Column(
+            "run_id",
+            UUID(as_uuid=True),
+            sa.ForeignKey("task_runs.id", ondelete="CASCADE"),
+            nullable=False,
+        ),
+        sa.UniqueConstraint("run_id", name="uq_reports_run"),
+        sa.Column(
+            "analysis_id",
+            UUID(as_uuid=True),
+            sa.ForeignKey("analyses.id"),
+            nullable=False,
+        ),
+        sa.Column(
+            "task_id",
+            sa.String(120),
+            sa.ForeignKey("task_definitions.id"),
+            nullable=False,
+        ),
+        sa.Column("title", sa.Text(), nullable=False),
+        sa.Column("content", sa.Text(), nullable=False),
+        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
+    )
+    op.create_index("ix_reports_task_created", "reports", ["task_id", "created_at"])
+    op.create_table(
         "task_step_results",
         sa.Column("id", UUID(as_uuid=True), primary_key=True),
         sa.Column(
@@ -395,6 +507,10 @@ def downgrade():
     op.drop_table("model_calls")
     op.drop_index("ix_task_step_results_run_created", table_name="task_step_results")
     op.drop_table("task_step_results")
+    op.drop_index("ix_reports_task_created", table_name="reports")
+    op.drop_table("reports")
+    op.drop_table("analyses")
+    op.drop_table("evidence_packages")
     op.drop_index("uq_task_runs_one_active", table_name="task_runs")
     op.drop_index("ix_task_runs_task_created", table_name="task_runs")
     op.drop_table("task_runs")
