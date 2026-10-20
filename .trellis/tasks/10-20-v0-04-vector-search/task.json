@@ -3,7 +3,7 @@
   "name": "v0-04-vector-search",
   "title": "V0-04 Embedding 与 pgvector 语义和精确检索",
   "description": "从已存 Chunk 实现真正可用的语义召回及短代码有界精确查询。",
-  "status": "planning",
+  "status": "in_progress",
   "dev_type": "backend",
   "scope": null,
   "package": null,
@@ -12,7 +12,7 @@
   "assignee": "me",
   "createdAt": "2026-10-20",
   "completedAt": null,
-  "branch": null,
+  "branch": "feat/v0-04-vector-search",
   "base_branch": "main",
   "worktree_path": null,
   "commit": null,
@@ -27,15 +27,15 @@
     "docs/research.md",
     "docs/validation.md"
   ],
-  "notes": "本轮仅规划；依赖写入 meta.depends_on 及规划文档，Trellis 父子关系不会自动调度。开工前复核现状和技术细节并取得该子任务的实施确认。",
+  "notes": "V0-03 已完成归档；用户已授权按路线图继续。实现、质量检查及验证限制见 acceptance.md。",
   "meta": {
     "milestone": "V0",
     "kind": "delivery",
     "depends_on": [
-      ".trellis/tasks/10-20-v0-03-parsing-chunks"
+      ".trellis/tasks/archive/2026-10/10-20-v0-03-parsing-chunks"
     ],
-    "planning_review": "pending",
+    "planning_review": "approved",
     "planning_depth": "delivery-plan",
-    "implementation_authorized": false
+    "implementation_authorized": true
   }
 }
