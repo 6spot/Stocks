@@ -3,11 +3,13 @@ import boto3
 from botocore.client import Config
 from stocks.settings import Settings
 
-def store_snapshot(config: Settings, source_id: str, payload: bytes) -> tuple[str, str]:
+def store_snapshot(
+    config: Settings, source_id: str, payload: bytes, *, content_type: str
+) -> tuple[str, str]:
     if not config.s3_endpoint_url:
         raise RuntimeError("S3_ENDPOINT_URL must be configured to collect data")
     digest = hashlib.sha256(payload).hexdigest()
-    key = f"sources/{source_id}/{digest}.xml"
+    key = f"sources/{source_id}/{digest}"
     options = {
         "endpoint_url": config.s3_endpoint_url,
         "region_name": config.s3_region,
@@ -20,6 +22,6 @@ def store_snapshot(config: Settings, source_id: str, payload: bytes) -> tuple[st
         )
     client = boto3.client("s3", **options)
     client.put_object(
-        Bucket=config.s3_bucket, Key=key, Body=payload, ContentType="application/xml"
+        Bucket=config.s3_bucket, Key=key, Body=payload, ContentType=content_type
     )
     return key, digest

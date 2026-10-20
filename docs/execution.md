@@ -11,14 +11,16 @@ Task 属性：
 | id / name | 稳定标识、可读标题 |
 | type | collection / processing / analysis / report 等显示分类，不限制允许的步骤 |
 | strategy | 可选策略 ID；无策略的采集任务正常运行 |
-| trigger | V0 使用 manual 或 schedule（明确时区）；文档事件型研究触发属于后续增强 |
-| scope | 市场/地域、公司名称、股票代码、行业与主题等研究范围；直接从 YAML 配置 |
+| trigger | V0 使用 manual 或 schedule；cron 明确时区，every 表示固定间隔；文档事件型研究触发属于后续增强 |
+| scope | 市场/地域、公司名称、股票代码、行业与主题等研究范围；在 Task 顶层 YAML 唯一定义，研究 Run 固定为 `run.scope` 快照 |
 | steps | 有序步骤及参数/上游结果引用 |
 | enabled | 是否参与触发 |
 
-最小步骤执行种类：Connector 获取、Repository 持久化/查询、Decision Model 分类及抽取决策、按需 LLM 抽取、研究 Agent 调用、授权 Tool 查询及报告保存。**V0 使用 YAML 定时采集、异步整理数据，并按任务自身设定的早晚/日/周时间生成市场或个股综合报告；不按文章逐篇生成报告。**
+最小步骤执行种类：Connector 获取、Repository 持久化/查询、后台解析与分块、Decision Model 分类及抽取决策、按需 LLM 抽取、Embedding 与索引、研究 Agent 调用、授权 Tool 查询及报告保存。**V0 使用 YAML 定时采集、异步整理数据，并按任务自身设定的早晚/日/周时间生成市场或个股综合报告；不按文章逐篇生成报告。**
 
 步骤按配置顺序执行；when 仅允许基于已执行步骤的结构化字段或状态判断，不使用自由 Python 表达式或通用 DAG。满足条件才执行；条件不满足为 SKIPPED，不是 FAILED。
+
+研究的取材、游标、分析与报告共用 `run.scope`，步骤不再另定义一份研究范围；补充查询可带具体检索条件以查找直接资料或相关背景，但不能修改 Run 的研究范围。采集轮询由采集 Task 的 `trigger` 唯一调度，Source 只保存获取参数和可选更新预期，不另设第二个调度入口。
 
 统一执行结果：
 
@@ -31,7 +33,13 @@ StepResult:
   error: structured error | null
 ~~~
 
-按任务记录配置/策略/模型/提示词快照，便于解释历史研究结果。Task 使用独立运行记录，Worker 与 Web API 分进程；任务队列及租约利用 PostgreSQL。外部调用需有超时、有限重试、崩溃恢复和幂等键。成功持久化新数据后才触发下游任务；避免重复触发同一来源事件。
+按任务记录配置/策略/模型/提示词快照，便于解释历史研究结果。Task 使用独立运行记录，Worker 与 Web API 分进程；待执行记录及任务运行占用保存在 PostgreSQL。外部调用需有超时、有限重试和幂等键。原始资料及处理状态成功持久化后，Worker 才处理相应待办步骤；这不触发逐篇研究，综合研究仍由自身的 manual/schedule 触发。
+
+### 同一任务运行与异常处理
+
+- **同一个 Task 同时只允许一个待执行或正在运行的 Run。** 手动触发、定时触发与重试共用同一入口，由数据库原子检查并占用；任务已占用时不再创建新 Run，手动请求返回现有运行信息，定时触发跳过本次。不同 Task 可以独立运行。
+- Run 未正常结束、Worker 中断或处理失败时，保留已保存的进度、结果和错误，供控制台统一查看。Owner 确认旧执行已停止后，可结束异常 Run，再重试或继续处理；不要求 V0 实现租约过期后的自动接管或复杂崩溃恢复调度。
+- 解析、分类、抽取、索引和取材积压使用 Task/Run 或 Document 处理状态管理；有限自动重试后，可由 Owner 在控制台手动重试或继续处理，不另建积压管理服务。交互见[界面设计](interface.md)。
 
 
 ### V0 数据处理与定时研究
@@ -41,11 +49,11 @@ StepResult:
 | 阶段 | 系统行为 |
 | --- | --- |
 | 1. 采集、获取与入库 | 配置 RSS/媒体/API 范围内的新内容及更新全部收录；外部搜索按研究目的选择要获取的结果。取得的原文或原始响应统一存 Document、S3 快照、来源/时间和幂等键。全文失败须标记不完整 |
-| 2. 后台轻量处理 | 适用文本由 Decision Model 完成类别、标签及 `should_extract`，需要时调用 LLM 提取 Fact；结构化 API 响应直接程序解析 Fact。可检索文本同时生成 Embedding 并写入 pgvector，索引失败须可见及可重试 |
-| 3. 研究 Task | YAML 设置 `manual` 或带时区 `schedule`，到点独立创建 Run，从 Repository 统一检索 Document + Fact，合并去重后交给同一研究 Agent |
-| 4. 报告留存 | 成功保存报告及本次证据引用后推进对应任务增量窗口；失败保留记录，不修改已入库情报或丢失待研究增量 |
+| 2. 后台轻量处理 | 按[后台解析契约](data.md#后台解析片段与索引)完成必要解析和分块；适用文本分类并按需抽取 Fact，结构化响应直接解析 Fact；片段生成 Embedding 并建立 pgvector 索引。各步骤保存可复用结果及处理状态 |
+| 3. 研究 Task | YAML 设置 `manual` 或带时区 `schedule`，触发时按同一任务运行规则创建 Run，从 Repository 统一检索 Document + Fact，合并去重后交给同一研究 Agent |
+| 4. 报告留存 | 成功保存报告及本次证据引用后，按下文扫描进度规则推进对应任务增量窗口；失败保留记录，不修改已入库情报或丢失待研究增量 |
 
-分类、抽取与 Embedding 通过后台 Worker 的有限重试和幂等机制执行。任何一步失败时都保留已入库原文并展示对应积压；分类错误不能视为“无关”，未抽取 Fact 的文档也应可被 pgvector 检索；未索引的 Document 可查看但必须暴露召回缺口。
+解析、分类、抽取与 Embedding 通过后台 Worker 的有限重试和幂等机制执行。原件、片段和 Fact 的存储与依赖以[数据设计](data.md#后台解析片段与索引)为准；重试复用已完成步骤，从失败或未完成步骤继续，不因研究再次查询就重跑处理链路。任何一步失败时都保留已入库原文并展示对应积压；分类错误不能视为“无关”，未抽取 Fact 的文档也应可被 pgvector 检索；未索引的 Document 可查看但必须暴露召回缺口。
 
 **整个 Stocks 系统不提供证券身份主数据、证券级事件解析或按股票自动 Fan-out。** 市场早晚报告和 NVDA 早晚报告是两份独立配置的 YAML Task；如需关注多个股票，直接定义各自的研究任务，仍调用同一套 Repository 与 Research Agent。此处不是首版限制，也不作为后续扩展路线。
 
@@ -58,23 +66,27 @@ StepResult:
 | 时间或引用 | 所属记录 | 作用 |
 | --- | --- | --- |
 | `published_at` / `source_updated_at` / `collected_at` | Document | 来源首次发布、来源最后更新（可缺失）及 Stocks 采集时间 |
-| `classified_at` / 标签及 Fact 处理时间 | Document/Fact 及处理记录 | 标明分类、抽取何时可供研究使用；报告引用当时的输入快照 |
+| 解析/分类/Fact/索引处理时间 | Document/Fact/Chunk 及处理记录 | 标明各项结果何时可供研究使用；报告引用当时的输入快照 |
 | `window_start` / `window_end` | Task Run | 本次新增/变更情报的选择范围，采用 `[start,end)` |
-| `as_of` | Task Run | 研究取材的知识截止时点；所有输入在该时点必须已经可获得 |
+| `as_of` | Task Run | 本次研究的参考时间，默认取 Run 启动时间；不限制运行中按需补证，也不表示严格的历史知识截止 |
 | 成功增量游标 | Task + Research Scope | 为本任务的下一次运行确定增量起点；不同研究任务/范围互不影响 |
-| `research_inputs` | Task Run / Analysis | 记录实际使用的 Document/Fact 引用、分类输入快照、数据版本和历史 Analysis 引用 |
+| `research_inputs` | Task Run / Analysis | 记录实际使用的 Document 内容版本、Chunk/Fact 引用、分类输入快照和历史 Analysis 引用 |
+
+**时间语义：** `window_end` 固定本次例行增量扫描的终点，`as_of` 标明研究参考时间，二者都不禁止研究过程中通过授权工具获取补充资料。运行中取得的资料保存真实来源时间、采集时间和版本，按[研究设计](research.md#agent-补充检索与故障边界)追加到本次实际输入；晚于参考时间发布或更新的资料如被采用，应在报告中明确说明。报告保存当次实际取材和生成时间，后续资料更新不改写旧报告。当前产品不承担严格还原过去某一时刻全部已知信息的历史回放能力。
 
 **窗口生成与推进规则：**
 
-1. 周期性研究 Run 创建时，将 `window_start` 设为**同一 Task + 研究范围的上一次成功完成并提交结果的 `window_end`**；本次 `window_end` 取启动时固定的截止时点。第一次运行使用明确配置的初始起点或初始回看范围。
+1. 研究 Run 开始执行时固定本次窗口：`window_start` 取**同一 Task + 研究范围上一次成功提交结果并完成扫描的窗口终点**，`window_end` 取本次开始执行时间，默认 `as_of` 同时固定。第一次运行使用明确配置的初始起点或初始回看范围；更换研究范围后按新范围配置重新初始化窗口，不沿用旧范围游标。待执行期间不提前扫描或推进窗口。
+   若同一范围存在待继续的扫描进度，优先沿用保存的原窗口、查询条件及分页位置，扫描完成后再打开后续窗口；本次 Run 的 `as_of` 仍按实际参考时间记录，不将续扫误报为新的扫描范围。
 2. 窗口只用于发现已进入 Repository、并在本次可研究增量中首次出现或发生重要修订的资料。文章的 `published_at` 不用于判定是否“已处理”：周二才入库或完成分类的上周五公告，也会作为周二新增可研究信息进入后续 Run。保留资料自身的真实发布时间供报告解释。
-3. 对 Document 入库、分类完成、Fact 抽取/解析及内容修订保留可追溯的系统可研究时间；增量查询按这些已提交的变化去重，不能用原文发布时间替代系统入库时点。研究截止后完成的处理留给下一个 Run。
-4. 只有要求的分析与报告结果**成功持久化**后，才原子地推进该 Task + Scope 的研究游标。失败、取消或中断不推进；下次运行重试或覆盖未成功区间。即使周末无定时运行，周一仍从周五上次成功终点开始，包含周末新增信息。
+3. 对 Document 入库、解析/分类/索引完成、Fact 抽取/解析及内容修订保留可追溯的系统可研究时间；增量查询按这些已提交的变化去重，不能用原文发布时间替代系统入库时点。例行扫描终点后才完成保存或处理的资料进入后续增量，不能因写入开始较早而漏掉；研究主动补取的资料可按上述时间语义供本次使用。
+4. 只有要求的分析与报告结果**成功持久化**且对应窗口**完成扫描**后，才原子地推进该 Task + Scope 的研究游标。扫描未完成时，将查询条件、原窗口与分页位置保存在 Task/Run，后续自动或由 Owner 手动继续扫描，不因已生成一份报告就跳过剩余候选；已完成筛选但未选入模型输入的候选不阻塞推进。失败、取消或中断不推进；下次运行重试或覆盖未成功区间。即使周末无定时运行，周一仍包含周末新增信息。上述进度沿用现有记录，不新增独立扫描服务。
+   “完成扫描”针对本次记录的增量查询范围与候选，不表示已穷尽全部背景资料或互联网信息；索引积压和来源缺失仍按实际情况说明。
 5. Agent 可以根据明确的 Research Scope、`as_of` 与检索条件访问**增量窗口之外的历史背景资料和以前的 Analysis**，并对比既有结论；这些背景不应错误计作本次新增情报。每个研究 Run 将最终采用的输入 ID、版本、选择原因或查询条件留在独立 `research_inputs` 中，以便复现。
 6. 同一份资料可参与多个不同的 Task、时间窗口与策略研究，不在 Document 上设置全局 `analyzed`、`last_used_by_task`、`research_window` 或 `consumed_at`。重复性由各自 Run 和输入引用的幂等约束处理。
 
 ~~~text
-Run A（日报）：增量变化窗口 [上次成功日报截止, 本次截止)
+Run A（日报）：增量变化窗口 [上次成功扫描终点, 本次扫描终点)
                  + 查询此前财报、历史政策及过往观点作为背景
                  → 保存本次 research_inputs → 综合报告
 
@@ -105,11 +117,12 @@ tasks:
     type: report
     trigger: {kind: schedule, cron: "0 8,20 * * *", timezone: America/New_York}
     window: {mode: since_last_success, initial_lookback: 7d}
+    scope: {regions: [US], topics: [macro, policy, market_sentiment]}
     steps:
       - id: evidence
         use: repository.select_evidence
         with:
-          scope: {regions: [US], topics: [macro, policy, market_sentiment]}
+          scope: run.scope
           objective: "综合市场情绪、宏观与政策的近期变化"
           window: run.window
           as_of: run.as_of
@@ -128,12 +141,12 @@ tasks:
     type: report
     trigger: {kind: schedule, cron: "0 8,20 * * *", timezone: America/New_York}
     window: {mode: since_last_success, initial_lookback: 7d}
-    scope: {symbols: [NVDA], companies: [NVIDIA]}
+    scope: {symbols: [NVDA], companies: [NVIDIA], topics: [semiconductors]}
     steps:
       - id: evidence
         use: repository.select_evidence
         with:
-          scope: {symbols: [NVDA], companies: [NVIDIA], topics: [semiconductors]}
+          scope: run.scope
           objective: "综合 NVDA 相关公司公告、行业政策、走势与市场背景"
           window: run.window
           as_of: run.as_of
@@ -150,13 +163,15 @@ tasks:
 
 ~~~
 
-这里的 `financial_news`、`collection.acquire_content`、Agent ID 与时间都是逻辑配置示例，并非已实现接口；`acquire` 只表示 RSS 仅有标题/摘要/链接时需补取正文，Feed 已含全文或 API 已返回完整响应则无需二次下载。**fetch 和 acquire 之间不执行逐篇相关性过滤。** 入库后统一分类、按需 Fact 和 Embedding，市场、行业和个股仍由各自 YAML Task 调度。
+这里的 `financial_news`、`collection.acquire_content`、Agent ID 与时间都是逻辑配置示例，并非已实现接口；`acquire` 表示任意渠道只取得标题/摘要/链接时需补取正文，已取得全文或完整响应则无需重复下载。**fetch 和 acquire 之间不执行逐篇相关性过滤。** `scope: run.scope` 表示读取当前 Run 的研究范围快照；入库后处理依赖遵循[数据设计](data.md#后台解析片段与索引)，综合研究仍由各自 YAML Task 调度。
 
 ## Agent、HTTP 模型与回退
 
 Agent 配置包括：id、role、prompt、model_ref、tools[]，以及按职责需要的结构化输出契约。**Decision Model 是模型能力类别，不是 Jev、Clef 等特定品牌的别名**：Jev、Cloudflare Clef/Clef-flash 或符合相同需求的其他模型均可配置为分类/决策模型。分类步骤对预定义问题做单选、多选或是/否判断，包括 `should_extract`，并统一归一化为 Stocks 的业务 Schema；如 Provider 返回各选项概率，仅作为决策输入/诊断信息，不自动作为事实可信度或投资评分。Generation Model 则用于按需生成事实抽取结果、研究文本及授权 Tool 调用请求。不同模型类型通过协议 Adapter 接入，不强行假设所有模型都能输出长文、原生工具调用或 JSON Schema。
 
-Provider 定义 protocol、HTTP endpoint、认证方式、默认超时等。**决策模型的有界问题/选项接口与普通 OpenAI-compatible `chat/completions` 并不必然相同**；Jev 与 Cloudflare Clef 支持兼容的决策接口，但 Stocks 通过薄 Adapter 归一化服务端格式，不能假定现有的 Chat 模型客户端已经支持这些模型。按实际 Provider 协议接入，不引入独立模型调度服务。对于不确定、无效或调用失败的决策，保留原文与未完成状态，不能默认解释成 `should_extract=false`。Provider 不承担 Agent 逻辑，任何私有部署、官方服务或模型聚合服务都只是一个 Provider 配置实例，不构成系统依赖。
+Provider 定义 protocol、HTTP endpoint、认证方式、默认超时等。**决策模型的有界问题/选项接口与普通 OpenAI-compatible `chat/completions` 并不必然相同**；按实际 Provider 协议通过薄 Adapter 归一化服务端格式。文中的模型名称仅作可配置角色的示例，不代表协议兼容性已经验证或相应 Adapter 已实现。对于不确定、无效或调用失败的决策，保留原文与未完成状态，不能默认解释成 `should_extract=false`。Provider 不承担 Agent 逻辑，任何私有部署、官方服务或模型聚合服务都只是一个 Provider 配置实例，不构成系统依赖，不引入独立模型调度服务。
+
+Embedding 同样通过 Provider 和模型引用配置，声明向量生成能力，复用现有超时、有限重试和调用记录。入库片段与查询文本使用兼容的模型和维度；回退目标不兼容时记录失败，不混写不同向量空间。索引与模型切换的行为由[数据设计](data.md#检索)维护，不新增模型路由服务。
 
 模型策略只定义 primary 与按顺序排列的 fallback[]：
 

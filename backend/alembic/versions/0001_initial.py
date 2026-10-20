@@ -39,9 +39,6 @@ def upgrade():
         sa.UniqueConstraint("source_id", "dedupe_key", name="uq_documents_source_dedupe"))
     op.create_index("ix_documents_collected", "documents", ["collected_at"])
     op.create_index("ix_documents_source_published", "documents", ["source_id", "published_at"])
-    op.create_index("ix_documents_search", "documents",
-        [sa.text("to_tsvector('english', coalesce(title, '') || ' ' || coalesce(summary, ''))")],
-        postgresql_using="gin")
     op.create_table("document_chunks",
         sa.Column("id", UUID(as_uuid=True), primary_key=True),
         sa.Column("document_id", UUID(as_uuid=True), sa.ForeignKey("documents.id", ondelete="CASCADE"), nullable=False),
@@ -54,7 +51,6 @@ def upgrade():
 
 def downgrade():
     op.drop_table("document_chunks")
-    op.drop_index("ix_documents_search", table_name="documents")
     op.drop_index("ix_documents_source_published", table_name="documents")
     op.drop_index("ix_documents_collected", table_name="documents")
     op.drop_table("documents")

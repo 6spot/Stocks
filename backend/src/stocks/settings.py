@@ -3,7 +3,6 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class Settings(BaseSettings):
     database_url: str
-    sources_file: str = "/app/config/sources.yaml"
     s3_endpoint_url: str | None = None
     s3_bucket: str = "stocks"
     s3_region: str = "us-east-1"

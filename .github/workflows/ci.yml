@@ -23,10 +23,11 @@ jobs:
           docker compose config --quiet
       - name: Build backend image
         run: docker compose build api
-      - name: Run PostgreSQL migration
+      - name: Initialize PostgreSQL and check current schema
         run: |
           docker compose up -d postgres
           docker compose run --rm api alembic upgrade head
+          docker compose run --rm api alembic check
       - name: Smoke-test HTTP API
         run: |
           docker compose up -d api

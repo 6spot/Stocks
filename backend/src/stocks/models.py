@@ -1,7 +1,7 @@
 from datetime import datetime
 from uuid import UUID, uuid4
 from pgvector.sqlalchemy import Vector
-from sqlalchemy import DateTime, ForeignKey, Integer, String, Text, UniqueConstraint, func
+from sqlalchemy import DateTime, ForeignKey, Index, Integer, String, Text, UniqueConstraint, func, text
 from sqlalchemy.dialects.postgresql import JSONB, UUID as PGUUID
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
@@ -19,7 +19,11 @@ class Source(Base):
 
 class Document(Base):
     __tablename__ = "documents"
-    __table_args__ = (UniqueConstraint("source_id", "dedupe_key", name="uq_documents_source_dedupe"),)
+    __table_args__ = (
+        UniqueConstraint("source_id", "dedupe_key", name="uq_documents_source_dedupe"),
+        Index("ix_documents_collected", "collected_at"),
+        Index("ix_documents_source_published", "source_id", "published_at"),
+    )
     id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, default=uuid4)
     source_id: Mapped[str] = mapped_column(ForeignKey("sources.id"))
     dedupe_key: Mapped[str] = mapped_column(String(255))
@@ -32,7 +36,7 @@ class Document(Base):
     content_hash: Mapped[str] = mapped_column(String(64))
     snapshot_key: Mapped[str] = mapped_column(Text)
     trust_tier_snapshot: Mapped[str] = mapped_column(String(8))
-    extra: Mapped[dict] = mapped_column(JSONB, default=dict)
+    extra: Mapped[dict] = mapped_column(JSONB, default=dict, server_default=text("'{}'::jsonb"))
 
 class DocumentChunk(Base):
     __tablename__ = "document_chunks"
