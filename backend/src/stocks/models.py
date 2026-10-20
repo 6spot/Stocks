@@ -1,12 +1,24 @@
 from datetime import datetime
 from uuid import UUID, uuid4
 from pgvector.sqlalchemy import Vector
-from sqlalchemy import DateTime, ForeignKey, Index, Integer, String, Text, UniqueConstraint, func, text
+from sqlalchemy import (
+    DateTime,
+    ForeignKey,
+    Index,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+    func,
+    text,
+)
 from sqlalchemy.dialects.postgresql import JSONB, UUID as PGUUID
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
+
 class Base(DeclarativeBase):
     pass
+
 
 class Source(Base):
     __tablename__ = "sources"
@@ -17,26 +29,42 @@ class Source(Base):
     trust_tier: Mapped[str] = mapped_column(String(8))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
+
 class Document(Base):
     __tablename__ = "documents"
     __table_args__ = (
-        UniqueConstraint("source_id", "dedupe_key", name="uq_documents_source_dedupe"),
+        UniqueConstraint(
+            "source_id",
+            "dedupe_key",
+            "content_hash",
+            name="uq_documents_source_content",
+        ),
+        UniqueConstraint(
+            "source_id",
+            "dedupe_key",
+            "version",
+            name="uq_documents_source_version",
+        ),
         Index("ix_documents_collected", "collected_at"),
         Index("ix_documents_source_published", "source_id", "published_at"),
     )
     id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, default=uuid4)
     source_id: Mapped[str] = mapped_column(ForeignKey("sources.id"))
     dedupe_key: Mapped[str] = mapped_column(String(255))
+    version: Mapped[int] = mapped_column(Integer)
     title: Mapped[str] = mapped_column(Text)
     original_url: Mapped[str | None] = mapped_column(Text, nullable=True)
     published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     source_updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     collected_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     summary: Mapped[str | None] = mapped_column(Text, nullable=True)
+    content_type: Mapped[str] = mapped_column(String(255))
+    content_size: Mapped[int] = mapped_column(Integer)
     content_hash: Mapped[str] = mapped_column(String(64))
     snapshot_key: Mapped[str] = mapped_column(Text)
     trust_tier_snapshot: Mapped[str] = mapped_column(String(8))
     extra: Mapped[dict] = mapped_column(JSONB, default=dict, server_default=text("'{}'::jsonb"))
+
 
 class DocumentChunk(Base):
     __tablename__ = "document_chunks"
