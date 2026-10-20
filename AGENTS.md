@@ -46,3 +46,24 @@ Stocks 是单一 Owner 使用的美股情报与研究系统。目标是以尽量
 - 后端当前使用 Python 3.12、FastAPI、SQLAlchemy 2、PostgreSQL/pgvector 和 S3 兼容存储；仓库中已有 Alembic 初始化脚手架，但它不构成维护增量迁移历史的要求。具体实现以仓库现有代码为准，前端技术选择以 [架构文档](docs/architecture.md) 为准，**不要假设前端已经实现**。
 - 后端测试按需指定文件或用例：`cd backend && python -m pytest -q tests/<相关文件>.py`，必要时用 `-k` 缩小范围；全量回归命令 `python -m pytest -q` 仅在上述规则确有需要时使用。修改数据模型时验证**全新数据库的初始化与当前模型是否一致**，不测试旧版升级或历史数据迁移；影响部署或 API 时按 [docs/quickstart.md](docs/quickstart.md) 与 CI 选择相关 Compose、构建或接口检查。缺少外部依赖导致无法验证时明确说明，禁止把未运行的检查写成通过。
 - 交付时简要列明**修改了什么、实际执行了哪些验证、还有哪些未完成或受限**。不要用“文档已规划”代替“功能已实现”。
+<!-- TRELLIS:START -->
+# Trellis Instructions
+
+These instructions are for AI assistants working in this project.
+
+This project is managed by Trellis. The working knowledge you need lives under `.trellis/`:
+
+- `.trellis/workflow.md` — development phases, when to create tasks, skill routing
+- `.trellis/spec/` — package- and layer-scoped coding guidelines (read before writing code in a given layer)
+- `.trellis/workspace/` — per-developer journals and session traces
+- `.trellis/tasks/` — active and archived tasks (PRDs, research, jsonl context)
+
+If a Trellis command is available on your platform (e.g. `/trellis:finish-work`, `/trellis:continue`), prefer it over manual steps. Not every platform exposes every command.
+
+If you're using Codex or another agent-capable tool, additional project-scoped helpers may live in:
+- `.agents/skills/` — reusable Trellis skills
+- `.codex/agents/` — optional custom subagents
+
+Managed by Trellis. Edits outside this block are preserved; edits inside may be overwritten by a future `trellis update`.
+
+<!-- TRELLIS:END -->

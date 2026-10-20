@@ -2,11 +2,15 @@
 
 本篇负责 Evidence Selection、Research Agent、Analysis/Report 与证据追溯；数据见 [数据设计](data.md)，执行见 [执行设计](execution.md)，界面见 [界面设计](interface.md)。返回 [架构总览](architecture.md)。
 
+**阶段边界：** V0 从当前已保存的 Document Chunk 中手动取材，保存实际使用的证据包、Analysis 和可追溯 Report；说明来源或索引缺口，不声称完成增量扫描。V1 增加 `search_changes`、Fact 与 Document 合并去重、扫描进度及定时研究。V2 增加授权外部补证、跨来源独立性和冲突处理、历史比较。下文描述完整目标契约，不将 V1/V2 细节作为 V0 验收门槛。
+
 ## 统一取材：Evidence Selection 与 Evidence Package
 
-**一套取材逻辑服务所有研究范围，不按市场/行业/个股分别建设取材引擎。Repository First 是默认取材规则**：同时查询已保存的 Document 片段与分类、关联 Fact、历史分析；结构化 API 数据也是由原始响应 Document 衍生的 Fact。检索结果在同一 Evidence Selection 中合并关联并去重，不能把 Fact 和其来源 Document 当成两份独立证据。已有数据满足时不重复调用外部 API。`repository.select_evidence` 设计为 Task 中可配置的 Repository 步骤：先寻找本次可研究的新增变化，再查询必要历史背景，整理可复查的 Evidence Package 交给 Research Agent。这里的 “Evidence Selection” 表示执行能力，“Evidence Package” 表示本次结果快照；**都不代表新微服务、全局 Agent 或持久化材料副本**。
+V0 只对本次手动查询实际看到的 Document Chunk 形成 Evidence Package：记录研究目标、范围、取材时间、被选片段的 Document 版本、选择理由、查询条件及已知来源/索引缺口。候选未穷尽时说明截断，不填写虚构总数。V0 不使用 `changes_window`、Fact 引用或“已扫描完上次以来全部变化”的状态；以下完整候选扫描与合并规则从 V1 起逐步实现。
 
-取材默认读取后台已处理的 Chunk、Fact 和元数据，遵循[检索路径](data.md#检索)；需要上下文时读取同一 Document 的相邻片段，不在取材请求中遍历原始文件、临时解析全库或重建文档向量。原件用于指定证据的追溯，需要解析或索引但尚未完成的资料按实际状态计入覆盖缺口；纯数值响应等不适用向量索引的资料通过 Fact 查询取材，不因此计为索引积压。
+**一套取材逻辑服务所有研究范围，不按市场/行业/个股分别建设取材引擎。Repository First 是默认取材规则**：V0 查询已保存的 Document 片段；V1 起合并分类、Fact 和历史分析，结构化 API 数据也是由原始响应 Document 衍生的 Fact。V1 的检索结果在同一 Evidence Selection 中合并关联并去重，不能把 Fact 和其来源 Document 当成两份独立证据。已有数据满足时不重复调用外部 API。`repository.select_evidence` 是 Task 中可配置的 Repository 步骤：V0 整理当前已保存资料，V1 先寻找本次可研究的新增变化，再查询必要历史背景，整理可复查的 Evidence Package 交给 Research Agent。这里的 “Evidence Selection” 表示执行能力，“Evidence Package” 表示本次结果快照；**都不代表新微服务、全局 Agent 或持久化材料副本**。
+
+取材默认读取已处理的 Chunk、V1 起可用的 Fact 和元数据，遵循[检索路径](data.md#检索)；需要上下文时读取同一 Document 的相邻片段，不在取材请求中遍历原始文件、临时解析全库或重建文档向量。原件用于指定证据的追溯，需要解析或索引但尚未完成的资料按实际状态计入覆盖缺口；V1 起纯数值响应等不适用向量索引的资料通过 Fact 查询取材，不因此计为索引积压。
 
 ### 取材请求与研究维度
 
@@ -15,7 +19,7 @@
 | `run_id`、`task_id`、`task_version` | 研究所属 Task Run 与配置快照 |
 | `objective` | 本次需要回答的研究问题，不限于预先固定的日报/行业/股票类型 |
 | `scope` | YAML 设置的公司名称、股票代码、市场/地域、行业、宏观与政策主题的适用组合，不依赖内部证券 ID |
-| `window_start` / `window_end`、`as_of` | 前者界定例行增量扫描范围；`as_of` 是研究参考时间，运行中可按需补证，沿用[时间与窗口规则](execution.md#研究增量窗口与共享资料引用) |
+| `as_of`；V1 起增加变化水位及 `window_start` / `window_end` | `as_of` 是研究参考时间；V1 变化水位决定例行增量范围，窗口时间用于展示；V2 运行中可按需补证，沿用[时间与窗口规则](execution.md#研究增量窗口与共享资料引用) |
 | `data_requirements[]`（可选） | 研究关注的证据类型或主题维度，例如政策、宏观指标、企业披露、行业信息、历史观点 |
 | `budget`（可选） | 证据 Token 总预算、候选扫描上限、每类内容/维度的取材上限等有界限制；未配置使用可调整的默认值 |
 | `selection_policy_version` | 本次取材规则或配置版本，便于解释不同运行的差异 |
@@ -52,6 +56,8 @@
 
 ### Evidence Package 数据契约
 
+下例展示 V1 的完整形态；V0 包可省略 `changes_window`、Fact 和增量扫描字段，但必须保存实际使用的 Document 版本、Chunk 引用与已知覆盖缺口。
+
 ~~~yaml
 evidence_package:
   run_id: run_001
@@ -62,6 +68,8 @@ evidence_package:
   changes_window:
     start: "2026-10-16T09:00:00Z"
     end: "2026-10-19T09:00:00Z"
+    change_watermark_start: 120
+    change_watermark_end: 183
   selection_budget:
     max_tokens: 30000
   selected:
@@ -97,6 +105,8 @@ evidence_package:
 
 ### Agent 补充检索与故障边界
 
+本节授权外部补证从 V2 起适用；V0/V1 的研究只使用已保存的 Repository 资料。
+
 - 研究 Agent **先**通过 Repository 的只读检索补齐问题；已有可用材料不能因为方便而默认重查外部。资料不足、缺失、遗漏、不够新、来源冲突或确需交叉核实时，可在 Task 明确授权下调用外部 Tool 查询额外资料。实际采用的原文或结构化响应经统一 Source/Repository 流程登记、留存原始证据与真实时间，生成可追溯引用，再按权限和预算约束加入本次 `research_inputs`；不得把新资料标记为 Document 的“已研究”状态，也不得覆盖原始证据包快照。
 - 运行中取得的补充资料可以供本次分析使用，时间标示遵循[执行设计](execution.md#研究增量窗口与共享资料引用)。例如 08:00 启动研究、08:03 下载昨天的公告，保存原文、真实时间并完成本次所需处理后即可引用；运行中取得的新发布或更新内容也可使用，但不得伪装成参考时间之前已知的信息。
 - 新补充的资料复用同一入库和后台处理步骤，在本次预算内取得所需片段或 Fact 后加入实际输入；只等待本次需要的文档，不要求清空全库积压。处理失败则保留原件与错误并说明缺口，不绕开证据保存流程直接使用临时工具输出。
@@ -113,7 +123,7 @@ Research Agent 设计为普通可配置的 Agent 角色，执行 Research Task �
 | 字段 | 契约 |
 | --- | --- |
 | `run_id`、`objective`、`scope`、`strategy_ref?` | 对应 Task Run 的不可变配置快照；研究什么、面向何种视角 |
-| `as_of`、`changes_window` | 研究参考时间及例行增量范围，含义以[执行设计](execution.md#研究增量窗口与共享资料引用)为准；不限制历史背景与授权补证 |
+| `as_of`；V1 起增加 `changes_window` | 研究参考时间及 V1 例行增量范围，含义以[执行设计](execution.md#研究增量窗口与共享资料引用)为准；V2 授权补证不受严格历史回放限制 |
 | `evidence_package_ref` | 指向[统一研究取材](research.md)已保存的取材快照，不要求全文重复塞入 Prompt |
 | `previous_analysis_refs[]` | 可复用的历史 Analysis 或报告引用；允许为空，不要求逐条 Finding 关系 |
 | `coverage` | 取材/来源缺口、未扫描候选、分类积压等；缺口不是“没有发生变化”的证据 |
@@ -143,4 +153,4 @@ Research Agent 从去重后的 Evidence Package 形成 Analysis，再生成 Repo
 
 **Report 保存：** 标题、研究范围、时间、可阅读正文/章节、真实数据引用和必要的来源/版本。市场、行业和个股共用报告契约，不强制固定栏目；无显著变化时可以如实说明。将原始数据、媒体观点与模型推断明确区分，资料缺失或冲突时直接说明，不能自动宣称“已核实”。
 
-报告在成功保存后可被后续 Task 参考，失败不覆盖最后成功报告；简单的历史报告对照足以满足首版需求，不为未来的复杂关系提前建表或设计 UI。图表如需生成，数字必须来自 Repository 实际记录，而非 LLM 虚构。
+报告在成功保存后可被后续 Task 参考，失败不覆盖最后成功报告；V2 的历史报告对照可以从简单比较开始，不为复杂关系提前建表或设计 UI。图表如需生成，数字必须来自 Repository 实际记录，而非 LLM 虚构。
