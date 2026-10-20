@@ -1,18 +1,23 @@
 import hashlib
+import re
 from collections.abc import Callable
 from copy import deepcopy
 from dataclasses import dataclass
 from datetime import datetime
 from uuid import UUID
 
-from sqlalchemy import func, select
+from sqlalchemy import and_, func, select, text
+from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from stocks.embedding_space import VECTOR_DIMENSIONS
 from stocks.models import (
     Document,
     DocumentChunk,
+    DocumentChunkEmbedding,
     DocumentCollectionState,
+    DocumentEmbeddingState,
     DocumentParseBatch,
     DocumentParseState,
     Source,
@@ -54,6 +59,81 @@ class ParseBatchResult:
     batch: DocumentParseBatch
     state: DocumentParseState
     reused: bool = False
+
+
+@dataclass(frozen=True)
+class EmbeddingInput:
+    chunk_id: UUID
+    vector: tuple[float, ...]
+
+
+@dataclass(frozen=True)
+class SearchFilters:
+    source_ids: tuple[str, ...] = ()
+    published_from: datetime | None = None
+    published_to: datetime | None = None
+    collected_from: datetime | None = None
+    collected_to: datetime | None = None
+
+    def __post_init__(self) -> None:
+        for field_name in (
+            "published_from",
+            "published_to",
+            "collected_from",
+            "collected_to",
+        ):
+            value = getattr(self, field_name)
+            if value is not None and value.utcoffset() is None:
+                raise ValueError(f"{field_name} must include a timezone")
+        if (
+            self.published_from is not None
+            and self.published_to is not None
+            and self.published_from >= self.published_to
+        ):
+            raise ValueError("published_from must be earlier than published_to")
+        if (
+            self.collected_from is not None
+            and self.collected_to is not None
+            and self.collected_from >= self.collected_to
+        ):
+            raise ValueError("collected_from must be earlier than collected_to")
+        if any(not source_id.strip() for source_id in self.source_ids):
+            raise ValueError("source_ids must not contain empty values")
+
+
+@dataclass(frozen=True)
+class SearchHit:
+    chunk_id: UUID
+    document_id: UUID
+    parse_batch_id: UUID
+    position: int
+    text: str
+    locator: dict
+    title: str
+    source_id: str
+    version: int
+    published_at: datetime | None
+    source_updated_at: datetime | None
+    collected_at: datetime
+    completeness: str
+    similarity: float | None
+
+
+@dataclass(frozen=True)
+class SearchCoverage:
+    current_documents: int
+    indexed_documents: int
+    failed_documents: int
+    current_chunks: int
+    indexed_chunks: int
+
+    @property
+    def unindexed_chunks(self) -> int:
+        return self.current_chunks - self.indexed_chunks
+
+    @property
+    def documents_without_complete_index(self) -> int:
+        return self.current_documents - self.indexed_documents
 
 
 def ingest_document(
@@ -218,6 +298,454 @@ def list_document_versions(session: Session, source_id: str, dedupe_key: str) ->
 
 def read_document_bytes(config: Settings, document: Document) -> bytes:
     return read_snapshot(config, document.snapshot_key)
+
+
+def get_embedding_state(
+    session: Session, document_id: UUID
+) -> DocumentEmbeddingState | None:
+    return session.get(DocumentEmbeddingState, document_id)
+
+
+def list_chunk_embeddings(
+    session: Session,
+    chunk_ids: list[UUID],
+    *,
+    model_name: str,
+    dimensions: int,
+) -> dict[UUID, tuple[float, ...]]:
+    if not chunk_ids:
+        return {}
+    rows = session.scalars(
+        select(DocumentChunkEmbedding).where(
+            DocumentChunkEmbedding.chunk_id.in_(chunk_ids),
+            DocumentChunkEmbedding.model_name == model_name,
+            DocumentChunkEmbedding.dimensions == dimensions,
+        )
+    ).all()
+    return {
+        row.chunk_id: tuple(float(value) for value in row.embedding)
+        for row in rows
+    }
+
+
+def persist_embedding_result(
+    session: Session,
+    document_id: UUID,
+    *,
+    parse_batch_id: UUID,
+    model_alias: str,
+    model_name: str,
+    dimensions: int,
+    status: str,
+    embeddings: tuple[EmbeddingInput, ...],
+    attempted_at: datetime,
+    error: dict | None,
+) -> DocumentEmbeddingState:
+    if status not in {"completed", "failed"}:
+        raise ValueError("invalid embedding status")
+    if status == "failed" and error is None:
+        raise ValueError("failed embedding status must include an error")
+    if status == "completed" and error is not None:
+        raise ValueError("completed embedding status must not include an error")
+    if dimensions != VECTOR_DIMENSIONS:
+        raise ValueError("Embedding dimensions do not match the configured vector space")
+    if not model_alias.strip() or not model_name.strip():
+        raise ValueError("Embedding model identity must not be empty")
+    if attempted_at.utcoffset() is None:
+        raise ValueError("attempted_at must include a timezone")
+
+    document = session.scalar(
+        select(Document).where(Document.id == document_id).with_for_update()
+    )
+    if document is None:
+        raise ValueError(f"Unknown document: {document_id}")
+    parse_state = session.get(DocumentParseState, document_id)
+    if parse_state is None or parse_state.current_batch_id != parse_batch_id:
+        raise ValueError("Embedding batch is not the current successful parse")
+    parse_batch = session.get(DocumentParseBatch, parse_batch_id)
+    if (
+        parse_batch is None
+        or parse_batch.document_id != document_id
+        or parse_batch.status != "completed"
+        or parse_batch.content_hash != document.content_hash
+    ):
+        raise ValueError("Embedding parse batch does not match the Document")
+
+    chunks = list(
+        session.scalars(
+            select(DocumentChunk)
+            .where(DocumentChunk.parse_batch_id == parse_batch_id)
+            .order_by(DocumentChunk.position)
+        ).all()
+    )
+    chunk_ids = {chunk.id for chunk in chunks}
+    supplied_ids = [item.chunk_id for item in embeddings]
+    if len(set(supplied_ids)) != len(supplied_ids):
+        raise ValueError("Embedding input contains duplicate chunk IDs")
+    if any(chunk_id not in chunk_ids for chunk_id in supplied_ids):
+        raise ValueError("Embedding input does not belong to the current parse batch")
+    if any(len(item.vector) != dimensions for item in embeddings):
+        raise ValueError("Embedding dimensions do not match the configured vector space")
+
+    if embeddings:
+        statement = insert(DocumentChunkEmbedding).values(
+            [
+                {
+                    "chunk_id": item.chunk_id,
+                    "model_alias": model_alias,
+                    "model_name": model_name,
+                    "dimensions": dimensions,
+                    "embedding": list(item.vector),
+                    "indexed_at": attempted_at,
+                }
+                for item in embeddings
+            ]
+        )
+        statement = statement.on_conflict_do_update(
+            index_elements=["chunk_id", "model_name", "dimensions"],
+            set_={
+                "model_alias": statement.excluded.model_alias,
+                "embedding": statement.excluded.embedding,
+                "indexed_at": statement.excluded.indexed_at,
+            },
+        )
+        session.execute(statement)
+        session.flush()
+
+    embedded_ids = set(
+        session.scalars(
+            select(DocumentChunkEmbedding.chunk_id).where(
+                DocumentChunkEmbedding.chunk_id.in_(chunk_ids),
+                DocumentChunkEmbedding.model_name == model_name,
+                DocumentChunkEmbedding.dimensions == dimensions,
+            )
+        ).all()
+    )
+    if status == "completed" and embedded_ids != chunk_ids:
+        raise ValueError("completed embedding status requires every current chunk")
+
+    state = session.get(DocumentEmbeddingState, document_id)
+    if state is None:
+        state = DocumentEmbeddingState(
+            document_id=document_id,
+            status=status,
+            parse_batch_id=parse_batch_id,
+            model_alias=model_alias,
+            model_name=model_name,
+            dimensions=dimensions,
+            chunk_count=len(chunks),
+            indexed_count=len(embedded_ids),
+            error=deepcopy(error),
+            attempted_at=attempted_at,
+        )
+        session.add(state)
+    else:
+        state.status = status
+        state.parse_batch_id = parse_batch_id
+        state.model_alias = model_alias
+        state.model_name = model_name
+        state.dimensions = dimensions
+        state.chunk_count = len(chunks)
+        state.indexed_count = len(embedded_ids)
+        state.error = deepcopy(error)
+        state.attempted_at = attempted_at
+    try:
+        session.commit()
+    except Exception:
+        session.rollback()
+        raise
+    session.refresh(state)
+    return state
+
+
+def _search_filters(filters: SearchFilters) -> list:
+    conditions = []
+    if filters.source_ids:
+        conditions.append(Document.source_id.in_(filters.source_ids))
+    if filters.published_from is not None:
+        conditions.append(Document.published_at >= filters.published_from)
+    if filters.published_to is not None:
+        conditions.append(Document.published_at < filters.published_to)
+    if filters.collected_from is not None:
+        conditions.append(Document.collected_at >= filters.collected_from)
+    if filters.collected_to is not None:
+        conditions.append(Document.collected_at < filters.collected_to)
+    return conditions
+
+
+def _current_chunk_query(filters: SearchFilters):
+    return (
+        select(DocumentChunk)
+        .join(Document, Document.id == DocumentChunk.document_id)
+        .join(
+            DocumentParseState,
+            and_(
+                DocumentParseState.document_id == DocumentChunk.document_id,
+                DocumentParseState.current_batch_id
+                == DocumentChunk.parse_batch_id,
+            ),
+        )
+        .where(*_search_filters(filters))
+    )
+
+
+def _search_hit(
+    chunk: DocumentChunk,
+    document: Document,
+    *,
+    similarity: float | None,
+) -> SearchHit:
+    return SearchHit(
+        chunk_id=chunk.id,
+        document_id=document.id,
+        parse_batch_id=chunk.parse_batch_id,
+        position=chunk.position,
+        text=chunk.text,
+        locator=deepcopy(chunk.locator),
+        title=document.title,
+        source_id=document.source_id,
+        version=document.version,
+        published_at=document.published_at,
+        source_updated_at=document.source_updated_at,
+        collected_at=document.collected_at,
+        completeness=document.completeness,
+        similarity=similarity,
+    )
+
+
+def search_chunks(
+    session: Session,
+    query_vector: tuple[float, ...],
+    *,
+    model_name: str,
+    dimensions: int,
+    filters: SearchFilters,
+    limit: int,
+) -> list[SearchHit]:
+    if len(query_vector) != dimensions:
+        raise ValueError("Query vector dimensions do not match the embedding space")
+    if dimensions != VECTOR_DIMENSIONS:
+        raise ValueError("Embedding dimensions do not match the configured vector space")
+    if not 1 <= limit <= 200:
+        raise ValueError("limit must be between 1 and 200")
+
+    distance = DocumentChunkEmbedding.embedding.cosine_distance(
+        list(query_vector)
+    ).label("distance")
+    # pgvector registers its HNSW settings when the library is loaded.
+    session.execute(text("LOAD 'vector'"))
+    session.execute(text("SET LOCAL hnsw.iterative_scan = strict_order"))
+    rows = session.execute(
+        select(
+            DocumentChunk,
+            Document,
+            distance,
+        )
+        .select_from(DocumentChunkEmbedding)
+        .join(
+            DocumentChunk,
+            DocumentChunkEmbedding.chunk_id == DocumentChunk.id,
+        )
+        .join(
+            Document,
+            Document.id == DocumentChunk.document_id,
+        )
+        .join(
+            DocumentParseState,
+            and_(
+                DocumentParseState.document_id == DocumentChunk.document_id,
+                DocumentParseState.current_batch_id
+                == DocumentChunk.parse_batch_id,
+            ),
+        )
+        .where(
+            DocumentChunkEmbedding.model_name == model_name,
+            DocumentChunkEmbedding.dimensions == dimensions,
+            *_search_filters(filters),
+        )
+        .order_by(
+            distance,
+            DocumentChunk.document_id,
+            DocumentChunk.position,
+        )
+        .limit(limit)
+    ).all()
+    return [
+        _search_hit(
+            chunk,
+            document,
+            similarity=max(-1.0, min(1.0, 1.0 - float(row_distance))),
+        )
+        for chunk, document, row_distance in rows
+    ]
+
+
+def get_chunk_context(
+    session: Session,
+    chunk_id: UUID,
+    *,
+    radius: int = 1,
+) -> list[SearchHit]:
+    if not 0 <= radius <= 5:
+        raise ValueError("radius must be between 0 and 5")
+    anchor = session.get(DocumentChunk, chunk_id)
+    if anchor is None:
+        raise ValueError(f"Unknown chunk: {chunk_id}")
+    parse_state = session.get(DocumentParseState, anchor.document_id)
+    if (
+        parse_state is None
+        or parse_state.current_batch_id != anchor.parse_batch_id
+    ):
+        raise ValueError("Chunk is not part of the current successful parse batch")
+    chunks = list(
+        session.scalars(
+            select(DocumentChunk)
+            .where(
+                DocumentChunk.parse_batch_id == anchor.parse_batch_id,
+                DocumentChunk.position >= anchor.position - radius,
+                DocumentChunk.position <= anchor.position + radius,
+            )
+            .order_by(DocumentChunk.position)
+        ).all()
+    )
+    documents = {
+        document.id: document
+        for document in session.scalars(
+            select(Document).where(
+                Document.id.in_({chunk.document_id for chunk in chunks})
+            )
+        ).all()
+    }
+    return [
+        _search_hit(chunk, documents[chunk.document_id], similarity=None)
+        for chunk in chunks
+    ]
+
+
+def search_chunks_exact(
+    session: Session,
+    term: str,
+    *,
+    filters: SearchFilters,
+    limit: int,
+) -> list[SearchHit]:
+    normalized = term.strip()
+    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._:/-]{0,63}", normalized):
+        raise ValueError(
+            "Exact search term must be a short code using letters, digits, ._:/-"
+        )
+    if not 1 <= limit <= 200:
+        raise ValueError("limit must be between 1 and 200")
+    boundary = rf"(?<![[:alnum:]_])(?:{re.escape(normalized)})(?![[:alnum:]_])"
+    rows = session.execute(
+        _current_chunk_query(filters)
+        .add_columns(Document)
+        .where(DocumentChunk.text.op("~*")(boundary))
+        .order_by(
+            Document.published_at.desc().nullslast(),
+            Document.collected_at.desc(),
+            DocumentChunk.document_id,
+            DocumentChunk.position,
+        )
+        .limit(limit)
+    ).all()
+    return [
+        _search_hit(chunk, document, similarity=None)
+        for chunk, document in rows
+    ]
+
+
+def get_embedding_coverage(
+    session: Session,
+    *,
+    model_name: str,
+    dimensions: int,
+    filters: SearchFilters,
+) -> SearchCoverage:
+    if dimensions != VECTOR_DIMENSIONS:
+        raise ValueError("Embedding dimensions do not match the configured vector space")
+    join_conditions = (
+        DocumentChunk.__table__.join(
+            Document,
+            Document.id == DocumentChunk.document_id,
+        )
+        .join(
+            DocumentParseState,
+            and_(
+                DocumentParseState.document_id == DocumentChunk.document_id,
+                DocumentParseState.current_batch_id
+                == DocumentChunk.parse_batch_id,
+            ),
+        )
+    )
+    conditions = _search_filters(filters)
+    current_documents = session.scalar(
+        select(func.count(func.distinct(DocumentChunk.document_id)))
+        .select_from(join_conditions)
+        .where(*conditions)
+    ) or 0
+    current_chunks = session.scalar(
+        select(func.count(DocumentChunk.id))
+        .select_from(join_conditions)
+        .where(*conditions)
+    ) or 0
+    indexed_chunks = session.scalar(
+        select(func.count(DocumentChunk.id))
+        .select_from(
+            join_conditions.join(
+                DocumentChunkEmbedding,
+                and_(
+                    DocumentChunkEmbedding.chunk_id == DocumentChunk.id,
+                    DocumentChunkEmbedding.model_name == model_name,
+                    DocumentChunkEmbedding.dimensions == dimensions,
+                ),
+            )
+        )
+        .where(*conditions)
+    ) or 0
+    indexed_documents = session.scalar(
+        select(func.count(func.distinct(DocumentEmbeddingState.document_id)))
+        .select_from(
+            join_conditions.join(
+                DocumentEmbeddingState,
+                and_(
+                    DocumentEmbeddingState.document_id
+                    == DocumentChunk.document_id,
+                    DocumentEmbeddingState.parse_batch_id
+                    == DocumentParseState.current_batch_id,
+                    DocumentEmbeddingState.status == "completed",
+                    DocumentEmbeddingState.model_name == model_name,
+                    DocumentEmbeddingState.dimensions == dimensions,
+                ),
+            )
+        )
+        .where(*conditions)
+    ) or 0
+    failed_documents = session.scalar(
+        select(func.count(func.distinct(DocumentEmbeddingState.document_id)))
+        .select_from(
+            join_conditions.join(
+                DocumentEmbeddingState,
+                and_(
+                    DocumentEmbeddingState.document_id
+                    == DocumentChunk.document_id,
+                    DocumentEmbeddingState.parse_batch_id
+                    == DocumentParseState.current_batch_id,
+                    DocumentEmbeddingState.status == "failed",
+                    DocumentEmbeddingState.model_name == model_name,
+                    DocumentEmbeddingState.dimensions == dimensions,
+                ),
+            )
+        )
+        .where(*conditions)
+    ) or 0
+    return SearchCoverage(
+        current_documents=int(current_documents),
+        indexed_documents=int(indexed_documents),
+        failed_documents=int(failed_documents),
+        current_chunks=int(current_chunks),
+        indexed_chunks=int(indexed_chunks),
+    )
 
 
 def find_parse_batch(

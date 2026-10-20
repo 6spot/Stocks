@@ -1,8 +1,14 @@
 from fastapi import FastAPI, Query
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from stocks.db import session_factory
-from stocks.models import Document, DocumentCollectionState, DocumentParseState
+from stocks.models import (
+    Document,
+    DocumentChunk,
+    DocumentCollectionState,
+    DocumentEmbeddingState,
+    DocumentParseState,
+)
 
 app = FastAPI(title="Stocks", version="0.1.0")
 
@@ -36,6 +42,37 @@ def documents(limit: int = Query(50, ge=1, le=200)) -> list[dict]:
                 )
             ).all()
         }
+        embedding_states = {
+            state.document_id: state
+            for state in session.scalars(
+                select(DocumentEmbeddingState).where(
+                    DocumentEmbeddingState.document_id.in_(
+                        [document.id for document in rows]
+                    )
+                )
+            ).all()
+        }
+        current_chunk_counts = dict(
+            session.execute(
+                select(
+                    DocumentChunk.document_id,
+                    func.count(DocumentChunk.id),
+                )
+                .join(
+                    DocumentParseState,
+                    DocumentParseState.document_id
+                    == DocumentChunk.document_id,
+                )
+                .where(
+                    DocumentParseState.current_batch_id
+                    == DocumentChunk.parse_batch_id,
+                    DocumentChunk.document_id.in_(
+                        [document.id for document in rows]
+                    ),
+                )
+                .group_by(DocumentChunk.document_id)
+            ).all()
+        )
         return [
             {
                 "id": str(d.id),
@@ -51,6 +88,11 @@ def documents(limit: int = Query(50, ge=1, le=200)) -> list[dict]:
                 "fetch_error": d.fetch_error,
                 "collection_state": _collection_state(states, d),
                 "parse_state": _parse_state(parse_states.get(d.id)),
+                "embedding_state": _embedding_state(
+                    embedding_states.get(d.id),
+                    parse_states.get(d.id),
+                    current_chunk_counts.get(d.id, 0),
+                ),
                 "content_type": d.content_type,
                 "content_size": d.content_size,
                 "content_hash": d.content_hash,
@@ -89,4 +131,38 @@ def _parse_state(state: DocumentParseState | None) -> dict[str, object] | None:
         "chunk_count": state.chunk_count,
         "error": state.error,
         "attempted_at": state.attempted_at,
+    }
+
+
+def _embedding_state(
+    state: DocumentEmbeddingState | None,
+    parse_state: DocumentParseState | None,
+    current_chunk_count: int,
+) -> dict[str, object] | None:
+    if (
+        parse_state is None
+        or parse_state.current_batch_id is None
+        or current_chunk_count == 0
+    ):
+        return None
+    is_current_batch = (
+        state is not None
+        and state.parse_batch_id == parse_state.current_batch_id
+    )
+    indexed_count = state.indexed_count if is_current_batch else 0
+    return {
+        "status": state.status if is_current_batch else "pending",
+        "current": is_current_batch,
+        "parse_batch_id": str(parse_state.current_batch_id),
+        "last_attempt_parse_batch_id": (
+            str(state.parse_batch_id) if state is not None else None
+        ),
+        "model_alias": state.model_alias if state is not None else None,
+        "model_name": state.model_name if state is not None else None,
+        "dimensions": state.dimensions if state is not None else None,
+        "chunk_count": current_chunk_count,
+        "indexed_count": indexed_count,
+        "unindexed_count": current_chunk_count - indexed_count,
+        "error": state.error if is_current_batch else None,
+        "attempted_at": state.attempted_at if state is not None else None,
     }

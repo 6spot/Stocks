@@ -8,6 +8,7 @@ from sqlalchemy import (
     ForeignKey,
     Index,
     Integer,
+    PrimaryKeyConstraint,
     String,
     Text,
     UniqueConstraint,
@@ -17,6 +18,8 @@ from sqlalchemy import (
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+
+from stocks.embedding_space import VECTOR_DIMENSIONS
 
 
 class Base(DeclarativeBase):
@@ -121,9 +124,6 @@ class DocumentChunk(Base):
     position: Mapped[int] = mapped_column(Integer)
     text: Mapped[str] = mapped_column(Text)
     locator: Mapped[dict] = mapped_column(JSONB)
-    embedding = mapped_column(Vector(), nullable=True)
-    embedding_model: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    embedding_dimensions: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
 
 class DocumentParseBatch(Base):
@@ -186,6 +186,80 @@ class DocumentParseState(Base):
     )
     error: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     chunk_count: Mapped[int] = mapped_column(Integer, default=0)
+    attempted_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
+class DocumentChunkEmbedding(Base):
+    __tablename__ = "document_chunk_embeddings"
+    __table_args__ = (
+        PrimaryKeyConstraint(
+            "chunk_id",
+            "model_name",
+            "dimensions",
+            name="pk_document_chunk_embeddings",
+        ),
+        CheckConstraint(
+            f"dimensions = {VECTOR_DIMENSIONS}",
+            name="ck_document_chunk_embeddings_dimensions",
+        ),
+        Index(
+            "ix_document_chunk_embeddings_space",
+            "model_name",
+            "dimensions",
+        ),
+        Index(
+            "ix_document_chunk_embeddings_hnsw",
+            "embedding",
+            postgresql_using="hnsw",
+            postgresql_ops={"embedding": "vector_cosine_ops"},
+        ),
+    )
+    chunk_id: Mapped[UUID] = mapped_column(
+        ForeignKey("document_chunks.id", ondelete="CASCADE")
+    )
+    model_alias: Mapped[str] = mapped_column(String(120))
+    model_name: Mapped[str] = mapped_column(String(255))
+    dimensions: Mapped[int] = mapped_column(Integer)
+    embedding = mapped_column(Vector(VECTOR_DIMENSIONS), nullable=False)
+    indexed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+class DocumentEmbeddingState(Base):
+    __tablename__ = "document_embedding_states"
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('completed', 'failed')",
+            name="ck_document_embedding_states_status",
+        ),
+        CheckConstraint(
+            "chunk_count >= 0",
+            name="ck_document_embedding_states_chunk_count",
+        ),
+        CheckConstraint(
+            "indexed_count >= 0 AND indexed_count <= chunk_count",
+            name="ck_document_embedding_states_indexed_count",
+        ),
+        CheckConstraint(
+            f"dimensions = {VECTOR_DIMENSIONS}",
+            name="ck_document_embedding_states_dimensions",
+        ),
+    )
+    document_id: Mapped[UUID] = mapped_column(
+        ForeignKey("documents.id", ondelete="CASCADE"), primary_key=True
+    )
+    status: Mapped[str] = mapped_column(String(16))
+    parse_batch_id: Mapped[UUID] = mapped_column(
+        ForeignKey("document_parse_batches.id", ondelete="CASCADE")
+    )
+    model_alias: Mapped[str] = mapped_column(String(120))
+    model_name: Mapped[str] = mapped_column(String(255))
+    dimensions: Mapped[int] = mapped_column(Integer)
+    chunk_count: Mapped[int] = mapped_column(Integer)
+    indexed_count: Mapped[int] = mapped_column(Integer)
+    error: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     attempted_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()

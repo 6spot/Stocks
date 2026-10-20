@@ -9,7 +9,7 @@ Requires Docker Compose. An S3-compatible endpoint is needed to collect and pers
 5. Verify: http://127.0.0.1:8000/health
 6. View stored records: http://127.0.0.1:8000/api/documents (empty on a fresh database).
 
-The current implementation provides Source/Document/Chunk models, fresh-database initialization, a versioned Document repository, configured RSS/Atom discovery, safe HTTP article acquisition, a manual collection CLI, a manual HTML/text parsing CLI, a document-list API, a generic S3 snapshot helper, and an HTTP model client. The repository checks `(source_id, dedupe_key)` and SHA-256 before writing storage, reuses an immutable Document version and updates a separate collection state for identical bytes, and creates the next immutable Document version for changed bytes. Classification, Fact extraction, vector indexing/search, the Task/Agent runner, reports, and the Web console remain to be implemented.
+The current implementation provides Source/Document/Chunk models, fresh-database initialization, a versioned Document repository, configured RSS/Atom discovery, safe HTTP article acquisition, a manual collection CLI, a manual HTML/text parsing CLI, manual pgvector indexing and semantic/exact search CLI, a document-list API, a generic S3 snapshot helper, and an HTTP model client. The repository checks `(source_id, dedupe_key)` and SHA-256 before writing storage, reuses an immutable Document version and updates a separate collection state for identical bytes, and creates the next immutable Document version for changed bytes. Classification, Fact extraction, the Task/Agent runner, reports, and the Web console remain to be implemented.
 
 The snapshot helper stores the exact bytes supplied by its caller, computes their SHA-256 hash, and uses the supplied content type; it does not assume XML or a particular collection channel. `stocks.repository.ingest_document()` remains the only Document write entry point.
 
@@ -52,9 +52,49 @@ configuration. `--reprocess` creates a new batch. If that attempt fails, the cur
 successful batch and its Chunks remain readable and unchanged; a later success becomes
 the current batch without deleting history. Unsupported formats and documents with no
 extractable evidence text are recorded as `unsupported` or `failed`; they are never
-stored as empty successful chunks. PDF/JSON/XML parsing, OCR, embeddings, search,
-classification, Facts, Task/Run execution, reports, and the Web console remain future
-work.
+stored as empty successful chunks. PDF/JSON/XML parsing, OCR, classification, Facts,
+Task/Run execution, reports, and the Web console remain future work.
+
+## Manual embedding indexing and search
+
+Configure `EMBEDDING_MODEL_NAME` alongside the existing model provider variables. The
+selected provider must expose the OpenAI-compatible `/embeddings` operation. The current
+vector space is fixed at 1,536 dimensions, matching the HNSW cosine index in the fresh
+database schema. Any configured embedding fallback must use the same model name and
+dimensions.
+
+After parsing, index up to 20 latest Documents or select explicit IDs:
+
+```bash
+docker compose run --rm api python -m stocks.indexing --limit 20
+docker compose run --rm api python -m stocks.indexing \
+  --document-id <document-uuid>
+```
+
+An unchanged current batch reuses its vectors. `--reindex` regenerates them without
+reading the original S3 snapshot or parsing it again. Displays the index state in
+`/api/documents`, including indexed and missing Chunk counts.
+
+Semantic search generates one query vector and reads the existing pgvector index.
+Exact search accepts short stock-code or metric identifiers and does not call a model:
+
+```bash
+docker compose run --rm api python -m stocks.search \
+  --query "recent inflation and policy changes" --source-id sec_press_releases
+docker compose run --rm api python -m stocks.search \
+  --exact NVDA --published-from 2026-10-01T00:00:00Z
+```
+
+Use `--chunk-id <chunk-uuid> --radius 1` to read the current Chunk and its stored
+neighbors. Context reads only the current successful parse batch; it does not fetch or
+parse the S3 original.
+
+The output includes persistent Chunk and Document references, version and source
+metadata, the applied filters, and whether the result hit the requested limit. Semantic
+search also reports the current Chunk index coverage; exact search is vector-independent
+and therefore reports `coverage: null`. An embedding failure leaves the original
+Document and Chunks intact and reports a visible gap. The CLI does not read S3, parse
+Documents, or create document vectors while searching.
 
 Install local development dependencies: cd backend && pip install -e '.[dev]'. Run only tests relevant to the change, for example: python -m pytest -q tests/test_s3.py; use -k to narrow the selection when needed. Follow AGENTS.md for when broader checks are warranted; do not run the full suite by default.
 

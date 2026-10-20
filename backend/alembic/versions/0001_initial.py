@@ -8,6 +8,7 @@ import sqlalchemy as sa
 from alembic import op
 from pgvector.sqlalchemy import Vector
 from sqlalchemy.dialects.postgresql import JSONB, UUID
+from stocks.embedding_space import VECTOR_DIMENSIONS
 
 revision = "0001"
 down_revision = None
@@ -135,18 +136,100 @@ def upgrade():
         sa.Column("position", sa.Integer(), nullable=False),
         sa.Column("text", sa.Text(), nullable=False),
         sa.Column("locator", JSONB(), nullable=False),
-        sa.Column("embedding", Vector()),
-        sa.Column("embedding_model", sa.String(255)),
-        sa.Column("embedding_dimensions", sa.Integer()),
         sa.UniqueConstraint(
             "parse_batch_id",
             "position",
             name="uq_document_chunks_batch_position",
         ),
     )
+    op.create_table(
+        "document_chunk_embeddings",
+        sa.Column(
+            "chunk_id",
+            UUID(as_uuid=True),
+            sa.ForeignKey("document_chunks.id", ondelete="CASCADE"),
+            nullable=False,
+        ),
+        sa.Column("model_alias", sa.String(120), nullable=False),
+        sa.Column("model_name", sa.String(255), nullable=False),
+        sa.Column("dimensions", sa.Integer(), nullable=False),
+        sa.Column("embedding", Vector(VECTOR_DIMENSIONS), nullable=False),
+        sa.Column("indexed_at", sa.DateTime(timezone=True), nullable=False),
+        sa.PrimaryKeyConstraint(
+            "chunk_id",
+            "model_name",
+            "dimensions",
+            name="pk_document_chunk_embeddings",
+        ),
+        sa.CheckConstraint(
+            f"dimensions = {VECTOR_DIMENSIONS}",
+            name="ck_document_chunk_embeddings_dimensions",
+        ),
+    )
+    op.create_index(
+        "ix_document_chunk_embeddings_space",
+        "document_chunk_embeddings",
+        ["model_name", "dimensions"],
+    )
+    op.create_index(
+        "ix_document_chunk_embeddings_hnsw",
+        "document_chunk_embeddings",
+        ["embedding"],
+        postgresql_using="hnsw",
+        postgresql_ops={"embedding": "vector_cosine_ops"},
+    )
+    op.create_table(
+        "document_embedding_states",
+        sa.Column(
+            "document_id",
+            UUID(as_uuid=True),
+            sa.ForeignKey("documents.id", ondelete="CASCADE"),
+            primary_key=True,
+        ),
+        sa.Column("status", sa.String(16), nullable=False),
+        sa.Column(
+            "parse_batch_id",
+            UUID(as_uuid=True),
+            sa.ForeignKey("document_parse_batches.id", ondelete="CASCADE"),
+            nullable=False,
+        ),
+        sa.Column("model_alias", sa.String(120), nullable=False),
+        sa.Column("model_name", sa.String(255), nullable=False),
+        sa.Column("dimensions", sa.Integer(), nullable=False),
+        sa.Column("chunk_count", sa.Integer(), nullable=False),
+        sa.Column("indexed_count", sa.Integer(), nullable=False),
+        sa.Column("error", JSONB()),
+        sa.Column("attempted_at", sa.DateTime(timezone=True), nullable=False),
+        sa.Column(
+            "updated_at",
+            sa.DateTime(timezone=True),
+            nullable=False,
+            server_default=sa.text("now()"),
+        ),
+        sa.CheckConstraint(
+            "status IN ('completed', 'failed')",
+            name="ck_document_embedding_states_status",
+        ),
+        sa.CheckConstraint(
+            "chunk_count >= 0",
+            name="ck_document_embedding_states_chunk_count",
+        ),
+        sa.CheckConstraint(
+            "indexed_count >= 0 AND indexed_count <= chunk_count",
+            name="ck_document_embedding_states_indexed_count",
+        ),
+        sa.CheckConstraint(
+            f"dimensions = {VECTOR_DIMENSIONS}",
+            name="ck_document_embedding_states_dimensions",
+        ),
+    )
 
 
 def downgrade():
+    op.drop_table("document_embedding_states")
+    op.drop_index("ix_document_chunk_embeddings_hnsw", table_name="document_chunk_embeddings")
+    op.drop_index("ix_document_chunk_embeddings_space", table_name="document_chunk_embeddings")
+    op.drop_table("document_chunk_embeddings")
     op.drop_table("document_chunks")
     op.drop_table("document_parse_states")
     op.drop_index("ix_document_parse_batches_document_created", table_name="document_parse_batches")

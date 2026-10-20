@@ -8,3 +8,9 @@ models:
   fast:
     provider: default
     name: ${MODEL_NAME}
+  embedding:
+    provider: default
+    name: ${EMBEDDING_MODEL_NAME}
+    dimensions: 1536
+embedding:
+  models: [embedding]

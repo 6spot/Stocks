@@ -13,6 +13,8 @@ class Settings(BaseSettings):
     s3_secret_key: str | None = None
     parse_chunk_size: int = Field(default=1200, ge=200, le=4000)
     parse_chunk_overlap: int = Field(default=150, ge=0, le=1000)
+    embedding_batch_size: int = Field(default=32, ge=1, le=256)
+    embedding_max_query_characters: int = Field(default=4000, ge=1, le=20000)
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
     def model_post_init(self, __context: object, /) -> None:

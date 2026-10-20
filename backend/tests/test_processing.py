@@ -26,10 +26,12 @@ from stocks.processing.service import (
     process_documents,
 )
 from stocks.repository import (
+    SearchFilters,
     list_parse_batches,
     list_parse_chunks,
     persist_parse_result,
 )
+from stocks.search.service import exact_search
 from stocks.settings import Settings
 
 ARTICLE_HTML = b"""\
@@ -915,3 +917,64 @@ def test_repository_rejects_invalid_batch_shape_before_write(engine):
             )
 
         assert session.scalars(select(DocumentParseBatch)).all() == []
+
+
+def test_exact_search_returns_current_chunks_with_source_and_time_filters(
+    engine,
+):
+    payload = ARTICLE_HTML
+    document = make_document(payload)
+
+    with Session(engine) as session:
+        session.add(
+            Source(
+                id="sec",
+                name="SEC",
+                connector="rss",
+                trust_tier="T1",
+            )
+        )
+        session.commit()
+        session.add(document)
+        session.commit()
+
+        summary = process_document(
+            session,
+            make_config(),
+            document,
+            read_bytes=lambda config, item: payload,
+            clock=lambda: datetime(2026, 10, 20, 2, tzinfo=UTC),
+        )
+        result = exact_search(
+            session,
+            "cpi",
+            filters=SearchFilters(
+                source_ids=("sec",),
+            ),
+        )
+        assert result.hits
+        assert result.hits[0].document_id == document.id
+        assert result.hits[0].parse_batch_id == summary.batch_id
+        assert "CPI" in result.hits[0].text
+
+        filtered = exact_search(
+            session,
+            "cpi",
+            filters=SearchFilters(
+                source_ids=("other",),
+            ),
+        )
+        assert filtered.hits == ()
+
+
+def test_exact_search_rejects_unbounded_or_unsafe_terms(engine):
+    with Session(engine) as session:
+        with pytest.raises(ValueError, match="short code"):
+            exact_search(session, "CPI OR 1=1")
+        with pytest.raises(ValueError, match="short code"):
+            exact_search(session, "x" * 65)
+
+        with pytest.raises(ValueError, match="timezone"):
+            SearchFilters(
+                published_from=datetime(2026, 10, 20),
+            )

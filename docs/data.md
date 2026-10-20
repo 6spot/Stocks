@@ -114,7 +114,7 @@ RSS 条目和搜索结果可用于发现链接；实际文章仍以取得的文�
 
 当前后端提供 `stocks.repository.ingest_document()` 作为这条入库链的最小实现。调用方提交 `DocumentInput`，Repository 校验 Source、内容类型、完整性状态及获取错误，按 `(source_id, dedupe_key)` 查找现有版本；新哈希先保存不可变 S3 原件，再提交下一版本号。同一内容版本不原位改写：每次取得结果分别记录在该 Document 的 `completeness`/`fetch_error`，并在 `document_collection_states` 保存资料身份最近一次尝试所对应的 Document、完整性、错误、来源时间和采集时间，用于展示最近采集状态及决定是否重试；相同原始字节仍复用内容版本，只更新这份采集状态。数据库提交失败时回滚 Document 事务，已写入但未被登记的对象不视为可用证据。`get_document()`、`get_latest_document()`、`get_collection_state()`、`list_document_versions()` 与 `read_document_bytes()` 提供按版本读取及当前采集状态。
 
-V0 已提供 `config/sources.yaml` 配置的 RSS/Atom 手动采集入口。`stocks.collection.collect_source()` 先发现 Feed 条目，只对没有本地版本的条目或来源 `updated` / `pubDate` 信号发生变化的条目请求文章页；完整 HTML/文本字节直接交给 `ingest_document()`。文章请求失败或正文为空时，以实际取得的 Feed 标题和摘要生成 `text/plain` 部分内容，记录 `completeness = partial` 与脱敏 `fetch_error`，并在后续运行重试。相同原始字节复用内容版本；重试得到正文时因字节不同形成新版本。当前未实现定时采集、采集游标、分类、Fact、Embedding/索引或证据阅读 API。
+V0 已提供 `config/sources.yaml` 配置的 RSS/Atom 手动采集入口。`stocks.collection.collect_source()` 先发现 Feed 条目，只对没有本地版本的条目或来源 `updated` / `pubDate` 信号发生变化的条目请求文章页；完整 HTML/文本字节直接交给 `ingest_document()`。文章请求失败或正文为空时，以实际取得的 Feed 标题和摘要生成 `text/plain` 部分内容，记录 `completeness = partial` 与脱敏 `fetch_error`，并在后续运行重试。相同原始字节复用内容版本；重试得到正文时因字节不同形成新版本。Embedding 索引见后文；当前未实现定时采集、采集游标、分类、Fact 或证据阅读 API。
 
 ### 后台解析、片段与索引
 
@@ -137,7 +137,9 @@ Chunk 至少关联 Document 及其内容版本，保存片段文本、顺序和�
 
 V0-03 的后台解析入口是 `stocks.processing`，目前由手动 CLI 调用。它按 `text/html`、`application/xhtml+xml`、`text/plain` 选择解析器；HTML 优先读取语义正文容器并排除脚本、导航、表单等噪声，保留标题、段落、列表和表格行文本，表格按行与单元格关联；纯文本按段落保留原位置。每个成功 Chunk 保存文本与 `locator`：纯文本在元素级 `char_start` / `char_end` 保存严格解码文本的字符范围，`segments[].locator.source_ranges` 保存切片实际可见文本的原文范围，普通连续文本可合并范围；HTML 元素级范围为原始解码 HTML 字符范围，实体字符的来源范围覆盖完整实体写法，表格行还保存单元格原文边界。表格拼接的空格和 `|` 以及 HTML 语义分块之间的 `\n` 由系统生成，表格分隔符在 `locator.separators` 显式标记，不能用元素级范围冒充原文。HTML 源码按纯文本安全解码显示，不执行原始标记。分块大小/重叠由 `PARSE_CHUNK_SIZE` / `PARSE_CHUNK_OVERLAP` 配置，不按来源建立独立字段。
 
-解析结果采用不可变批次。`document_parse_batches` 记录每次处理的内容哈希、处理器版本、配置指纹、`completed | failed | unsupported` 状态、错误与 Chunk 数；`document_parse_states` 分别指向最近尝试批次和当前成功批次。相同 Document、处理器版本、配置指纹的普通运行复用已有结果；Owner 显式重处理创建新批次。重处理失败只更新最近尝试状态，不改变当前成功批次及其 Chunk；重处理成功切换当前批次，同时保留旧批次和 Chunk 供历史引用。无效编码、无可见正文等记为失败，不支持 MIME 记为 `unsupported`；都不能伪造空正文成功，原件不变。当前还没有 PDF/JSON/XML、OCR、Embedding、检索或前端读取入口。
+解析结果采用不可变批次。`document_parse_batches` 记录每次处理的内容哈希、处理器版本、配置指纹、`completed | failed | unsupported` 状态、错误与 Chunk 数；`document_parse_states` 分别指向最近尝试批次和当前成功批次。相同 Document、处理器版本、配置指纹的普通运行复用已有结果；Owner 显式重处理创建新批次。重处理失败只更新最近尝试状态，不改变当前成功批次及其 Chunk；重处理成功切换当前批次，同时保留旧批次和 Chunk 供历史引用。无效编码、无可见正文等记为失败，不支持 MIME 记为 `unsupported`；都不能伪造空正文成功，原件不变。当前还没有 PDF/JSON/XML、OCR 或前端读取入口。
+
+**V0 Embedding 索引：** `stocks.indexing` 从每个 Document 当前成功解析批次的 Chunk 生成向量，并写入 `document_chunk_embeddings`。每条向量以 `(chunk_id, model_name, dimensions)` 唯一标识，记录实际 Provider 别名、固定模型名与维度；`document_embedding_states` 记录每 Document 最近一次索引尝试的状态、当前解析批次、覆盖数量和稳定错误。当前向量维度固定为 1536，模型及同模型回退由 `config/models.yaml` 的 `embedding.models` 配置；回退目标必须与主目标使用相同模型名和维度。普通重复索引复用已完成状态；模型切换、重新解析或显式重建会为新批次生成向量。旧批次的向量仍保留供历史引用，但不进入当前检索。Embedding 失败不删除 Document、Chunk 或已有向量，并显示 `failed`、覆盖缺口和错误；成功完成必须覆盖当前批次全部 Chunk。V0 只支持一个当前向量空间，不混用不同模型或维度的距离结果。
 
 ### 核心数据与公司/股票标签
 
@@ -267,6 +269,8 @@ V0 的 Repository 查询 Document Chunk：使用 **pgvector 语义召回**，结
 标签不是唯一召回手段：无 Fact、分类失败、标签错误或未直接提及股票的文档，仍可通过向量语义搜索与来源/时间等字段查询进入候选。Embedding 未完成时其原始 Document 仍可读取，取材记录索引积压/失败，不假装已完成全部相关召回。
 
 **pgvector 是首版必备能力**：Document/Chunk 的 Embedding 记录模型标识和维度；查询使用兼容的向量模型与相应索引，不混合不同模型的向量距离结果。原始内容可读与向量可检索是两个状态，分类及抽取失败也不阻止向量索引任务。
+
+当前 `stocks.search` 提供两条读取路径。语义查询只为本次查询文本生成向量，通过当前模型和维度的 HNSW 余弦索引结合来源、发布时间或采集时间过滤，返回当前解析批次中的持久 Chunk、Document 版本、来源和相似度；精确查询只接受 64 字符以内的股票代码或指标编号形式，使用词边界正则在有界结果集中匹配已存 Chunk，不依赖 Embedding 或分类。两条路径都返回实际过滤条件和 `truncated`；语义查询还返回当前解析批次的向量索引覆盖，精确查询不需要 Provider 或向量空间，因此不报告由模型决定的向量覆盖。`truncated` 表示返回数量达到上限，未扫描数量在未知时保持未知；精确查询要求至少存在已解析的当前 Chunk。Document 命中后可用 `--chunk-id` 读取当前批次的相邻已存片段。当前未实现 `search_changes`、Evidence Selection 或公开证据 API。
 
 Embedding 模型引用、维度及分块参数通过配置指定；首版使用一个当前模型及其对应向量索引即可。模型切换后的重建属于后台处理，完成前明确显示索引覆盖状态，不以无结果掩盖重建缺口。结构化 Fact 查询不以其是否已生成向量为前提。
 
