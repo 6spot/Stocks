@@ -312,3 +312,25 @@ Fixed the four defects found reviewing archived V0-01/V0-02: the latest-content 
 ### Next Steps
 
 - V0-07 report and evidence read API plus the real source and real model end-to-end acceptance; it must read recent content through the collection state pointer, not the highest version number.
+
+
+## Session 10: V0-07 报告证据读取 API 实现与远程验收
+<!-- trellis-session: v=2 fp=2dffe642f9837479 -->
+
+**Date**: 2026-10-21
+**Task**: V0-07 报告证据读取 API 实现与远程验收
+**Branch**: `feat/v0-07-evidence-api-acceptance`
+
+### Summary
+
+新增只读报告/证据/原件 API，按引用版本读取且不跟随采集指针；真实 S3 往返 + uvicorn smoke 通过；AC-2/AC-3 已验收，AC-1 因测试服务器缺模型凭据保持未验收。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `bc70735` | feat: read reports and the exact evidence they cited |
+
+### Status
+
+[OK] **Completed**
