@@ -71,3 +71,26 @@ Planned 21 delivery tasks under V0/V1/V2 milestones with dependencies and accept
 ### Next Steps
 
 - Review and implement V0-01 raw document persistence and immutable versions.
+
+
+## Session 3: V0-01 raw document versions
+<!-- trellis-session: v=2 fp=0235b8f37e091193 -->
+
+**Date**: 2026-10-20
+**Task**: V0-01 raw document versions
+**Branch**: `main`
+
+### Summary
+
+Implemented versioned raw Document ingestion with S3-first immutable snapshots, PostgreSQL identity constraints, duplicate-byte reuse, read APIs, API metadata, and backend tests. Documented the remote Docker test environment and validated a fresh pgvector schema plus 11 passing backend tests.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `5309ae5` | feat: persist versioned raw documents |
+| `79f2f6f` | docs(trellis): document remote backend test environment |
+
+### Status
+
+[OK] **Completed**
