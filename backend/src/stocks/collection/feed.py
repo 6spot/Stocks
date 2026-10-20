@@ -119,8 +119,17 @@ def _parse_entry(
             _text(entry, "updated") or _text(entry, "modified")
         )
 
-    article_url = urljoin(base_url, link.strip()) if link and link.strip() else None
-    if article_url is not None:
+    article_url: str | None = None
+    if link and link.strip():
+        try:
+            article_url = urljoin(base_url, link.strip())
+        except ValueError as exc:
+            raise CollectionError(
+                "INVALID_ARTICLE_URL",
+                "Feed entry article URL could not be resolved",
+                url=base_url,
+                details={"position": position, "reason": "malformed_link"},
+            ) from exc
         try:
             validate_https_url(article_url)
         except CollectionError as exc:

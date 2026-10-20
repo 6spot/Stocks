@@ -139,13 +139,14 @@ class SafeFetcher:
                                 url=current_url,
                                 details={"status": response.status_code},
                             )
-                        content_type = _content_type(response)
-                        if content_type not in allowed:
+                        declared = _declared_content_type(response)
+                        media_type = _media_type(declared)
+                        if media_type not in allowed:
                             raise CollectionError(
                                 "UNSUPPORTED_CONTENT_TYPE",
                                 "Response content type is not allowed",
                                 url=current_url,
-                                details={"content_type": content_type[:255]},
+                                details={"content_type": media_type[:255]},
                             )
                         payload = self._read_limited(
                             response,
@@ -155,7 +156,7 @@ class SafeFetcher:
                         )
                         return FetchedResponse(
                             url=current_url,
-                            content_type=content_type,
+                            content_type=declared,
                             payload=payload,
                         )
             except CollectionError:
@@ -284,8 +285,12 @@ class SafeFetcher:
             )
 
 
-def _content_type(response: httpx.Response) -> str:
-    value = response.headers.get("Content-Type", "")
+def _declared_content_type(response: httpx.Response) -> str:
+    """Return the declared media type with its charset parameter preserved."""
+    return " ".join(response.headers.get("Content-Type", "").split())[:255]
+
+
+def _media_type(value: str) -> str:
     return value.split(";", 1)[0].strip().lower()
 
 

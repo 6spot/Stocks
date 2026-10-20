@@ -290,16 +290,14 @@ def _sync_source(session: Session, source: SourceConfig) -> None:
 def _should_recheck(
     item: FeedItem, state: DocumentCollectionState
 ) -> bool:
+    # Partial content only carries the Feed title and summary, so every later run
+    # must attempt the article again even when the source gives no change signal.
+    if state.completeness == "partial":
+        return True
     if item.source_updated_at is not None:
-        return (
-            state.completeness == "partial"
-            or state.source_updated_at != item.source_updated_at
-        )
+        return state.source_updated_at != item.source_updated_at
     if item.published_at is not None:
-        return (
-            state.completeness == "partial"
-            or state.published_at != item.published_at
-        )
+        return state.published_at != item.published_at
     return False
 
 

@@ -10,6 +10,7 @@ from stocks.models import Base, Document, DocumentCollectionState, Source
 from stocks.repository import (
     DocumentInput,
     get_collection_state,
+    get_latest_document,
     ingest_document,
     list_document_versions,
     read_document_bytes,
@@ -137,6 +138,108 @@ def test_ingest_reuses_immutable_version_and_updates_collection_state(
         assert len(calls) == 2
         assert read(config, versions[0].snapshot_key) == b"first version"
         assert read_document_bytes(config, versions[1]) == b"second version"
+
+
+def test_latest_document_follows_most_recent_acquisition_not_version_order(
+    engine, storage, monkeypatch
+):
+    """A -> B -> A must read back A while keeping both immutable versions."""
+    _, calls, store, read = storage
+    monkeypatch.setattr("stocks.repository.read_snapshot", read)
+    config = make_config()
+
+    with Session(engine) as session:
+        session.add(Source(id="sec", name="SEC", connector="http", trust_tier="T1"))
+        session.commit()
+
+        first = ingest_document(session, config, make_item(), store=store)
+        second = ingest_document(
+            session,
+            config,
+            make_item(
+                payload=b"second version",
+                collected_at=datetime(2026, 10, 20, 2, tzinfo=timezone.utc),
+            ),
+            store=store,
+        )
+        restored = ingest_document(
+            session,
+            config,
+            make_item(
+                title="Restored title",
+                collected_at=datetime(2026, 10, 20, 3, tzinfo=timezone.utc),
+            ),
+            store=store,
+        )
+
+        assert restored.created is False
+        assert restored.document.id == first.document.id
+        assert second.document.version == 2
+
+        latest = get_latest_document(session, "sec", "filing-1")
+        state = get_collection_state(session, "sec", "filing-1")
+        assert latest is not None and state is not None
+        assert latest.id == first.document.id
+        assert latest.version == 1
+        assert state.latest_document_id == latest.id
+        # History stays immutable: the reused version keeps its own acquired bytes
+        # and metadata, and the newer version remains readable.
+        versions = list_document_versions(session, "sec", "filing-1")
+        assert [document.version for document in versions] == [1, 2]
+        assert versions[0].title == "Filing"
+        assert read_document_bytes(config, versions[0]) == b"first version"
+        assert read_document_bytes(config, versions[1]) == b"second version"
+    assert len(calls) == 2
+
+
+def test_latest_document_reports_recovered_content_after_partial(engine, storage, monkeypatch):
+    """Partial content then the same complete bytes point at the recovered original."""
+    _, calls, store, read = storage
+    monkeypatch.setattr("stocks.repository.read_snapshot", read)
+    config = make_config()
+    complete = b"<html><body>Full release text.</body></html>"
+    partial = b'{"title":"Release","summary":"Summary only"}'
+
+    with Session(engine) as session:
+        session.add(Source(id="sec", name="SEC", connector="http", trust_tier="T1"))
+        session.commit()
+
+        full = ingest_document(
+            session,
+            config,
+            make_item(payload=complete, content_type="text/html"),
+            store=store,
+        )
+        degraded = ingest_document(
+            session,
+            config,
+            make_item(
+                payload=partial,
+                content_type="text/plain; charset=utf-8",
+                completeness="partial",
+                fetch_error={"code": "HTTP_STATUS", "message": "Unavailable", "status": 503},
+                collected_at=datetime(2026, 10, 20, 2, tzinfo=timezone.utc),
+            ),
+            store=store,
+        )
+        recovered = ingest_document(
+            session,
+            config,
+            make_item(payload=complete, content_type="text/html"),
+            store=store,
+        )
+
+        state = get_collection_state(session, "sec", "filing-1")
+        latest = get_latest_document(session, "sec", "filing-1")
+        assert degraded.created is True
+        assert recovered.created is False
+        assert recovered.document.id == full.document.id
+        assert state is not None and latest is not None
+        assert latest.id == full.document.id
+        assert state.completeness == "complete"
+        assert state.fetch_error is None
+        assert read_document_bytes(config, latest) == complete
+        assert len(list_document_versions(session, "sec", "filing-1")) == 2
 
 
 def test_unknown_source_is_rejected_before_storage(engine, storage):

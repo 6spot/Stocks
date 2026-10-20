@@ -266,15 +266,16 @@ def get_document(session: Session, document_id: UUID) -> Document | None:
 def get_latest_document(
     session: Session, source_id: str, dedupe_key: str
 ) -> Document | None:
-    return session.scalar(
-        select(Document)
-        .where(
-            Document.source_id == source_id,
-            Document.dedupe_key == dedupe_key,
-        )
-        .order_by(Document.version.desc())
-        .limit(1)
-    )
+    """Return the Document actually acquired most recently.
+
+    Version numbers only record creation order, so a reused content version can
+    be older than the bytes acquired most recently. The collection state holds
+    that pointer and keeps it consistent with the skip/reuse decision.
+    """
+    state = get_collection_state(session, source_id, dedupe_key)
+    if state is None:
+        return None
+    return session.get(Document, state.latest_document_id)
 
 
 def get_collection_state(

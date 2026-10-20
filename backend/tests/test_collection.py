@@ -430,11 +430,350 @@ class StubFetcher:
         return response
 
 
+def test_partial_content_without_source_time_is_retried_on_next_run(
+    tmp_path, monkeypatch
+):
+    """Unknown published/updated signals must not suppress the retry of partial content."""
+    from stocks.collection.http import FetchedResponse
+    from stocks.models import Document, DocumentCollectionState, Source
+    from stocks.settings import Settings
+
+    source = make_source(tmp_path)
+    no_time_rss = RSS.replace(
+        b"<pubDate>Mon, 19 Oct 2026 12:00:00 GMT</pubDate>", b""
+    )
+    failure = CollectionError(
+        "HTTP_STATUS",
+        "Remote server returned an unsuccessful status",
+        url="https://www.sec.gov/news/release-1",
+        details={"status": 503},
+    )
+    fetcher = StubFetcher(
+        {
+            source.feed_url: FetchedResponse(
+                url=source.feed_url,
+                content_type="application/rss+xml",
+                payload=no_time_rss,
+            ),
+            "https://www.sec.gov/news/release-1": failure,
+        }
+    )
+
+    def store(config, source_id, payload, *, content_type):
+        from hashlib import sha256
+
+        digest = sha256(payload).hexdigest()
+        return f"sources/{source_id}/{digest}", digest
+
+    class StubSession:
+        def __init__(self):
+            self.source = None
+            self.documents = []
+            self.states = {}
+
+        def get(self, model, key):
+            if model is Source:
+                return self.source
+            if model is DocumentCollectionState:
+                return self.states.get(key)
+            if model is Document:
+                return next(
+                    (item for item in self.documents if item.id == key), None
+                )
+            return None
+
+        def add(self, value):
+            if isinstance(value, Source):
+                self.source = value
+            elif isinstance(value, DocumentCollectionState):
+                self.states[(value.source_id, value.dedupe_key)] = value
+            else:
+                self.documents.append(value)
+
+        def flush(self):
+            from uuid import uuid4
+
+            for document in self.documents:
+                if getattr(document, "id", None) is None:
+                    document.id = uuid4()
+
+        def commit(self):
+            self.flush()
+
+        def rollback(self):
+            return None
+
+        def scalar(self, statement):
+            return self.documents[-1] if self.documents else None
+
+        def scalars(self, statement):
+            class Rows:
+                def all(self):
+                    return list(self.documents)
+
+            return Rows()
+
+        def refresh(self, value):
+            return None
+
+        def is_modified(self, value):
+            return True
+
+    monkeypatch.setattr(
+        "stocks.repository._document_rows",
+        lambda session, item: list(session.documents),
+    )
+    config = Settings(
+        _env_file=None,
+        database_url="postgresql+psycopg://unused/unused",
+        s3_endpoint_url="https://storage.example",
+    )
+    session = StubSession()
+
+    first = collect_source(
+        session,
+        config,
+        source,
+        fetcher=fetcher,
+        store=store,
+        clock=lambda: datetime(2026, 10, 20, 1, tzinfo=timezone.utc),
+    )
+    assert first.ingested == 1
+    assert first.items[0].completeness == "partial"
+    state = session.states[(source.source_id, first.items[0].dedupe_key)]
+    assert state.published_at is None and state.source_updated_at is None
+
+    fetcher.responses["https://www.sec.gov/news/release-1"] = FetchedResponse(
+        url="https://www.sec.gov/news/release-1",
+        content_type="text/html",
+        payload=ARTICLE,
+    )
+    second = collect_source(
+        session,
+        config,
+        source,
+        fetcher=fetcher,
+        store=store,
+        clock=lambda: datetime(2026, 10, 20, 2, tzinfo=timezone.utc),
+    )
+    assert second.skipped == 0
+    assert second.ingested == 1
+    assert second.items[0].completeness == "complete"
+    assert fetcher.requests.count("https://www.sec.gov/news/release-1") == 2
+
+    third = collect_source(
+        session,
+        config,
+        source,
+        fetcher=fetcher,
+        store=store,
+        clock=lambda: datetime(2026, 10, 20, 3, tzinfo=timezone.utc),
+    )
+    assert third.skipped == 1
+    assert third.failed == 0
+    assert fetcher.requests.count("https://www.sec.gov/news/release-1") == 2
+
+
+def test_malformed_article_url_fails_only_its_own_feed_entry(tmp_path):
+    source = make_source(tmp_path)
+    payload = RSS.replace(
+        b"</channel>",
+        b"<item><guid>release-9</guid><title>Broken link</title>"
+        b"<link>https://[::1</link>"
+        b"<description>Malformed article link.</description></item></channel>",
+    )
+
+    parsed = parse_feed(payload, source, "https://www.sec.gov/news/feed")
+
+    assert [item.external_id for item in parsed.items] == ["release-1"]
+    assert len(parsed.failures) == 1
+    error = parsed.failures[0].error
+    assert error.code == "INVALID_ARTICLE_URL"
+    assert error.details == {"position": 1, "reason": "malformed_link"}
+    assert error.url == "https://www.sec.gov/news/feed"
+
+
+def test_malformed_redirect_location_is_a_bounded_collection_error():
+    def handler(request):
+        if request.url.path == "/start":
+            return httpx.Response(301, headers={"Location": "https://[::1secret-host"})
+        raise AssertionError("redirect target must not be requested")
+
+    fetcher = safe_fetcher(handler)
+
+    with pytest.raises(CollectionError) as caught:
+        fetcher.fetch(
+            "https://www.sec.gov/start?token=secret",
+            timeout_seconds=5,
+            max_response_bytes=1_000_000,
+            max_redirects=3,
+            accept="text/html",
+            allowed_content_types=["text/html"],
+            user_agent=TEST_USER_AGENT,
+        )
+
+    payload = caught.value.to_dict()
+    assert payload["code"] == "REQUEST_FAILED"
+    assert payload["url"] == "https://www.sec.gov/start"
+    assert "secret" not in str(payload)
+
+
+def test_declared_charset_survives_fetch_and_allow_list():
+    body = (
+        b"<html><body><article><p>Inflation eased to 2,4 percent.</p></article>"
+        b"</body></html>"
+    )
+
+    def handler(request):
+        return httpx.Response(
+            200,
+            headers={"Content-Type": "text/html; charset=windows-1252"},
+            stream=httpx.ByteStream(body),
+        )
+
+    fetched = safe_fetcher(handler).fetch(
+        "https://www.sec.gov/news/release-1",
+        timeout_seconds=5,
+        max_response_bytes=1_000_000,
+        max_redirects=3,
+        accept="text/html",
+        allowed_content_types=["text/html"],
+        user_agent=TEST_USER_AGENT,
+    )
+
+    assert fetched.content_type == "text/html; charset=windows-1252"
+    assert fetched.payload == body
+
+
+def test_collection_stores_declared_charset_for_decoder(tmp_path, monkeypatch):
+    from stocks.collection.http import FetchedResponse
+    from stocks.models import Document, DocumentCollectionState, Source
+    from stocks.processing.parser import parse_content
+    from stocks.settings import Settings
+
+    source = make_source(tmp_path)
+    body = (
+        "<html><body><article><p>Le taux d'inflation est retombé à 2,4 %.</p>"
+        "</article></body></html>"
+    ).encode("windows-1252")
+    fetcher = StubFetcher(
+        {
+            source.feed_url: FetchedResponse(
+                url=source.feed_url,
+                content_type="application/rss+xml",
+                payload=RSS,
+            ),
+            "https://www.sec.gov/news/release-1": FetchedResponse(
+                url="https://www.sec.gov/news/release-1",
+                content_type="text/html; charset=windows-1252",
+                payload=body,
+            ),
+        }
+    )
+    stored = []
+
+    def store(config, source_id, payload, *, content_type):
+        from hashlib import sha256
+
+        digest = sha256(payload).hexdigest()
+        stored.append((content_type, payload))
+        return f"sources/{source_id}/{digest}", digest
+
+    class StubSession:
+        def __init__(self):
+            self.source = None
+            self.documents = []
+            self.states = {}
+
+        def get(self, model, key):
+            if model is Source:
+                return self.source
+            if model is DocumentCollectionState:
+                return self.states.get(key)
+            if model is Document:
+                return next(
+                    (item for item in self.documents if item.id == key), None
+                )
+            return None
+
+        def add(self, value):
+            if isinstance(value, Source):
+                self.source = value
+            elif isinstance(value, DocumentCollectionState):
+                self.states[(value.source_id, value.dedupe_key)] = value
+            else:
+                self.documents.append(value)
+
+        def flush(self):
+            from uuid import uuid4
+
+            for document in self.documents:
+                if getattr(document, "id", None) is None:
+                    document.id = uuid4()
+
+        def commit(self):
+            self.flush()
+
+        def rollback(self):
+            return None
+
+        def scalar(self, statement):
+            return self.documents[-1] if self.documents else None
+
+        def scalars(self, statement):
+            class Rows:
+                def all(self):
+                    return list(self.documents)
+
+            return Rows()
+
+        def refresh(self, value):
+            return None
+
+        def is_modified(self, value):
+            return True
+
+    monkeypatch.setattr(
+        "stocks.repository._document_rows",
+        lambda session, item: list(session.documents),
+    )
+    summary = collect_source(
+        StubSession(),
+        Settings(
+            _env_file=None,
+            database_url="postgresql+psycopg://unused/unused",
+            s3_endpoint_url="https://storage.example",
+        ),
+        source,
+        fetcher=fetcher,
+        store=store,
+        clock=lambda: datetime(2026, 10, 20, 1, tzinfo=timezone.utc),
+    )
+
+    assert summary.ingested == 1
+    assert summary.items[0].completeness == "complete"
+    assert stored[0][0] == "text/html; charset=windows-1252"
+    assert stored[0][1] == body
+    # The declared charset lets the existing parser strictly decode the stored bytes;
+    # the original bytes are never re-encoded or replaced with substitution characters.
+    document, chunks = parse_content(
+        stored[0][1],
+        stored[0][0],
+        chunk_size=1200,
+        chunk_overlap=150,
+    )
+    assert document.encoding == "windows-1252"
+    assert document.content_type == "text/html"
+    assert chunks[0].text == "Le taux d'inflation est retombé à 2,4 %."
+    assert chunks[0].locator["segments"][0]["locator"]["element"] == "p"
+    assert "\ufffd" not in document.text
+
+
 def test_collection_ingests_full_article_and_skips_unchanged_item(
     tmp_path, monkeypatch
 ):
     from stocks.collection.http import FetchedResponse
-    from stocks.models import DocumentCollectionState, Source
+    from stocks.models import Document, DocumentCollectionState, Source
     from stocks.settings import Settings
 
     source = make_source(tmp_path)
@@ -473,6 +812,10 @@ def test_collection_ingests_full_article_and_skips_unchanged_item(
                 return self.source
             if model is DocumentCollectionState:
                 return self.states.get(key)
+            if model is Document:
+                return next(
+                    (item for item in self.documents if item.id == key), None
+                )
             return None
 
         def add(self, value):
@@ -567,7 +910,7 @@ def test_collection_failure_saves_partial_content_and_retries(
     tmp_path, monkeypatch
 ):
     from stocks.collection.http import FetchedResponse
-    from stocks.models import DocumentCollectionState, Source
+    from stocks.models import Document, DocumentCollectionState, Source
     from stocks.settings import Settings
 
     source = make_source(tmp_path)
@@ -608,6 +951,10 @@ def test_collection_failure_saves_partial_content_and_retries(
                 return self.source
             if model is DocumentCollectionState:
                 return self.states.get(key)
+            if model is Document:
+                return next(
+                    (item for item in self.documents if item.id == key), None
+                )
             return None
 
         def add(self, value):
@@ -718,7 +1065,7 @@ def test_collection_failure_saves_partial_content_and_retries(
 
 def test_empty_article_response_is_saved_as_partial(tmp_path, monkeypatch):
     from stocks.collection.http import FetchedResponse
-    from stocks.models import DocumentCollectionState, Source
+    from stocks.models import Document, DocumentCollectionState, Source
     from stocks.settings import Settings
 
     source = make_source(tmp_path)
@@ -748,6 +1095,10 @@ def test_empty_article_response_is_saved_as_partial(tmp_path, monkeypatch):
                 return self.source
             if model is DocumentCollectionState:
                 return self.states.get(key)
+            if model is Document:
+                return next(
+                    (item for item in self.documents if item.id == key), None
+                )
             return None
 
         def add(self, value):
@@ -820,7 +1171,7 @@ def test_collection_limits_items_without_filtering_relevance(
     tmp_path, monkeypatch
 ):
     from stocks.collection.http import FetchedResponse
-    from stocks.models import DocumentCollectionState, Source
+    from stocks.models import Document, DocumentCollectionState, Source
     from stocks.settings import Settings
 
     source = make_source(tmp_path, max_items=1)
@@ -862,6 +1213,10 @@ def test_collection_limits_items_without_filtering_relevance(
                 return self.source
             if model is DocumentCollectionState:
                 return self.states.get(key)
+            if model is Document:
+                return next(
+                    (item for item in self.documents if item.id == key), None
+                )
             return None
 
         def add(self, value):
@@ -989,15 +1344,19 @@ def test_pubdate_change_triggers_recheck(tmp_path, monkeypatch):
             }
 
         def get(self, model, key):
-            return Source(
-                id=source.source_id,
-                name=source.name,
-                connector="rss",
-                publisher=source.publisher,
-                trust_tier=source.trust_tier,
-            ) if model is Source else (
-                state if model is DocumentCollectionState else None
-            )
+            if model is Source:
+                return Source(
+                    id=source.source_id,
+                    name=source.name,
+                    connector="rss",
+                    publisher=source.publisher,
+                    trust_tier=source.trust_tier,
+                )
+            if model is DocumentCollectionState:
+                return state
+            if model is Document:
+                return document if document.id == key else None
+            return None
 
         def add(self, value):
             if isinstance(value, DocumentCollectionState):
