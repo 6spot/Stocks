@@ -33,6 +33,12 @@ Document 版本保存当次实际取得的不可变证据元数据；相同原�
 数据库或把本机结果当作验证。命令与环境清理见
 [测试环境](testing-guidelines.md)。这项检查只在结构变更时需要，不能替代相关行为测试。
 
+`alembic check` 只比较命名约束与索引，不比较列级 `unique=True` 生成的匿名唯一索引。
+因此模型侧写在 `__table_args__` 里的具名 `UniqueConstraint` 必须在
+`0001_initial.py` 用同名 `UniqueConstraint` 表达，不能改成列级 `unique=True`，
+否则全新库结构与当前模型出现漂移。唯一性属于表级契约时使用具名约束；新增或调整
+约束后立即在新库跑 `upgrade head` 与 `check`，两者都通过才算结构一致。
+
 ## pgvector 查询
 
 向量召回从 `document_chunk_embeddings` 出发，按 `chunk_id`、`document_id` 和当前

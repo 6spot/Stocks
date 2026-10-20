@@ -28,6 +28,8 @@ pgvector、Docker、Alembic、API 服务或任何需要运行时/外部依赖的
 - 通用工具与项目依赖：`/opt/stocks-test-runtime/tool-venvs/stock-tools`。安装当前
   工作区依赖后执行 `uv sync`，只保留 `backend/pyproject.toml` 声明的必要包，避免把
   调试依赖或旧包留在通用环境。
+- 宿主机没有 `rg`、`pip` 与 `psql`：文本检索用 `grep`，包操作用持久环境里的 `uv pip`，
+  数据库命令用 `docker exec <postgres-container> psql -U <role> -d <db>`。
 
 先检查是否已有本任务或当前验证轮次可复用的测试容器；能沿用旧环境时直接复用，
 不重复创建。需要新环境容器时，先确认并清理本任务遗留的旧容器，再创建新容器，
