@@ -187,6 +187,12 @@ DATABASE_URL='postgresql+psycopg://stocks:<random-test-value>@127.0.0.1:55432/st
 - 测试数据顺序：关系型 PostgreSQL 测试先提交 `Source`，再提交依赖它的
   `Document`；同一 Session 中未 flush 的父子对象可能按错误顺序插入并触发外键错误。
 - 必要范围：先跑受影响文件和 `-k` 用例；只有明确回归风险才扩大到全量。
+- 固定 HTTP 响应：`SafeFetcher` 用 `client.stream()` 读取，`httpx.MockTransport`
+  的 `httpx.Response(content=...)` 在流式读取前已被消费，会抛 `StreamConsumed`；
+  需要迭代读取的响应用 `stream=httpx.ByteStream(payload)`。畸形 `Location` 头由
+  httpx 自身抛 `RemoteProtocolError`，走仓库既有 `REQUEST_FAILED` 路径，不要为它
+  增加不可达的解析分支。测试 HTML 正文放在内层块元素（如 `<article><p>`）中，
+  纯文本直接位于 `article`/`main`/`body` 会触到解析器的既有分块缺陷。
 
 ## Wrong vs Correct
 
