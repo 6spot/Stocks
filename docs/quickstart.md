@@ -8,8 +8,9 @@ Requires Docker Compose. An S3-compatible endpoint is needed to collect and pers
 4. Check that the initialized schema matches the current models: `docker compose run --rm api alembic check`
 5. Verify: http://127.0.0.1:8000/health
 6. View stored records: http://127.0.0.1:8000/api/documents (empty on a fresh database).
+7. Read a saved report and the originals it actually used, see [Read a report and its evidence](#read-a-report-and-its-evidence).
 
-The current implementation provides Source/Document/Chunk models, fresh-database initialization, a versioned Document repository, configured RSS/Atom discovery, safe HTTP article acquisition, a manual collection CLI, a manual HTML/text parsing CLI, manual pgvector indexing and semantic/exact search CLI, a document-list API, a generic S3 snapshot helper, an HTTP model client, and a manual configured research Task runner. The runner persists an Evidence Package with actual Chunk/Document versions, validates structured findings against that snapshot, and saves an Analysis plus a readable Report. The repository checks `(source_id, dedupe_key)` and SHA-256 before writing storage, reuses an immutable Document version and updates a separate collection state for identical bytes, and creates the next immutable Document version for changed bytes. Classification, Fact extraction, scheduled execution, evidence-reading APIs, and the Web console remain to be implemented.
+The current implementation provides Source/Document/Chunk models, fresh-database initialization, a versioned Document repository, configured RSS/Atom discovery, safe HTTP article acquisition, a manual collection CLI, a manual HTML/text parsing CLI, manual pgvector indexing and semantic/exact search CLI, a document-list API, a generic S3 snapshot helper, an HTTP model client, and a manual configured research Task runner. The runner persists an Evidence Package with actual Chunk/Document versions, validates structured findings against that snapshot, and saves an Analysis plus a readable Report. The repository checks `(source_id, dedupe_key)` and SHA-256 before writing storage, reuses an immutable Document version and updates a separate collection state for identical bytes, and creates the next immutable Document version for changed bytes. The read-only report and evidence API is implemented; see the next section. Classification, Fact extraction, scheduled execution, and the Web console remain to be implemented.
 
 The snapshot helper stores the exact bytes supplied by its caller, computes their SHA-256 hash, and uses the supplied content type; it does not assume XML or a particular collection channel. `stocks.repository.ingest_document()` remains the only Document write entry point.
 
@@ -53,7 +54,7 @@ successful batch and its Chunks remain readable and unchanged; a later success b
 the current batch without deleting history. Unsupported formats and documents with no
 extractable evidence text are recorded as `unsupported` or `failed`; they are never
 stored as empty successful chunks. PDF/JSON/XML parsing, OCR, classification, Facts,
-scheduled execution, evidence-reading APIs, and the Web console remain future work.
+scheduled execution, and the Web console remain future work.
 The separate manual Task runner is implemented; see
 [Manual research Task](#manual-research-task).
 
@@ -161,5 +162,53 @@ configured request timeout. Authentication, invalid requests, and missing model
 capabilities stop before another target is called.
 Run snapshots and ModelCall rows omit API keys, Authorization headers, endpoint
 plaintext, and model response bodies.
+
+## Read a report and its evidence
+
+The report and evidence endpoints are read-only and reuse the rows the runner already
+saved; they never collect, parse, index, or call a model, and they never follow a
+`document_collection_states` pointer to the newest version. Every response describes the
+Document and Chunk version the report actually cited, with the current collection pointer
+reported separately so a newer version stays visible without rewriting an older report.
+
+```bash
+curl -s http://127.0.0.1:8000/api/reports | jq '.[0]'
+curl -s "http://127.0.0.1:8000/api/reports?task_id=saved_evidence_brief" | jq '.[].report_id'
+curl -s http://127.0.0.1:8000/api/reports/<report-id> | jq '{title: .report.title, content: .report.content, gaps: .coverage_gaps}'
+curl -s http://127.0.0.1:8000/api/reports/<report-id> | jq '.evidence[] | {chunk_id, document_id, document_version, text, original: .original.endpoint}'
+curl -s http://127.0.0.1:8000/api/reports/<report-id>/evidence/<chunk-id> | jq '.evidence'
+curl -s http://127.0.0.1:8000/api/documents/<document-id> | jq '{document: .document.title, versions: [.versions[].version]}'
+curl -s http://127.0.0.1:8000/api/documents/<document-id>/original | head
+curl -sOJ "http://127.0.0.1:8000/api/documents/<document-id>/original?download=true"
+```
+
+`/api/reports/{report_id}` returns the report body, the Run snapshot (status, objective,
+scope, model routing, safe error), the saved Analysis (summary, findings, open questions,
+evidence refs), the Evidence Package (recorded queries, budget, selection policy version,
+coverage counters and its recorded `coverage`), each selected Chunk with its text and
+locator, the ids the findings actually cite, and the known gaps. There is no redirect or
+aliasing to "the current version": every entry names the Document and Chunk version that
+report used. An unknown report, unknown document, or a chunk outside that package returns
+`404`; a broken Analysis/Report/Evidence Package chain returns `409`. A saved reference
+whose Document or Chunk row is gone is not turned into a `404` or an empty body: it stays
+`200` with `chunk_available: false` and the matching gap. `coverage_gaps` keeps the reasons
+Evidence Selection recorded and adds what reading the evidence shows now
+(`chunk_unavailable`, `document_not_stored`, `partial_source_content`,
+`snapshot_storage_unconfigured`, `chunk_not_in_current_parse_batch`,
+`chunk_not_in_current_index`, `run_not_succeeded`); missing material is reported as a gap,
+never rewritten as "the fact does not exist".
+
+`/api/documents/{document_id}/original` returns the stored bytes for that one version
+unchanged. `X-Content-Sha256` is the hash of the bytes actually returned, and
+`X-Content-Hash-Match` reports whether it still equals the Document's recorded
+`content_hash`; a mismatch is served as-is with the header set to `false` and a warning
+logged, because rewriting stored evidence to hide a mismatch would destroy the audit trail.
+HTML and XHTML are served as `text/plain`,
+anything else as `application/octet-stream`, both with `X-Content-Type-Options: nosniff`
+and `Content-Security-Policy: default-src 'none'`, so a collected page cannot run scripts
+in the reader's browser. `?download=true` adds an attachment `Content-Disposition`.
+Without configured S3 credentials the endpoint answers `503`
+(`SNAPSHOT_STORAGE_UNAVAILABLE`) instead of pretending the original is empty, and the
+report keeps showing the stored chunk text and hash.
 
 This early API has no application-level authentication. The sample binds it only to 127.0.0.1; do not expose it publicly until access control is added. Tailscale or equivalent private network routing to S3 must be independently configured.
