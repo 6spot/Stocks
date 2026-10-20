@@ -268,3 +268,47 @@ Persist a per-Run Evidence Package and derive Analysis plus Report from it, with
 ### Next Steps
 
 - V0-08 collection and version fixes must land before V0-07 final end-to-end acceptance; V0-07 adds the report/evidence read API and the real source plus real model run.
+
+
+## Session 9: V0-08 collection and version pointer fixes
+<!-- trellis-session: v=2 fp=39d816910e33551c -->
+
+**Date**: 2026-10-20
+**Task**: V0-08 collection and version pointer fixes
+**Branch**: `feat/v0-08-document-collection-fixes`
+
+### Summary
+
+Fixed the four defects found reviewing archived V0-01/V0-02: the latest-content pointer now follows the collection state, partial content always retries, malformed feed article links fail only their own entry, and the declared charset survives acquisition.
+
+### Main Changes
+
+- get_latest_document() reads document_collection_states.latest_document_id instead of the highest version number, so A -> failed partial -> recovered A keeps pointing at A while both immutable versions stay readable.
+- _should_recheck() handles partial first, so a source that publishes no time signal still gets a full-text retry; unknown times stay unknown and complete unchanged items keep skipping.
+- Feed article links that cannot be resolved become that entry's INVALID_ARTICLE_URL with position and reason only; the rest of the batch continues. Malformed redirect Location is rejected by httpx and stays on the existing REQUEST_FAILED path, so no unreachable branch was added.
+- Content-type allow listing compares only the media type while the stored content type keeps its charset, letting the parser strictly decode non-UTF-8 bodies without re-encoding the original bytes.
+- Corrected V0-01/V0-02 archive records that still claimed the tasks were unimplemented, and repaired task links after two archive moves.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `828f5be` | fix: align recent content pointer and collection input edges |
+| `fe7c424` | docs(trellis): correct V0-01/V0-02 archive status notes |
+| `dbed88b` | chore(task): record V0-08 collection fixes and acceptance |
+| `9465053` | docs(trellis): point task references at the archived V0-08 |
+| `bd002bb` | docs(trellis): record httpx streaming fixture pitfalls |
+
+### Testing
+
+- [OK] [OK] Test server 100.120.14.84, fresh task database in the reused pgvector container: 168 passed across repository, collection, processing, api, s3, embeddings, search_cli, research, execution and providers.
+- [OK] [OK] alembic upgrade head plus alembic check reported no drift; compileall passed.
+- [OK] [FOUND] Pre-existing V0-03 parser defect: text directly inside article/main/body without an inner block element is chunked one character per line. Recorded, not changed in this task.
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- V0-07 report and evidence read API plus the real source and real model end-to-end acceptance; it must read recent content through the collection state pointer, not the highest version number.

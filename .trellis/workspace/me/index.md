@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 8
+- **Total Sessions**: 9
 - **Last Active**: 2026-10-20
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~270 | Active |
+| `journal-1.md` | ~314 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 9 | 2026-10-20 | V0-08 collection and version pointer fixes | `828f5be`, `fe7c424`, `dbed88b`, `9465053`, `bd002bb` | `feat/v0-08-document-collection-fixes` |
 | 8 | 2026-10-20 | V0-06 evidence package, analysis and report persistence | `1aad2fb`, `fe2c349`, `36b467d`, `0afafde`, `c38c59f`, `91de27a`, `165db9e` | `feat/v0-06-evidence-analysis-report` |
 | 7 | 2026-10-20 | V0-05 manual research Task and Agent | `34757a1`, `a6c3e28`, `f77544a` | `feat/v0-05-manual-task-agent` |
 | 6 | 2026-10-20 | V0-04 embedding indexing and pgvector search | `7056ff6`, `b786454`, `9152598`, `6e4b12c` | `feat/v0-04-vector-search` |
