@@ -7,5 +7,9 @@
 {"file": ".trellis/spec/backend/directory-structure.md", "reason": "后端实现/数据库/错误与必要验证约定"}
 {"file": ".trellis/spec/backend/database-guidelines.md", "reason": "后端实现/数据库/错误与必要验证约定"}
 {"file": ".trellis/spec/backend/error-handling.md", "reason": "后端实现/数据库/错误与必要验证约定"}
+{"file": ".trellis/spec/backend/logging-guidelines.md", "reason": "外部请求失败诊断与凭据/响应脱敏"}
 {"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "后端实现/数据库/错误与必要验证约定"}
+{"file": ".trellis/spec/backend/testing-guidelines.md", "reason": "远程 Python 3.12、pgvector 隔离验证及清理"}
+{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "配置、外部 HTTP、Repository 与 CLI 边界"}
+{"file": ".trellis/spec/guides/code-reuse-thinking-guide.md", "reason": "复用配置、HTTP 与入库能力，避免复制流程"}
 {"file": ".trellis/tasks/10-20-stocks-roadmap/research/baseline.md", "reason": "本轮代码现状与分期依据，后续开工需复核"}

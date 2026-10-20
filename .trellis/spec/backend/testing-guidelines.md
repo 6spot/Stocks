@@ -13,13 +13,15 @@
 - 传输：
 
 ```bash
-rsync -az --delete \
+tar -czf /tmp/stocks-test-<task-slug>.tgz \
   --exclude='.git' \
+  --exclude='.venv' \
   --exclude='.env' \
   --exclude='__pycache__' \
   --exclude='.pytest_cache' \
   --exclude='._*' \
-  ./root@100.120.14.84:/tmp/stocks-test-<task-slug>/
+  backend config docs
+scp /tmp/stocks-test-<task-slug>.tgz root@100.120.14.84:/tmp/
 ```
 
 macOS 的 `._*` 是 AppleDouble 元数据文件；Docker 会把它们当成普通文件，Alembic
@@ -65,13 +67,14 @@ DATABASE_URL='postgresql+psycopg://stocks:<random-test-value>@127.0.0.1:55432/st
 - 每次验证记录实际命令、退出码、通过/失败/跳过结果及未运行的检查。
 - 数据库结构验证必须从全新空库执行 `alembic upgrade head`，再执行 `alembic check`；不得验证旧库升级。
 - 项目代码与依赖从当前工作区传输，远程结果只作为当前版本的验证，不得把远端修改同步回本地。
+- 若远程系统没有 Python 3.12，可用 `uv` 安装隔离的 3.12 运行时，再用它创建干净 `.venv`；不得复用 Python 3.13 环境冒充项目验证。传输归档后删除远程 `._*` 文件，再启动 Alembic。
+- 真实来源与对象存储验收使用本任务独立的数据库、bucket/前缀和临时凭据。数据库查询只输出脱敏字段；对象哈希核对后清理容器、bucket 与远程目录。
 
 ## Validation & Error Matrix
 
 | 条件 | 预期处理 |
 | --- | --- |
 | SSH 不可连接 | 停止远程验证，明确记录环境不可用 |
-| 远程无 Python 3.12 | 安装发行版 Python 3.12；不得用 Python 3.9 替代项目测试 |
 | 远程无 Docker | 安装 Docker Engine，确认守护进程可执行 |
 | 镜像不存在 | 拉取 `pgvector/pgvector:0.8.7-pg17-bookworm` |
 | 测试容器名冲突 | 更换本任务唯一容器名，不删除不明容器 |
@@ -91,6 +94,7 @@ DATABASE_URL='postgresql+psycopg://stocks:<random-test-value>@127.0.0.1:55432/st
 - 数据库结构：空库 `upgrade head` 成功，`alembic check` 无差异。
 - API/Smoke：只在接口发生变化时启动对应服务并请求实际端点。
 - Mock 依赖：外部模型、S3 和网络请求默认使用 `httpx.MockTransport` 或 `unittest.mock`，单元测试不依赖真实凭据。
+- 真实采集：至少验证一次正文获取、对象字节与数据库哈希一致、来源时间/完整性字段和重复运行幂等；真实失败需区分来源访问政策、网络问题和代码缺陷。
 - 必要范围：先跑受影响文件和 `-k` 用例；只有明确回归风险才扩大到全量。
 
 ## Wrong vs Correct

@@ -7,3 +7,9 @@
 - 捕获异常时保留原始原因。所有候选目标失败时，`ModelClient.chat()` 使用 `raise RuntimeError(...) from last_error`；新增封装也应让诊断路径可追踪。
 
 在 API 边界把需要返回给调用方的失败转换为明确 HTTP 状态和安全的错误内容。不要用广泛的 `except Exception` 把配置错误、权限错误或程序缺陷伪装成可重试故障；也不要在错误响应或日志中泄露凭据。
+
+## 外部采集
+
+`stocks.collection.errors.CollectionError` 是采集边界的稳定错误载体，包含 `code`、固定 `message`、可选脱敏 `url` 和结构化 `details`。配置、Feed 和 HTTP 失败使用不同错误码；外部异常可保留为 Python `__cause__` 供诊断，但 CLI/API 输出只调用 `to_dict()`，不得返回异常原文、完整响应或请求头。
+
+配置在发出网络请求前完成全部校验。单个 Feed 条目或文章失败不得中断同批其他条目；文章正文失败或为空时，可以用实际取得的 Feed 标题与摘要生成 `completeness = partial`，同时保存脱敏 `fetch_error`，不能把 Feed 响应当成文章正文。

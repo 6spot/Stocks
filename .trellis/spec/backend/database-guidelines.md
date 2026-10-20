@@ -22,6 +22,8 @@ with session_factory()() as session:
 不是分布式事务：S3 原件必须先写入，数据库失败后保留不可达对象但不产生可用
 Document；读取端仍以数据库引用的 `snapshot_key` 为准。
 
+Document 版本保存当次实际取得的不可变证据元数据；相同原始字节必须复用内容版本，不得原位改写标题、URL、时间、完整性或获取错误。只有原始字节哈希变化才新增 Document 版本。最新采集尝试的完整性和错误保存在可更新的 `document_collection_states`，以 `(source_id, dedupe_key)` 为主键并指向最近 Document；该状态不替代任一历史版本自己的完整性及错误。Document 与采集状态分别约束 `completeness` 为 `complete | partial`，部分内容必须带获取错误、完整内容不得带获取错误，Repository 也执行同一校验。
+
 ## 结构变更
 
 `backend/alembic/env.py` 使用 `Base.metadata`；`backend/alembic/versions/0001_initial.py` 是新数据库的初始化结构。开发阶段修改模型时同步修改这份初始化定义，必要时重建开发数据库。不新增历史版本升级迁移、回填、双写或旧结构兼容代码。
