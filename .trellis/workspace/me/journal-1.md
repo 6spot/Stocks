@@ -117,3 +117,42 @@ Implemented safe SEC RSS/Atom collection with article snapshot persistence, immu
 ### Status
 
 [OK] **Completed**
+
+
+## Session 5: V0-03 parsing and locatable chunks
+<!-- trellis-session: v=2 fp=03c3ea13e44a18ca -->
+
+**Date**: 2026-10-20
+**Task**: V0-03 parsing and locatable chunks
+**Branch**: `feat/v0-02-real-source-collection`
+
+### Summary
+
+Implemented immutable parse batches and locatable HTML/plain-text Chunks with CLI/API status, reprocessing protection, and parsing/evidence test guidance. Verified relevant tests remotely on Python 3.12 with fresh PostgreSQL/pgvector; real SEC AC-4 remains explicitly unaccepted.
+
+### Main Changes
+
+- Added HTML/XHTML/plain-text parsing, source ranges, semantic locators, and budgeted overlapping chunks.
+- Added immutable parse batches, latest-attempt/current-success state, safe reprocessing, and S3/API configuration validation.
+- Documented parsing behavior and frontend/backend testing rules; archived V0-03.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `409da44` | feat: parse documents into immutable locatable chunks |
+| `96ba369` | docs(trellis): capture parsing and evidence testing rules |
+
+### Testing
+
+- [OK] Remote Python 3.12.15 with fresh PostgreSQL 17/pgvector: 47 passed (processing, repository, S3).
+- [OK] Alembic upgrade and check passed on an empty database; Ruff passed; local related suite: 38 passed, 9 skipped.
+- [OK] Real SEC AC-4 remains unverified because the configured contact identity and current source evidence chain are not trustworthy.
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- Start V0-04 only on a later user instruction.
