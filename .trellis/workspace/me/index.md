@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 6
+- **Total Sessions**: 7
 - **Last Active**: 2026-10-20
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~183 | Active |
+| `journal-1.md` | ~224 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 7 | 2026-10-20 | V0-05 manual research Task and Agent | `34757a1`, `a6c3e28`, `f77544a` | `feat/v0-05-manual-task-agent` |
 | 6 | 2026-10-20 | V0-04 embedding indexing and pgvector search | `7056ff6`, `b786454`, `9152598`, `6e4b12c` | `feat/v0-04-vector-search` |
 | 5 | 2026-10-20 | V0-03 parsing and locatable chunks | `409da44`, `96ba369` | `feat/v0-02-real-source-collection` |
 | 4 | 2026-10-20 | V0-02 real source collection and frontend testing guidelines | `9496d61`, `0a34055` | `feat/v0-02-real-source-collection` |

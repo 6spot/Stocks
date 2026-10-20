@@ -181,3 +181,44 @@ Implemented current-batch Chunk embeddings, filtered pgvector semantic search, b
 ### Status
 
 [OK] **Completed**
+
+
+## Session 7: V0-05 manual research Task and Agent
+<!-- trellis-session: v=2 fp=25233291737da60f -->
+
+**Date**: 2026-10-20
+**Task**: V0-05 manual research Task and Agent
+**Branch**: `feat/v0-05-manual-task-agent`
+
+### Summary
+
+Delivered configured manual research Task/Run execution with immutable snapshots, durable step/model records, bounded Provider fallback, test-server-only verification, and V0-05 archive.
+
+### Main Changes
+
+- Added TaskDefinition, TaskRun, TaskStepResult, and ModelCall persistence plus atomic active-Run ownership.
+- Added YAML Task/Agent configuration, ordered repository search and research Agent execution, evidence references, and safe CLI output.
+- Extended Provider calls with per-target timeouts, bounded retry/fallback, JSON-schema validation, and safe call metadata.
+- Documented the mandatory test-server-only workflow and removed GitHub Runner test CI.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `34757a1` | feat: add manual configured research task runs |
+| `a6c3e28` | docs(trellis): confine verification to the test server |
+| `f77544a` | chore(task): record V0-05 implementation and acceptance |
+
+### Testing
+
+- [OK] Remote Python 3.12.15 + PostgreSQL 17.11/pgvector: 153 relevant tests passed.
+- [OK] Fresh database alembic upgrade head and alembic check passed; compileall passed.
+- [OK] Real external Provider and real Repository evidence Agent run remain unverified.
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- Start V0-06 evidence package, analysis, and report persistence, reusing the same test server without deleting other tasks' containers.
