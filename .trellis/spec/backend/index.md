@@ -7,6 +7,7 @@
 | [目录与模块](directory-structure.md) | 放置新代码、拆分职责 |
 | [数据库](database-guidelines.md) | 模型、查询、事务、初始化结构 |
 | [错误处理](error-handling.md) | 配置、外部请求、API 失败路径 |
+| [HTTP 读取接口](api-guidelines.md) | 报告/证据/原件只读路由、按引用版本读取、安全响应头与状态码 |
 | [日志](logging-guidelines.md) | 运行诊断与敏感信息处理 |
 | [质量与验证](quality-guidelines.md) | 代码审查与测试选择 |
 | [测试环境](testing-guidelines.md) | 仅限测试服务器、隔离数据库与资源清理 |

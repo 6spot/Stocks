@@ -26,8 +26,14 @@ V0-08 是归档审查后追加的修复任务，必须先完成版本与采集�
 ## 验收条件
 
 - [ ] AC-1: Owner 按 quickstart 完成一次真实端到端操作，读取报告并打开实际引用的原件。
-- [ ] AC-2: 同 URL 更新产生新版本后，旧报告仍显示并读取旧片段/原件；研究失败不替换最后成功报告。
-- [ ] AC-3: 恶意 HTML 不执行脚本；部署仍只绑定本机；记录真实外部依赖和未验证项。
+      **未验收**：测试服务器与本工作区均无模型 Provider 凭据（`MODEL_API_KEY`/`MODEL_NAME` 与可用 `/embeddings`），
+      无法跑真实 Embedding 索引与真实 Research Agent；SEC Feed 已实测可达（`HTTP 200`）。
+      已完成的替代证据：真实 `store_snapshot` 写入真实 S3 并按引用读回、真实 uvicorn HTTP 全链路 smoke。
+- [x] AC-2: 同 URL 更新产生新版本后，旧报告仍显示并读取旧片段/原件；研究失败不替换最后成功报告。
+      由 `tests/test_report_api.py` 两个用例在真实 PostgreSQL 上验证，并已在全新库 `alembic upgrade head` + `check` 下通过。
+- [x] AC-3: 恶意 HTML 不执行脚本；部署仍只绑定本机；记录真实外部依赖和未验证项。
+      原件以存储字节原样返回且 HTML 降级为 `text/plain` + `nosniff` + `Content-Security-Policy: default-src 'none'`；
+      smoke 服务仅 `127.0.0.1` 监听；外部依赖与限制见[验证记录](research/verification-2026-10-20.md)。
 
 ## 不在范围内
 
@@ -35,4 +41,9 @@ V0-08 是归档审查后追加的修复任务，必须先完成版本与采集�
 
 ## 约束与规划状态
 
-只改当前设计与初始化，不做旧库迁移或旧版兼容；运行期证据和历史引用仍须保留。此任务保持 planning；本轮未实施。开工前复核前置交付、实际文件和配置，再对本任务规划进行实施确认。
+只改当前设计与初始化，不做旧库迁移或旧版兼容；运行期证据和历史引用仍须保留。
+
+本轮已实施只读报告/证据 API（`backend/src/stocks/api.py`）、对应测试（`backend/tests/test_report_api.py`）
+及 quickstart 阅读能力说明；未新增表、字段或迁移。实现结果与未验收边界见
+[验证记录](research/verification-2026-10-20.md)，工程契约已沉淀至
+`.trellis/spec/backend/api-guidelines.md`。AC-1 因缺模型凭据保持未验收，不得写成已接通。
