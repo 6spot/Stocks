@@ -3,7 +3,7 @@
   "name": "v0-03-parsing-chunks",
   "title": "V0-03 正文解析与可定位的持久 Chunk",
   "description": "将已保存原件转为能追溯原文位置的研究片段，不改写原始证据。",
-  "status": "planning",
+  "status": "in_progress",
   "dev_type": "backend",
   "scope": null,
   "package": null,
@@ -12,7 +12,7 @@
   "assignee": "me",
   "createdAt": "2026-10-20",
   "completedAt": null,
-  "branch": null,
+  "branch": "feat/v0-02-real-source-collection",
   "base_branch": "main",
   "worktree_path": null,
   "commit": null,
@@ -26,15 +26,16 @@
     "docs/research.md",
     "docs/validation.md"
   ],
-  "notes": "本轮仅规划；依赖写入 meta.depends_on 及规划文档，Trellis 父子关系不会自动调度。开工前复核现状和技术细节并取得该子任务的实施确认。",
+  "notes": "V0-01、V0-02 已完成归档；用户已授权按路线图继续。实施方案采用不可变解析批次、最新/当前状态指针和不可变 Chunk，显式重处理不会改写历史引用。",
   "meta": {
     "milestone": "V0",
     "kind": "delivery",
     "depends_on": [
-      ".trellis/tasks/10-20-v0-01-raw-document-versions"
+      ".trellis/tasks/archive/2026-10/10-20-v0-01-raw-document-versions",
+      ".trellis/tasks/archive/2026-10/10-20-v0-02-real-source-collection"
     ],
-    "planning_review": "pending",
+    "planning_review": "approved",
     "planning_depth": "delivery-plan",
-    "implementation_authorized": false
+    "implementation_authorized": true
   }
 }

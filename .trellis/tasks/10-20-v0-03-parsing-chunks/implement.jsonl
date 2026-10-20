@@ -1,11 +1,12 @@
 {"file": "AGENTS.md", "reason": "通用边界、初始开发不迁移不兼容及最小必要验证"}
-{"file": "docs/architecture.md", "reason": "architecture 领域契约及阶段边界，设计不等于实现"}
-{"file": "docs/data.md", "reason": "data 领域契约及阶段边界，设计不等于实现"}
-{"file": "docs/research.md", "reason": "research 领域契约及阶段边界，设计不等于实现"}
-{"file": "docs/validation.md", "reason": "validation 领域契约及阶段边界，设计不等于实现"}
-{"file": ".trellis/spec/backend/index.md", "reason": "后端实现/数据库/错误与必要验证约定"}
-{"file": ".trellis/spec/backend/directory-structure.md", "reason": "后端实现/数据库/错误与必要验证约定"}
-{"file": ".trellis/spec/backend/database-guidelines.md", "reason": "后端实现/数据库/错误与必要验证约定"}
-{"file": ".trellis/spec/backend/error-handling.md", "reason": "后端实现/数据库/错误与必要验证约定"}
-{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "后端实现/数据库/错误与必要验证约定"}
-{"file": ".trellis/tasks/10-20-stocks-roadmap/research/baseline.md", "reason": "本轮代码现状与分期依据，后续开工需复核"}
+{"file": "docs/data.md", "reason": "完整读取解析、Chunk、状态、重处理和检索契约"}
+{"file": "docs/research.md", "reason": "V0 Chunk 是报告实际引用和证据追溯的输入"}
+{"file": "docs/validation.md", "reason": "V0 可检索证据与证据阅读验收边界"}
+{"file": ".trellis/spec/backend/index.md", "reason": "后端开发入口与必要检查清单"}
+{"file": ".trellis/spec/backend/directory-structure.md", "reason": "processing 模块职责和测试命名"}
+{"file": ".trellis/spec/backend/database-guidelines.md", "reason": "批次、状态、Chunk 约束和全新库初始化"}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "解析失败与不支持格式的稳定错误边界"}
+{"file": ".trellis/spec/backend/logging-guidelines.md", "reason": "CLI 与运行异常不得泄露正文或敏感信息"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "最小必要测试、真实来源和结构检查"}
+{"file": ".trellis/spec/backend/testing-guidelines.md", "reason": "远程 Python 3.12、隔离 pgvector 与清理规则"}
+{"file": ".trellis/tasks/10-20-v0-03-parsing-chunks/research/implementation-baseline.md", "reason": "当前代码现状、Schema 决策和验证边界"}
