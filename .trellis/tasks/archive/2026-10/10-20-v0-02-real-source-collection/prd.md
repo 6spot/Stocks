@@ -33,4 +33,4 @@ Owner 能手动从一个真实已配置来源取得文章正文并通过统一�
 
 ## 约束与规划状态
 
-只改当前设计与初始化，不做旧库迁移或旧版兼容；运行期证据和历史引用仍须保留。本任务已完成实现、真实 SEC/S3 验收并归档，结果见 [acceptance.md](acceptance.md)。2026-10-20 归档审查发现畸形文章链接未按单项失败处理、采集丢弃 `Content-Type` 的 `charset` 两处缺陷，修复归属 [V0-08](../../10-20-v0-08-document-collection-fixes/prd.md)。
+只改当前设计与初始化，不做旧库迁移或旧版兼容；运行期证据和历史引用仍须保留。本任务已完成实现、真实 SEC/S3 验收并归档，结果见 [acceptance.md](acceptance.md)。2026-10-20 归档审查发现畸形文章链接未按单项失败处理、采集丢弃 `Content-Type` 的 `charset` 两处缺陷，修复归属 [V0-08](../10-20-v0-08-document-collection-fixes/prd.md)。

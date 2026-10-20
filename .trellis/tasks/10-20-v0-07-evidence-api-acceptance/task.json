@@ -34,7 +34,7 @@
     "depends_on": [
       ".trellis/tasks/archive/2026-10/10-20-v0-02-real-source-collection",
       ".trellis/tasks/archive/2026-10/10-20-v0-06-evidence-analysis-report",
-      ".trellis/tasks/10-20-v0-08-document-collection-fixes"
+      ".trellis/tasks/archive/2026-10/10-20-v0-08-document-collection-fixes"
     ],
     "planning_review": "pending",
     "planning_depth": "delivery-plan",

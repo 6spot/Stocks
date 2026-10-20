@@ -15,7 +15,7 @@
 | [V0-05](../archive/2026-10/10-20-v0-05-manual-task-agent/prd.md) | 手动 Task Run 与可配置研究 Agent | 无 |
 | [V0-06](../archive/2026-10/10-20-v0-06-evidence-analysis-report/prd.md) | 最小 Evidence Package 与 Analysis Report | V0-04, V0-05 |
 | [V0-07](../10-20-v0-07-evidence-api-acceptance/prd.md) | 报告证据读取 API 与 V0 真实闭环验收 | V0-02, V0-06, V0-08 |
-| [V0-08](../10-20-v0-08-document-collection-fixes/prd.md) | 原件版本与采集边界缺陷修复 | V0-01, V0-02 |
+| [V0-08](../archive/2026-10/10-20-v0-08-document-collection-fixes/prd.md) | 原件版本与采集边界缺陷修复 | V0-01, V0-02 |
 | [V1-01](../10-20-v1-01-worker-scheduling/prd.md) | 独立 Worker 定时调度与 Run 恢复 | V0-07 |
 | [V1-02](../10-20-v1-02-processing-recovery/prd.md) | 统一后台处理状态与积压重试 | V1-01 |
 | [V1-03](../10-20-v1-03-classification/prd.md) | Decision Model 轻量分类与受控标签 | V1-02 |

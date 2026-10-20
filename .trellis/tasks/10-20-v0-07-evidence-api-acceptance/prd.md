@@ -10,7 +10,7 @@ Owner 通过本机 API 阅读成功报告并打开报告实际使用的片段和
 
 ## 前置依赖
 
-[V0-02](../archive/2026-10/10-20-v0-02-real-source-collection/prd.md), [V0-06](../archive/2026-10/10-20-v0-06-evidence-analysis-report/prd.md), [V0-08](../10-20-v0-08-document-collection-fixes/prd.md)
+[V0-02](../archive/2026-10/10-20-v0-02-real-source-collection/prd.md), [V0-06](../archive/2026-10/10-20-v0-06-evidence-analysis-report/prd.md), [V0-08](../archive/2026-10/10-20-v0-08-document-collection-fixes/prd.md)
 
 V0-08 是归档审查后追加的修复任务，必须先完成版本与采集边界回归，再开展本任务最终闭环验收；编号不改变这一前置关系。
 

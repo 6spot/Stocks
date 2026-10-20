@@ -6,7 +6,7 @@
 
 ## 背景与依据
 
-来源是 2026-10-20 对 [V0-01](../archive/2026-10/10-20-v0-01-raw-document-versions/prd.md) 与 [V0-02](../archive/2026-10/10-20-v0-02-real-source-collection/prd.md) 的只读审查。四处逻辑在归档提交中已存在；本轮仅做静态核对，未运行复现测试。`root@100.120.14.84` SSH 认证失败，历史通过记录不等于本轮验证通过。
+来源是 2026-10-20 对 [V0-01](../10-20-v0-01-raw-document-versions/prd.md) 与 [V0-02](../10-20-v0-02-real-source-collection/prd.md) 的只读审查。四处逻辑在归档提交中已存在；本轮仅做静态核对，未运行复现测试。`root@100.120.14.84` SSH 认证失败，历史通过记录不等于本轮验证通过。
 
 业务契约归属 `docs/data.md`、`docs/validation.md`；工程与远程验证规则归属 `.trellis/spec/backend/`。
 
