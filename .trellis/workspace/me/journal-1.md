@@ -584,3 +584,45 @@ Implemented deny-by-default Tool catalog, remote MCP Streamable HTTP client, bou
 
 - 待 Owner 最终验收：Fed/SEC 来源换成真实联系邮箱、SEC EDGAR CIK 与访问政策确认及真实 API 映射；XML XPath 字段映射、OCR、PDF 表格结构重建未实现
 - 继续按任务列表实施 V2-03 来源冲突与跨来源复核
+
+
+## Session 20: V2-03 来源独立性与冲突证据呈现
+<!-- trellis-session: v=2 fp=40aade6b6e69862d -->
+
+**Date**: 2026-10-22
+**Task**: V2-03 来源独立性与冲突证据呈现
+**Branch**: `main`
+
+### Summary
+
+按 V2 任务列表逐个实施：只有来源自己声明的原件才合并。新增 stocks.origins 在采集时记录 canonical 链接 / 文章绝对地址 / feed 绝对 http(s) id（归一化后作为合并键），feed <source>/atom:source 只作转载出处，标题、摘要、向量相似与 opaque 标识都不合并；未声明的资料记为 single_document（未知，不等于已确认唯一）。Evidence Selection 输出 coverage.origin_groups[]/origin_group_count/merged_origin_group_count 与 metric_comparisons[]，同一 (subject, symbol, metric) 的多条 Fact 并列列出并分别标记 value_conflict/basis_mismatch/period_mismatch；render_report() 确定性生成 Sources and Conflicts 段落，报告详情接口与 Web 报告页展示独立原件数、同一原件（N 份）与冲突取值，均不平均、不覆盖、不标为已核实。
+
+### Main Changes
+
+- 新增 stocks.origins（canonical 链接解析、URL 归一化、document_origin/origin_key）与采集侧 Document.extra.origin；feed 声明来源作为 declared_sources 保留但不参与合并
+- research/evidence.py 新增 EvidenceGroup.origin、group_origins()、metric_comparisons()；repository.document_origins() 一次读回本次选中 Document 的声明
+- Evidence Package 覆盖新增 origin_group_count/merged_origin_group_count/origin_groups/metric_comparisons，selected_chunks 与 evidence_groups 带 origin_id（组内含 origin_group_size）；models/0001 增加 evidence_packages.metric_comparisons
+- render_report() 生成确定性 Sources and Conflicts 段落；API 与 Web 报告页展示来源独立性、同指标取值对比与同一原件标记；config/tasks.yaml 提示词要求按独立原件计数
+- docs/research.md、docs/data.md、docs/interface.md、docs/quickstart.md、docs/validation.md 同步契约与待验收边界
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `8a8bcc3` | feat(research): group declared originals and list conflicting values |
+
+### Testing
+
+- [OK] 测试服务器隔离目录 test_evidence_conflicts 13 passed；test_collection+test_incremental_evidence 56 passed；test_report_api+test_research+test_execution 78 passed
+- [OK] 全新空库 alembic upgrade head + alembic check 无差异（evidence_packages.metric_comparisons 与模型一致）
+- [OK] 前端 npm run typecheck 通过、npm run test 6 文件 12 tests passed（含报告页来源独立性/冲突用例）
+- [OK] 真实来源核对：Fed/SEC 公开 RSS 各 20 条真实条目得到 20 个互不相同的原件键（无误合并）；SEC 真实新闻页声明 canonical → canonical_url、Fed 页面无 canonical → article_url
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- 待 Owner 最终验收：真实多来源转载成对样例与真实同指标冲突值；事件关系库、来源真值评分与独立核查平台不在范围内
+- 继续按任务列表实施 V2-04 历史报告对照与 V2-05 覆盖与费用验收
