@@ -666,3 +666,44 @@ Implemented deny-by-default Tool catalog, remote MCP Streamable HTTP client, bou
 
 - 待 Owner 最终验收：真实连续 Run 的两份报告人工对照，真实同一 Document 新版本被后续报告引用与同一指标跨报告修订的成对样例；逐条 Finding 关系图、严格历史知识回放不在范围内
 - 继续按任务列表实施 V2-05 覆盖费用与异常分析及 V2 验收
+
+
+## Session 22: V2-05 覆盖费用与异常分析及 V2 验收
+<!-- trellis-session: v=2 fp=92416339e214a101 -->
+
+**Date**: 2026-10-22
+**Task**: V2-05 覆盖费用与异常分析及 V2 验收
+**Branch**: `main`
+
+### Summary
+
+按 V2 任务列表逐个实施 V2-05：把每个模型调用的供应商与供应商自报费用落到 ModelCall，再在控制台按已存记录呈现研究覆盖与模型用量。未知的候选剩余与未上报费用保持未知，不猜测不折算；异常与积压继续复用既有重试、续扫、结束 Run 与处理积压能力，不新增调度或告警平台；无历史迁移，只改 0001 初始化定义。
+
+### Main Changes
+
+- ModelCall 新增 provider 与 cost_usd（numeric(14,6)，非负约束），同步 backend/alembic/versions/0001_initial.py
+- providers 解析 usage.cost/usage.cost_usd：布尔、字符串、非有限、负数与超限一律按 MODEL_RESPONSE_INVALID 拒绝，未返回则费用保持未知；执行服务落库并在步骤 usage 输出 cost_usd 与 cost_unknown_attempts，CLI run JSON 同步
+- api 新增 _usage_summary()（调用/成功/失败/回退计数、Token 求和、耗时、只汇总已上报费用并给出已知与未知调用数、models 截断标记）与 _latest_research_coverage()（取最近成功报告的证据包覆盖、缺口与补证输入，失败 Run 不计入）；/api/runs/{id} 与 /api/reports/{id} 增加 usage，/api/overview 增加 research
+- 前端新增共享 usage-summary 组件，Overview 增加研究覆盖与近期模型用量卡片，Run 详情增加步骤用量、Provider 与费用列，报告页增加本次研究用量与 Run 入口
+- docs/execution.md、docs/interface.md、docs/quickstart.md、docs/validation.md 同步用量与覆盖语义，并新增 backend/tests/test_coverage_usage_api.py 与 frontend usage-summary.test.tsx
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `ba03897` | feat(console): show research coverage and provider-reported cost |
+
+### Testing
+
+- [OK] 测试服务器 100.120.14.84 隔离目录：全新空库 alembic upgrade head + alembic check 无差异
+- [OK] test_coverage_usage_api + test_providers 12 passed；test_execution 63 passed（含新全流程供应商上报费用用例）；test_console_api + test_report_api + test_report_comparison 94 passed；test_evidence_conflicts + test_collection + test_research + test_api 71 passed
+- [OK] 前端 npm run typecheck 通过、npm run test 8 文件 15 tests passed、npm run build 通过
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- 待 Owner 最终验收：真实第三方端点返回费用、真实远程 MCP 服务与凭据、真实多来源转载与冲突指标样例、两份真实连续报告用于对照卡、真机移动/ARM 部署验收；V2-01~V2-05 其余待验收边界见 docs/validation.md
+- V2-01~V2-05 已全部交付并归档，V2 进入最终验收阶段

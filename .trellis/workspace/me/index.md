@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 21
+- **Total Sessions**: 22
 - **Last Active**: 2026-10-22
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~668 | Active |
+| `journal-1.md` | ~709 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 22 | 2026-10-22 | V2-05 覆盖费用与异常分析及 V2 验收 | `ba03897` | `main` |
 | 21 | 2026-10-22 | V2-04 基于原始证据的历史报告比较 | `511b677` | `main` |
 | 20 | 2026-10-22 | V2-03 来源独立性与冲突证据呈现 | `8a8bcc3` | `main` |
 | 19 | 2026-10-22 | V2-02 JSON/XML/PDF 解析适配与 PDF 文章获取 | `bc2220c` | `main` |
