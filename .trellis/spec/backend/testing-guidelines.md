@@ -80,6 +80,11 @@ ln -s /opt/stocks-test-runtime/tool-venvs/stock-tools .venv
 安装项目包；公共环境的项目包来源会被后续项目替换，验证前必须核对
 `.venv/bin/python -c 'import stocks; print(stocks.__file__)'` 指向 `backend/src`。
 
+> **注意**：可编辑安装指向的是上一个任务的临时目录。那个目录被清理后，公共环境会直接报
+> `ModuleNotFoundError: No module named 'stocks'`。这是预期状态，不是环境损坏：不要重装依赖、
+> 不要修改公共环境、也不要复用其他任务的目录，只按上面 `uv pip install -e .` 将指针重新指向
+> 本任务自己的目录，并核对 `stocks.__file__` 后再跑测试。
+
 - 隔离 PostgreSQL/pgvector：
 
 ```bash
@@ -90,6 +95,19 @@ docker run --rm -d \
   -e POSTGRES_DB=stocks \
   -p 127.0.0.1:55432:5432 \
   pgvector/pgvector:0.8.7-pg17-bookworm
+```
+
+- 隔离对象存储：其他任务遗留的 seaweedfs 容器可能已经没空写卷（PutObject 报
+  `No writable volumes`），不能因为端口能连就当可复用。本任务需要对象存储时用自己的
+  容器名、独立数据目录和独立 bucket；启动参数用 `server -dir=/data -s3 -s3.port=8333`，
+  不要额外加 `-ip=`（会让客户端连接在请求中被直接关闭）。
+
+```bash
+docker run --rm -d \
+  --name stocks-test-<task-slug>-s3 \
+  -v /tmp/stocks-<task-slug>-s3-data:/data \
+  -p 127.0.0.1:18345:8333 \
+  chrislusf/seaweedfs server -dir=/data -s3 -s3.port=8333
 ```
 
 - 数据库初始化：
@@ -112,8 +130,9 @@ DATABASE_URL='postgresql+psycopg://stocks:<random-test-value>@127.0.0.1:55432/st
   Owner 的 mac、`main` 工作区或任何非测试服务器上执行测试、数据库或服务命令。
 - 仓库不配置在 GitHub Runner 或任何非指定机器上执行测试、构建或服务检查的 CI；
   推送只保存代码和文档，验证结果必须来自测试服务器的隔离环境。
-- 执行前检查是否有可沿用的测试容器；无需创建时沿用现有环境。若需创建新容器，
-  先清理本任务遗留的旧容器，确认名称不属于其他任务后启动新容器。
+- 执行前检查是否有可沿用的测试容器；无需创建时沿用现有环境。“可沿用”以实际写入/查询成功
+  为准，不能只看端口能连或容器在跑（例如对象存储可能已无空写卷）。若需创建新容器，
+  先清理本任务遗留的旧容器，确认名称不属于其他任务后启动新容器，不修改其他任务的环境。
 - 执行后停止并删除本次创建的容器及远程测试目录；测试失败的诊断需要保留现场时，
   明确记录容器与目录名称及保留原因。
 - 容器必须绑定 `127.0.0.1`，不得对公网开放数据库端口。
