@@ -11,7 +11,7 @@ Magpie 管理组内具体模型、Provider、认证和转发，Pi 运行会话�
 | Check | `magpie/group/qwen` | Qwen，组 ID `qwen` | [trellis-check.md](../.pi/agents/trellis-check.md) 的 `model` |
 | Review（可选） | 未启用；以后如需启用，使用 `magpie/group/openai` | OpenAi | 当前没有 Review Agent |
 
-三个组的实际 ID、Pi 导出条目及当前成员家族已通过只读配置核对，无待选择具体模型的 TODO。用户会话中已观察到 Deepseek / Qwen 组的实际子进程记录；本配置任务的专门运行验收及本轮反馈补丁仍未完成。详细依据见[环境调查](tasks/10-21-pi-trellis-magpie/research/environment.md)和[进度反馈诊断](tasks/10-21-pi-trellis-magpie/research/progress-feedback.md)。
+三个组的实际 ID、Pi 导出条目及当前成员家族已通过只读配置核对，无待选择具体模型的 TODO。用户会话中已观察到 Deepseek / Qwen 组的实际子进程记录；本配置任务的专门运行验收及本轮反馈补丁仍未完成。详细依据见[环境调查](tasks/archive/2026-10/10-21-pi-trellis-magpie/research/environment.md)和[进度反馈诊断](tasks/archive/2026-10/10-21-pi-trellis-magpie/research/progress-feedback.md)。
 
 Planner 负责需求、方案、任务拆解和验收；Implement 负责实现及必要测试；Check 按原生流程检查并直接修复。**Check 拥有 `write`、`edit`、`bash`，不是只读独立审计。**
 
@@ -64,7 +64,7 @@ Planner 负责需求、方案、任务拆解和验收；Implement 负责实现�
 
 主会话继续使用 OpenAi 协调，不会因 start 自动变成 Deepseek。SSH 环境探测、构建、测试和代码实施都应交给 Implement；主会话不要在派发前自行完成这些执行操作，除非用户明确指定由主会话做。判断是否已用 Deepseek，应看 `trellis_subagent` 的 Agent 和子进程组记录，不能只看主界面模型标签。
 
-共享 start / continue 技能需要按实际宿主选择平台：Pi 使用 `--platform pi`，不能因为模型是 GPT / Codex 就选择 `--platform codex`。相关[会话诊断](tasks/10-21-pi-trellis-magpie/research/session-routing.md)记录了实际观察。
+共享 start / continue 技能需要按实际宿主选择平台：Pi 使用 `--platform pi`，不能因为模型是 GPT / Codex 就选择 `--platform codex`。相关[会话诊断](tasks/archive/2026-10/10-21-pi-trellis-magpie/research/session-routing.md)记录了实际观察。
 
 这些派发提示沿用 Trellis 的指令工作流，不是阻止主会话使用 bash / edit 的权限隔离；显式用户指令优先。
 
@@ -88,7 +88,7 @@ python3 ./.trellis/scripts/task.py current --source
 
 反馈约定由 buildPrompt 注入，保留原生 Agent 文件和工具。它依靠模型遵守阻塞退出要求，不是自动识别所有阻塞的监控系统。正在运行的子进程不热加载这些修改；结束 / 取消当前调用后 reload，后续派发才使用新逻辑。
 
-本轮已准备无真实模型的[离线回归用例](tasks/10-21-pi-trellis-magpie/verification/progress.test.mjs)，尚未运行。相关证据和限制见[诊断记录](tasks/10-21-pi-trellis-magpie/research/progress-feedback.md)。
+本轮已准备无真实模型的[离线回归用例](tasks/archive/2026-10/10-21-pi-trellis-magpie/verification/progress.test.mjs)，尚未运行。相关证据和限制见[诊断记录](tasks/archive/2026-10/10-21-pi-trellis-magpie/research/progress-feedback.md)。
 
 ## 可选 Review
 
@@ -104,7 +104,7 @@ python3 ./.trellis/scripts/task.py current --source
 
 本项目所有运行验证仅允许在指定测试服务器的任务隔离目录执行，详见[测试环境规范](spec/backend/testing-guidelines.md)。本轮再次以 BatchMode 探测 Node，SSH 认证失败、退出 255，远端命令未执行，也未回退本机测试。**尚未运行**配置专项验收及进度反馈回归、Pi registry 命令、网关 HTTP healthcheck、编译 / 类型 / 格式检查或本轮真实模型 smoke；用户既有会话的实际派发记录单独列为历史观察。
 
-后续测试重点为：缺组时零子进程、直接模型引用被拒、精确组 ID 传入子 Pi、合法组覆盖、三种模式、thinking 后缀、Research 继承和原生上下文完整。配置任务的[验收记录](tasks/10-21-pi-trellis-magpie/acceptance.md) 保留实际结果与限制。
+后续测试重点为：缺组时零子进程、直接模型引用被拒、精确组 ID 传入子 Pi、合法组覆盖、三种模式、thinking 后缀、Research 继承和原生上下文完整。配置任务的[验收记录](tasks/archive/2026-10/10-21-pi-trellis-magpie/acceptance.md) 保留实际结果与限制。本配置版本按用户明确要求归档提交；运行验收仍未执行。
 
 ## Trellis update
 

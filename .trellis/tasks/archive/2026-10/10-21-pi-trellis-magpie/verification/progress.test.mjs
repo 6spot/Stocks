@@ -1,5 +1,5 @@
 // Run only in this task's isolated directory on the designated test server:
-// node --experimental-transform-types --test .trellis/tasks/10-21-pi-trellis-magpie/verification/progress.test.mjs
+// node --experimental-transform-types --test .trellis/tasks/archive/2026-10/10-21-pi-trellis-magpie/verification/progress.test.mjs
 // Node >= 22.7; no Pi installation, model requests, credentials, or npm deps.
 import assert from 'node:assert/strict';
 import { after, test } from 'node:test';

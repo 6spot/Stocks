@@ -60,10 +60,10 @@ ssh -o BatchMode=yes -o ConnectTimeout=8 root@100.120.14.84 'command -v node; co
 
 ## 子进程反馈回归
 
-已准备 `verification/progress.test.mjs`：在远端的本任务隔离副本根目录运行：
+已准备 `verification/progress.test.mjs`：归档后，在远端的本任务隔离副本根目录运行：
 
 ```sh
-node --experimental-transform-types --test .trellis/tasks/10-21-pi-trellis-magpie/verification/progress.test.mjs
+node --experimental-transform-types --test .trellis/tasks/archive/2026-10/10-21-pi-trellis-magpie/verification/progress.test.mjs
 ```
 
 需 Node 22.7 或更新版本支持类型转换；不安装新依赖，不访问真实模型。用例在本任务 verification 目录创建临时 fixture 并清理；加载实际扩展的临时副本、模拟 JSON 子进程，检查公开进度、UTF-8 分片、工具错误、retry / compaction、零退出码失败、BLOCKED 停止 chain、stderr / 静默刷新、取消和 timer 清理。记录实际结果；当前未执行，不将测试文件存在记作通过。
