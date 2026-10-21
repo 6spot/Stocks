@@ -154,9 +154,19 @@ Phase 3: Finish  → verify, update spec, commit, and wrap up
 
 ### Request Triage
 
+First resolve any existing task explicitly named by the user or uniquely identified as the next task in the roadmap. A missing active-task pointer after archive does not require creating another task or renewing an existing execution authorization. For new tasks, apply the creation-consent rules below only when that consent has not already been given.
+
 - Simple conversation or small task: ask only whether this turn should create a Trellis task. If the user says no, skip Trellis for this session.
 - Complex task: ask whether you may create a Trellis task and enter planning. If the user says no, do not do broad inline implementation; explain, clarify scope, or suggest a smaller split.
-- User approval to create a task is not approval to start implementation. Planning still happens first.
+- User approval to create or plan a task alone is not approval to start implementation. Planning still happens first; explicit execution instructions remain valid while that planning is completed.
+
+### Authorization Carryover
+
+- Read the user's current instruction and prior session decisions before asking for permission. Explicit instructions such as "执行 V1-02", "继续执行", or "提交并推送，然后开始下一个任务" authorize those actions within their stated scope. Merely creating, discussing, or planning a task does not authorize implementation.
+- Resolve "next task" against the existing roadmap and prerequisites. If exactly one task follows, announce the resolved task and proceed; ask only if the target or a user-owned decision remains ambiguous. Authorization to execute one next task does not authorize an unlimited task chain.
+- Complete and review the required planning artifacts, then run `task.py start` and delegate. Writing or refining the technical plan does not invalidate execution authorization or require a later user message. Pause for a newly discovered scope, acceptance, UX, risk, or external-action decision that the existing authorization does not cover.
+- Preserve the authorized next actions across commit, archive, journal recording, and compaction. Record the instruction and resolved scope in existing task notes or `implement.md` when useful. Finishing one task must not consume an explicit instruction to start the next.
+- Before asking a process-confirmation question, identify exactly what decision or permission is still missing. If the action is already authorized and no material scope decision remains, report the next action and perform it.
 
 ### Planning Artifacts
 
@@ -177,9 +187,9 @@ Create new children with `task.py create "<title>" --slug <name> --parent <paren
 <!-- Per-turn breadcrumb: shown when there is no active task (before Phase 1) -->
 
 [workflow-state:no_task]
-No active task. First classify the current turn and ask for task-creation consent before creating any Trellis task.
-Simple conversation / small task: ask only whether this turn should create a Trellis task. If the user says no, skip Trellis for this session.
-Complex task: ask the user if you can create a Trellis task and enter the planning phase. If the user says no, explain, clarify scope, or suggest a smaller split.
+No active task pointer. First resolve an existing task named by the user or uniquely identified as the authorized next task; review its artifacts and resume under existing authorization, without asking to create it again.
+Before creating a genuinely new task, obtain creation consent only if it has not already been given. For simple conversation / small tasks, ask only whether a task is needed; for complex new work, obtain consent to create the task and plan. If the user declines, clarify scope or suggest a smaller split.
+An explicit instruction to execute an existing task survives the previous task's archive. Follow Authorization Carryover; do not request the same execution approval again merely because planning artifacts need refinement.
 [/workflow-state:no_task]
 
 <!-- Per-turn breadcrumb: shown when the active task record cannot be read. -->
@@ -201,8 +211,8 @@ Preserve existing task fields and artifacts. If the correct status cannot be det
 <!-- Per-turn breadcrumb: shown throughout Phase 1 (status='planning') -->
 
 [workflow-state:planning]
-Load `trellis-brainstorm`; stay in planning.
-Lightweight: `prd.md` can be enough. Complex: finish `prd.md`, `design.md`, and `implement.md`; ask for review before `task.py start`.
+Load `trellis-brainstorm`; complete planning before implementation.
+Lightweight: `prd.md` can be enough. Complex: finish `prd.md`, `design.md`, and `implement.md`; review them before `task.py start`. Reuse existing explicit execution authorization; ask for approval only when absent or when a new user-owned decision is outside that authorization.
 Multi-deliverable scope: consider a parent task plus independently verifiable child tasks; dependencies must be written in child artifacts, not implied by tree position.
 Sub-agent mode: curate `implement.jsonl` and `check.jsonl` as spec/research manifests before start.
 [/workflow-state:planning]
@@ -214,8 +224,8 @@ Sub-agent mode: curate `implement.jsonl` and `check.jsonl` as spec/research mani
      into a sub-agent. -->
 
 [workflow-state:planning-inline]
-Load `trellis-brainstorm`; stay in planning.
-Lightweight: `prd.md` can be enough. Complex: finish `prd.md`, `design.md`, and `implement.md`; ask for review before `task.py start`.
+Load `trellis-brainstorm`; complete planning before implementation.
+Lightweight: `prd.md` can be enough. Complex: finish `prd.md`, `design.md`, and `implement.md`; review them before `task.py start`. Reuse existing explicit execution authorization; ask for approval only when absent or when a new user-owned decision is outside that authorization.
 Multi-deliverable scope: consider a parent task plus independently verifiable child tasks; dependencies must be written in child artifacts, not implied by tree position.
 Inline mode: skip jsonl curation; Phase 2 reads artifacts/specs via `trellis-before-dev`.
 [/workflow-state:planning-inline]
@@ -301,7 +311,7 @@ When a user request matches one of these intents inside an active task, route fi
 
 ### Guardrails
 
-- Task creation approval is not implementation approval; implementation waits for `task.py start` after artifact review.
+- Task creation approval alone is not implementation approval. Explicit execution authorization can already exist before planning is refined; preserve it, complete artifact review, then run `task.py start` without requiring another turn solely for approval.
 - PRD-only is valid for lightweight tasks; complex tasks need `design.md` + `implement.md`.
 - Planning must be persisted to task artifacts; checks must run before reporting completion.
 
@@ -336,7 +346,7 @@ After this command succeeds, the per-turn breadcrumb auto-switches to `[workflow
 
 Run only `create` here — do not also run `start`. `start` flips status to `in_progress`, which switches the breadcrumb to the implementation phase before planning artifacts are reviewed. Save `start` for step 1.4.
 
-Skip when `python3 ./.trellis/scripts/task.py current --source` already points to a task.
+Skip creation when the resolved target task already exists, including an authorized next task after the previous task's archive cleared the pointer. `python3 ./.trellis/scripts/task.py current --source` can identify an already active task; a missing pointer alone is not a reason to create another task.
 
 #### 1.1 Requirement exploration `[required · repeatable]`
 
@@ -446,7 +456,7 @@ Skip this step. Context is loaded directly by the `trellis-before-dev` skill in 
 
 #### 1.4 Activate task `[required · once]`
 
-After artifact review, flip the task status to `in_progress`:
+After artifact review and with execution authorization, flip the task status to `in_progress`. Reuse an explicit instruction to execute this task or the uniquely resolved next task; do not require a new approval message solely because artifacts were completed in this turn. If the user requested planning only, or a newly discovered user-owned decision is outside the approved scope, ask for that missing decision before starting:
 
 ```bash
 python3 ./.trellis/scripts/task.py start <task-dir>
@@ -463,7 +473,7 @@ If `task.py start` errors with a session-identity message (no context key from h
 | Condition | Required |
 |------|:---:|
 | `prd.md` exists | ✅ |
-| User confirms task should enter implementation | ✅ |
+| Explicit execution authorization exists for this task (a prior instruction counts) | ✅ |
 | `task.py start` has been run (status = in_progress) | ✅ |
 | `research/` has artifacts (complex tasks) | recommended |
 | `design.md` exists (complex tasks) | ✅ |
@@ -623,7 +633,7 @@ The AI drives a batched commit of this task's code changes so `/finish-work` can
 
 4. **Draft a commit plan**. Group AI-edited files into logical commits (1 commit per coherent change unit, not 1 commit per file). Each entry: `<commit message>` + file list. List unrecognized files separately at the bottom.
 
-5. **Present the plan once, ask for one-shot confirmation**. Format:
+5. **Present the commit plan once.** If the user already explicitly requested committing this work, announce the scoped batch and execute without another confirmation. Ask the following one-shot confirmation only when commit authorization is missing or the requested scope is genuinely ambiguous. Leave unrelated parallel changes outside the batch. Format when confirmation is needed:
    ```
    Proposed commits (in order):
      1. <message>
@@ -639,19 +649,19 @@ The AI drives a batched commit of this task's code changes so `/finish-work` can
    Reply 'ok' / '行' to execute. Reply with edits, or '我自己来' / 'manual' to abort.
    ```
 
-6. **On confirmation**: run `git add <files>` + `git commit -m "<msg>"` for each batch in order. Do not amend. Do not push.
+6. **With commit authorization**: run `git add <files>` + scoped `git commit -m "<msg>"` for each batch in order. Do not amend. Push only if explicitly requested by the user; otherwise keep commits local.
 
 7. **On rejection** (user replies "不行" / "我自己来" / "manual" / any pushback on the plan): stop. Do not attempt a second plan. The user will commit by hand; you skip ahead to 3.5 once they confirm.
 
 **Rules**:
 - No `git commit --amend` anywhere — three-stage three-commit flow (work commits → archive commit → journal commit).
-- Never push to remote in this step.
-- If the user wants different message wording but accepts the file grouping, edit the message and re-confirm once — but if they reject the grouping, exit to manual mode.
-- The batched plan is one prompt; do not prompt per commit.
+- Push requires explicit user authorization; an existing request to "commit and push" is sufficient, without another approval turn.
+- Apply explicitly requested message wording to the agreed batch without re-confirming it. If grouping or scope remains ambiguous, ask once; if the user rejects AI-driven committing, exit to manual mode.
+- When commit authorization is missing, ask once for the batch rather than per commit. Preserve any already-authorized follow-up task after committing and wrapping up.
 
 #### 3.5 Wrap-up reminder
 
-After the above, remind the user they can run `/finish-work` to wrap up (archive the task, record the session).
+After the above, perform already-authorized wrap-up and next-task actions. If the user instructed "commit/push, then start the next task", finish the current task's archive/journal and continue to that resolved task; do not stop at a reminder or renew its execution approval. When wrap-up has not been requested, remind the user they can run `/finish-work` to archive and record the session.
 
 ---
 
@@ -662,7 +672,7 @@ This section is for developers who want to modify the Trellis workflow itself. A
 ### Changing what a step means
 
 Edit the corresponding step's walkthrough body in the Phase 1 / 2 / 3 sections above. Critical invariants:
-- No active task must triage first and ask for task-creation consent before creating a Trellis task.
+- With no active pointer, resolve the existing authorized target first. Before creating a genuinely new task, obtain task-creation consent only if not already granted.
 - Planning must distinguish lightweight PRD-only tasks from complex tasks that require `prd.md`, `design.md`, and `implement.md` before start.
 - Every required execution path must keep the Phase 3.4 commit reminder reachable before `/trellis:finish-work`.
 

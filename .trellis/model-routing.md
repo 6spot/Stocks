@@ -60,7 +60,7 @@ Planner 负责需求、方案、任务拆解和验收；Implement 负责实现�
 
 **规划保存：** 主会话使用 OpenAi 组，通过已有 `/trellis-start`、`/skill:trellis-brainstorm` 或直接要求“只规划、拆解并保存任务，完成后停止”。可保存多个 `planning` 任务；规划结束不调用 Implement、不自动 `start`。
 
-**自主选择执行：** 用户明确指定某个已规划任务并批准实施，主会话按原生流程审阅材料、执行 `task.py start`，再派发 Deepseek 组的 Implement 和 Qwen 组的 Check。不自动连续开发其他任务。
+**自主选择执行：** 用户明确指定某个已规划任务并批准实施，主会话按原生流程审阅材料、执行 `task.py start`，再派发 Deepseek 组的 Implement 和 Qwen 组的 Check。未获明确指令时，不连续执行其他任务。明确的“提交并推送，然后开始下一个任务”覆盖唯一确定的下一项，归档或补齐规划不撤销该执行授权；细则归属 [workflow.md 的 Authorization Carryover](workflow.md#authorization-carryover)。实际重复确认的[诊断记录](tasks/archive/2026-10/10-21-pi-trellis-magpie/research/authorization-handoff.md)已保留。
 
 主会话继续使用 OpenAi 协调，不会因 start 自动变成 Deepseek。SSH 环境探测、构建、测试和代码实施都应交给 Implement；主会话不要在派发前自行完成这些执行操作，除非用户明确指定由主会话做。判断是否已用 Deepseek，应看 `trellis_subagent` 的 Agent 和子进程组记录，不能只看主界面模型标签。
 
@@ -108,7 +108,7 @@ python3 ./.trellis/scripts/task.py current --source
 
 ## Trellis update
 
-当前 Trellis 0.6.17 未发现 Pi 模型字段专用保留机制。Agent、项目设置、扩展、共享技能和 Pi prompts 均在模板管理范围，强制更新可能覆盖组绑定、平台 / 派发提示或派发检查。
+当前 Trellis 0.6.17 未发现 Pi 模型字段专用保留机制。workflow、Agent、项目设置、扩展、共享技能和 Pi prompts 均在模板管理范围，强制更新可能覆盖授权承接规则、组绑定、平台 / 派发提示或派发检查。
 
 先用 `trellis update --dry-run` 看差异，保留本地修改，或用 `--create-new` 生成 `.new` 后合并。不要手改 `.template-hashes.json`。更新后复核项目默认组、两个 Agent 组和派发检查，再 reload。
 
