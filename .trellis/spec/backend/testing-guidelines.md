@@ -236,7 +236,9 @@ DATABASE_URL='postgresql+psycopg://stocks:<random-test-value>@127.0.0.1:55432/st
   需要迭代读取的响应用 `stream=httpx.ByteStream(payload)`。畸形 `Location` 头由
   httpx 自身抛 `RemoteProtocolError`，走仓库既有 `REQUEST_FAILED` 路径，不要为它
   增加不可达的解析分支。测试 HTML 正文放在内层块元素（如 `<article><p>`）中，
-  纯文本直接位于 `article`/`main`/`body` 会触到解析器的既有分块缺陷。
+  纯文本直接位于 `article`/`main`/`body` 曾触到逐字符成段的缺陷，该缺陷已修复：
+  容器自身的连续文本与行内元素应合并为同一个证据片段，回归见
+  `tests/test_processing.py::test_text_directly_inside_container_stays_one_evidence_run`。
 
 ## Wrong vs Correct
 

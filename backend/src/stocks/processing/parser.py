@@ -73,6 +73,10 @@ BLOCK_ELEMENTS = frozenset(
         "section",
     }
 )
+# ``article`` / ``main`` / ``body`` 直接承载正文的方式与 ``div`` 相同，但它们
+# 不属于 HTML 的块级元素：容器的行内片段必须先合并成一个证据片段，否则逐字符
+# 的文本节点会成为逐字符片段。
+CONTAINER_ELEMENTS = frozenset({"article", "body", "html", "main"})
 VOID_ELEMENTS = frozenset(
     {
         "area",
@@ -847,23 +851,7 @@ def _walk_evidence(
     if node.tag == "table":
         output.extend(_table_segments(node, primary))
         return
-    if node.tag in BLOCK_ELEMENTS:
-        _walk_block(node, output, primary=primary)
-        return
-    for child in node.children:
-        if isinstance(child, _HtmlNode):
-            _walk_evidence(child, output, primary=primary)
-        elif child.text.strip():
-            output.append(
-                SourceSegment(
-                    child.text,
-                    _html_node_locator(node, primary),
-                    tuple(
-                        _char_range(child, index)
-                        for index in range(len(child.text))
-                    ),
-                )
-            )
+    _walk_block(node, output, primary=primary)
 
 
 def _walk_block(
@@ -897,7 +885,11 @@ def _walk_block(
             inline.append(child)
         elif child.tag in NOISE_ELEMENTS:
             flush()
-        elif child.tag in BLOCK_ELEMENTS or child.tag == "table":
+        elif (
+            child.tag in BLOCK_ELEMENTS
+            or child.tag in CONTAINER_ELEMENTS
+            or child.tag == "table"
+        ):
             flush()
             _walk_evidence(child, output, primary=primary)
         else:

@@ -178,6 +178,66 @@ def test_nested_inline_text_keeps_each_character_in_source_order():
     assert chunks[0].text == "Headline 10% Nested 20% after."
 
 
+@pytest.mark.parametrize(
+    ("payload", "expected"),
+    [
+        (
+            b"<html><body>Direct body text 3.1%.</body></html>",
+            "Direct body text 3.1%.",
+        ),
+        (
+            b"<html><body><main>Direct main text 3.1%.</main></body></html>",
+            "Direct main text 3.1%.",
+        ),
+        (
+            b"<html><body><article>Direct article text 3.1%.</article>"
+            b"</body></html>",
+            "Direct article text 3.1%.",
+        ),
+    ],
+)
+def test_text_directly_inside_container_stays_one_evidence_run(payload, expected):
+    text = payload.decode()
+    _, chunks = parse_content(
+        payload,
+        "text/html",
+        chunk_size=1200,
+        chunk_overlap=0,
+    )
+
+    assert len(chunks) == 1
+    assert chunks[0].text == expected
+    segments = chunks[0].locator["segments"]
+    assert len(segments) == 1
+    for segment in segments:
+        assert_visible_source_ranges(
+            text, {**segment["locator"], "text": segment["text"]}
+        )
+
+
+def test_inline_text_directly_inside_container_keeps_order_and_ranges():
+    payload = (
+        b"<html><body><main>Rate <strong>3.1%</strong> after.</main>"
+        b"</body></html>"
+    )
+    text = payload.decode()
+    _, chunks = parse_content(
+        payload,
+        "text/html",
+        chunk_size=1200,
+        chunk_overlap=0,
+    )
+
+    assert len(chunks) == 1
+    assert chunks[0].text == "Rate 3.1% after."
+    segments = chunks[0].locator["segments"]
+    assert len(segments) == 1
+    for segment in segments:
+        assert_visible_source_ranges(
+            text, {**segment["locator"], "text": segment["text"]}
+        )
+
+
 def test_html_parser_keeps_character_after_leading_whitespace():
     payload = b"<html><body><main><p> <strong>Trim</strong></p></main></body></html>"
 
