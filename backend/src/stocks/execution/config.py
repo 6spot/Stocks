@@ -3,13 +3,20 @@ from __future__ import annotations
 import hashlib
 import json
 import math
+import re
 from pathlib import Path
 from typing import Literal
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import yaml
+from croniter import croniter
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 
 MAX_CONFIG_BYTES = 1_000_000
+INTERVAL_PATTERN = re.compile(r"^([1-9][0-9]{0,6})([smhd])$")
+INTERVAL_UNITS = {"s": 1, "m": 60, "h": 3_600, "d": 86_400}
+MIN_INTERVAL_SECONDS = 60
+MAX_INTERVAL_SECONDS = 2_592_000
 CONDITION_FIELDS = {
     "output",
     "output.items",
@@ -84,6 +91,103 @@ class ExecutionConfigError(ValueError):
         if self.field:
             result["field"] = self.field
         return result
+
+
+class TriggerConfig(BaseModel):
+    """Task trigger: manual, or a schedule defined by cron+timezone or every.
+
+    ``cron`` and ``every`` are mutually exclusive. ``cron`` requires an IANA
+    timezone because a wall-clock schedule without one is ambiguous; ``every``
+    is a fixed positive interval and must not carry a timezone.
+    """
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    kind: Literal["manual", "schedule"] = "manual"
+    cron: str | None = Field(default=None, max_length=200)
+    timezone: str | None = Field(default=None, max_length=64)
+    every: str | int | None = None
+
+    @model_validator(mode="after")
+    def validate_schedule(self) -> TriggerConfig:
+        if self.kind == "manual":
+            if any(
+                value is not None
+                for value in (self.cron, self.timezone, self.every)
+            ):
+                raise ValueError("manual trigger does not accept schedule fields")
+            return self
+        if (self.cron is None) == (self.every is None):
+            raise ValueError(
+                "schedule trigger requires exactly one of cron or every"
+            )
+        if self.cron is not None:
+            if not self.timezone:
+                raise ValueError("cron schedule requires an IANA timezone")
+            _validate_timezone(self.timezone)
+            _validate_cron(self.cron)
+            return self
+        if self.timezone is not None:
+            raise ValueError("every schedule does not accept a timezone")
+        _parse_interval_seconds(self.every)
+        return self
+
+    @property
+    def every_seconds(self) -> int | None:
+        """Fixed interval in seconds, or ``None`` for a cron/manual trigger."""
+
+        if self.kind != "schedule" or self.every is None:
+            return None
+        return _parse_interval_seconds(self.every)
+
+    def fingerprint(self) -> str:
+        """Hash the scheduling configuration to detect a schedule change."""
+
+        return hashlib.sha256(
+            json.dumps(
+                {
+                    "kind": self.kind,
+                    "cron": self.cron,
+                    "timezone": self.timezone,
+                    "every_seconds": self.every_seconds,
+                },
+                sort_keys=True,
+                separators=(",", ":"),
+            ).encode()
+        ).hexdigest()
+
+
+def _validate_timezone(name: str) -> None:
+    try:
+        ZoneInfo(name)
+    except (ZoneInfoNotFoundError, ValueError) as exc:
+        raise ValueError("timezone must be a known IANA timezone name") from exc
+
+
+def _validate_cron(expression: str) -> None:
+    if len(expression.split()) != 5:
+        raise ValueError("cron schedule requires a five-field expression")
+    if not croniter.is_valid(expression):
+        raise ValueError("cron schedule expression is invalid")
+
+
+def _parse_interval_seconds(value: object) -> int:
+    if isinstance(value, bool):
+        raise ValueError("every must be a positive duration")
+    if isinstance(value, int):
+        seconds = value
+    elif isinstance(value, str):
+        match = INTERVAL_PATTERN.match(value.strip())
+        if match is None:
+            raise ValueError(
+                "every must be a duration such as 90s, 15m, 2h or 1d"
+            )
+        seconds = int(match.group(1)) * INTERVAL_UNITS[match.group(2)]
+    else:
+        raise ValueError("every must be a duration such as 90s, 15m, 2h or 1d")
+    if not MIN_INTERVAL_SECONDS <= seconds <= MAX_INTERVAL_SECONDS:
+        raise ValueError("every must be between 60s and 30d")
+    return seconds
 
 
 class StepCondition(BaseModel):
@@ -176,6 +280,14 @@ class AgentStepConfig(BaseModel):
     input: str = Field(pattern=r"^[A-Za-z0-9_-]+$", max_length=120)
 
 
+class CollectionStepConfig(BaseModel):
+    """Collect the Task's configured sources with the existing collection service."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    kind: Literal["collect_sources"]
+
+
 class TaskStepConfig(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
@@ -183,12 +295,14 @@ class TaskStepConfig(BaseModel):
     when: StepCondition | None = None
     select_evidence: EvidenceStepConfig | None = None
     research_agent: AgentStepConfig | None = None
+    collect_sources: CollectionStepConfig | None = None
 
     @model_validator(mode="after")
     def validate_kind(self) -> TaskStepConfig:
         kinds = [
             self.select_evidence is not None,
             self.research_agent is not None,
+            self.collect_sources is not None,
         ]
         if sum(kinds) != 1:
             raise ValueError("each step must define exactly one supported step kind")
@@ -196,6 +310,8 @@ class TaskStepConfig(BaseModel):
             assert self.select_evidence.kind == "select_evidence"
         if self.research_agent is not None:
             assert self.research_agent.kind == "research_agent"
+        if self.collect_sources is not None:
+            assert self.collect_sources.kind == "collect_sources"
         return self
 
     @property
@@ -206,6 +322,8 @@ class TaskStepConfig(BaseModel):
     def kind(self) -> str:
         if self.select_evidence is not None:
             return "select_evidence"
+        if self.collect_sources is not None:
+            return "collect_sources"
         return "research_agent"
 
 
@@ -214,24 +332,96 @@ class TaskConfig(BaseModel):
 
     id: str = Field(pattern=r"^[A-Za-z0-9_-]+$", max_length=120)
     name: str = Field(min_length=1, max_length=255)
-    type: Literal["research"]
-    trigger: Literal["manual"]
+    type: Literal["research", "collection"]
+    trigger: TriggerConfig
     enabled: bool = True
-    objective: str = Field(min_length=1, max_length=4000)
+    objective: str | None = Field(default=None, max_length=4000)
     strategy: str | None = Field(default=None, max_length=255)
-    scope: dict
+    scope: dict | None = None
+    sources: list[str] | None = Field(default=None, max_length=20)
     steps: list[TaskStepConfig] = Field(min_length=1, max_length=20)
+
+    @model_validator(mode="before")
+    @classmethod
+    def normalize_trigger(cls, data: object) -> object:
+        if isinstance(data, dict):
+            raw = data.get("trigger")
+            if raw is None:
+                raise ValueError("trigger is required")
+            if isinstance(raw, str):
+                if raw != "manual":
+                    raise ValueError(
+                        "trigger must be manual or a schedule definition"
+                    )
+                data = {**data, "trigger": {"kind": "manual"}}
+            elif isinstance(raw, dict):
+                if raw.get("kind") not in {"manual", "schedule"}:
+                    raise ValueError(
+                        "trigger kind must be manual or schedule"
+                    )
+        return data
+
+    @model_validator(mode="after")
+    def validate_type(self) -> TaskConfig:
+        if self.type == "collection":
+            if self.scope is not None:
+                raise ValueError("collection Task does not accept scope")
+            if self.objective is not None:
+                raise ValueError("collection Task does not accept objective")
+            if self.strategy is not None:
+                raise ValueError("collection Task does not accept strategy")
+            if not self.sources:
+                raise ValueError("collection Task requires sources")
+            if len(set(self.sources)) != len(self.sources):
+                raise ValueError("collection Task sources must be unique")
+            if any(
+                not isinstance(source_id, str)
+                or not source_id
+                or len(source_id) > 120
+                for source_id in self.sources
+            ):
+                raise ValueError(
+                    "collection Task sources must be non-empty values of at most "
+                    "120 chars"
+                )
+            if self.sources:
+                if any(
+                    not re.fullmatch(r"[A-Za-z0-9_-]+", source_id)
+                    for source_id in self.sources
+                ):
+                    raise ValueError(
+                        "collection Task sources must match [A-Za-z0-9_-]+"
+                    )
+            if len(self.steps) != 1:
+                raise ValueError(
+                    "collection Task requires exactly one collect_sources step"
+                )
+            if self.steps[0].collect_sources is None:
+                raise ValueError(
+                    "collection Task requires a collect_sources step"
+                )
+            return self
+        if self.sources is not None:
+            raise ValueError("research Task does not accept sources")
+        if not isinstance(self.scope, dict) or not self.scope:
+            raise ValueError("scope must be a non-empty mapping")
+        if not self.objective or not self.objective.strip():
+            raise ValueError("research Task requires an objective")
+        return self
 
     @model_validator(mode="after")
     def validate_steps(self) -> TaskConfig:
-        if not isinstance(self.scope, dict) or not self.scope:
-            raise ValueError("scope must be a non-empty mapping")
-        _validate_json_value(self.scope, path="scope")
+        if self.scope is not None:
+            _validate_json_value(self.scope, path="scope")
         seen: set[str] = set()
         for step in self.steps:
             if step.id in seen:
                 raise ValueError(f"duplicate step id: {step.id}")
             condition = step.condition
+            if self.type == "collection" and condition is not None:
+                raise ValueError(
+                    "collection Task steps do not accept conditions"
+                )
             if condition is not None and condition.step not in seen:
                 raise ValueError(
                     f"step {step.id} condition must reference an earlier step: "
@@ -245,8 +435,25 @@ class TaskConfig(BaseModel):
                     f"step {step.id} input must reference an earlier step: "
                     f"{step.research_agent.input}"
                 )
+            if self.type == "research" and step.collect_sources is not None:
+                raise ValueError(
+                    "research Task steps do not support collect_sources"
+                )
             seen.add(step.id)
         return self
+
+    @property
+    def run_scope(self) -> dict:
+        if self.type == "collection":
+            return {"source_ids": list(self.sources or ())}
+        assert self.scope is not None
+        return dict(self.scope)
+
+    @property
+    def run_objective(self) -> str:
+        if self.objective:
+            return self.objective
+        return self.name
 
 
 class AgentConfig(BaseModel):
@@ -291,7 +498,7 @@ class TaskConfiguration(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     tasks: list[TaskConfig] = Field(min_length=1)
-    agents: list[AgentConfig] = Field(min_length=1)
+    agents: list[AgentConfig] = Field(default_factory=list)
 
     @model_validator(mode="after")
     def validate_references(self) -> TaskConfiguration:
@@ -303,7 +510,9 @@ class TaskConfiguration(BaseModel):
             raise ValueError("agent ids must be unique")
         known_agents = set(agent_ids)
         for task in self.tasks:
-            if not task.steps or task.steps[-1].research_agent is None:
+            if task.type == "research" and (
+                not task.steps or task.steps[-1].research_agent is None
+            ):
                 raise ValueError(
                     "A research Task requires a final Research Agent step"
                 )

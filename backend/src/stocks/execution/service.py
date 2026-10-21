@@ -1,4 +1,4 @@
-"""Manual, database-coordinated execution of configured research tasks."""
+"""Database-coordinated trigger, claim and execution of configured Tasks."""
 from __future__ import annotations
 
 import asyncio
@@ -21,6 +21,9 @@ from stocks.execution.config import (
     snapshot_hash,
     snapshot_payload,
 )
+from stocks.collection.config import load_sources, select_sources
+from stocks.collection.errors import CollectionError
+from stocks.collection.service import collect_source
 from stocks.models import (
     Analysis,
     EvidencePackage,
@@ -79,7 +82,17 @@ class ExecutionContext:
     session: Session
     settings: Settings
     config_path: str
+    sources_config_path: str = "config/sources.yaml"
     model_transport: Any = None
+
+
+TRIGGER_MANUAL = "manual"
+TRIGGER_SCHEDULE = "schedule"
+TRIGGER_RETRY = "retry"
+ENDED_BY_OWNER = {
+    "code": "RUN_ENDED_BY_OWNER",
+    "message": "Task Run was ended after the Owner confirmed the old process stopped",
+}
 
 
 def create_or_get_run(
@@ -90,6 +103,7 @@ def create_or_get_run(
     config_path: str | None = None,
     now: datetime | None = None,
     process_token: str | None = None,
+    triggered_by: str = TRIGGER_MANUAL,
 ) -> ClaimedRun:
     if process_token is not None and (
         not process_token.strip() or len(process_token) > 200
@@ -97,100 +111,35 @@ def create_or_get_run(
         raise ValueError(
             "process_token must be non-empty and at most 200 chars"
         )
+    if triggered_by not in {TRIGGER_MANUAL, TRIGGER_SCHEDULE}:
+        raise ValueError("triggered_by must be manual or schedule")
     session.rollback()
     try:
         # Serialize trigger decisions for a Task before reading configuration.
         # This keeps a concurrent trigger from resolving model credentials merely
         # to discover that another process already owns the active Run.
-        session.execute(
-            text(
-                "SELECT pg_advisory_xact_lock("
-                "hashtextextended(:task_id, 0)"
-                ")"
-            ),
-            {"task_id": task.id},
-        )
+        _lock_task(session, task.id)
         existing = _active_run(session, task.id)
         if existing is not None:
             session.commit()
             return ClaimedRun(run=existing, created=False)
 
         created_at = now or _now()
-        model_snapshot: dict = {"agents": {}, "embedding": None}
-        if config_path is not None:
-            for agent in agents:
-                routing, targets = load_chat_routing(
-                    config_path, agent.model_ref
-                )
-                model_snapshot["agents"][agent.id] = model_route_snapshot(
-                    routing,
-                    targets,
-                    model_ref=agent.model_ref,
-                )
-            if any(
-                step.select_evidence is not None for step in task.steps
-            ):
-                model_snapshot["embedding"] = embedding_route_snapshot(
-                    load_embedding_targets(config_path)
-                )
-        snapshot = snapshot_payload(task, agents)
-        digest = snapshot_hash(snapshot)
-        candidate_id = uuid4()
-        prompt_snapshot = {agent.id: agent.prompt for agent in agents}
-
-        session.execute(
-            insert(TaskDefinition)
-            .values(
-                id=task.id,
-                name=task.name,
-                type=task.type,
-                trigger=task.trigger,
-                enabled=task.enabled,
-                strategy=task.strategy,
-                scope=deepcopy(task.scope),
-                config_snapshot=snapshot,
-                config_hash=digest,
-                created_at=created_at,
-                updated_at=created_at,
-            )
-            .on_conflict_do_update(
-                index_elements=["id"],
-                set_={
-                    "name": task.name,
-                    "type": task.type,
-                    "trigger": task.trigger,
-                    "enabled": task.enabled,
-                    "strategy": task.strategy,
-                    "scope": deepcopy(task.scope),
-                    "config_snapshot": snapshot,
-                    "config_hash": digest,
-                    "updated_at": created_at,
-                },
-            )
-        )
-        inserted_id = _insert_active_run(
+        run_id = _enqueue_run(
             session,
-            {
-                "id": candidate_id,
-                "task_id": task.id,
-                "status": "running" if process_token else "queued",
-                "process_token": process_token,
-                "objective": task.objective,
-                "strategy": task.strategy,
-                "scope": deepcopy(task.scope),
-                "config_snapshot": snapshot,
-                "model_snapshot": model_snapshot,
-                "prompt_snapshot": prompt_snapshot,
-                "config_hash": digest,
-                "created_at": created_at,
-                "started_at": created_at if process_token else None,
-            },
+            task,
+            agents,
+            config_path=config_path,
+            now=created_at,
+            process_token=process_token,
+            triggered_by=triggered_by,
+            retry_of_run_id=None,
         )
         session.commit()
     except Exception:
         session.rollback()
         raise
-    if inserted_id is None:
+    if run_id is None:
         existing = _active_run(session, task.id)
         if existing is None:
             raise ExecutionError(
@@ -198,9 +147,146 @@ def create_or_get_run(
                 "The task active Run could not be read after a conflict",
             )
         return ClaimedRun(run=existing, created=False)
-    run = session.get(TaskRun, inserted_id)
+    run = session.get(TaskRun, run_id)
     assert run is not None
     return ClaimedRun(run=run, created=True)
+
+
+def _lock_task(session: Session, task_id: str) -> None:
+    session.execute(
+        text(
+            "SELECT pg_advisory_xact_lock("
+            "hashtextextended(:task_id, 0)"
+            ")"
+        ),
+        {"task_id": task_id},
+    )
+
+
+def _enqueue_run(
+    session: Session,
+    task: TaskConfig,
+    agents: list[AgentConfig],
+    *,
+    config_path: str | None,
+    now: datetime,
+    process_token: str | None,
+    triggered_by: str,
+    retry_of_run_id: UUID | None,
+    snapshot: dict | None = None,
+    digest: str | None = None,
+    model_snapshot: dict | None = None,
+    upsert_definition: bool = True,
+) -> UUID | None:
+    if snapshot is None:
+        snapshot = snapshot_payload(task, agents)
+    if digest is None:
+        digest = snapshot_hash(snapshot)
+    if model_snapshot is None:
+        model_snapshot = _model_snapshot(
+            task, agents, config_path=config_path
+        )
+    if upsert_definition:
+        _upsert_task_definition(session, task, snapshot, digest, now)
+    return _insert_active_run(
+        session,
+        {
+            "id": uuid4(),
+            "task_id": task.id,
+            "status": "running" if process_token else "queued",
+            "triggered_by": triggered_by,
+            "retry_of_run_id": retry_of_run_id,
+            "process_token": process_token,
+            "objective": task.run_objective,
+            "strategy": task.strategy,
+            "scope": deepcopy(task.run_scope),
+            "config_snapshot": snapshot,
+            "model_snapshot": model_snapshot,
+            "prompt_snapshot": {
+                agent.id: agent.prompt for agent in agents
+            },
+            "config_hash": digest,
+            "created_at": now,
+            "started_at": now if process_token else None,
+        },
+    )
+
+
+def _model_snapshot(
+    task: TaskConfig,
+    agents: list[AgentConfig],
+    *,
+    config_path: str | None,
+) -> dict:
+    model_snapshot: dict = {"agents": {}, "embedding": None}
+    if config_path is None:
+        return model_snapshot
+    for agent in agents:
+        routing, targets = load_chat_routing(config_path, agent.model_ref)
+        model_snapshot["agents"][agent.id] = model_route_snapshot(
+            routing,
+            targets,
+            model_ref=agent.model_ref,
+        )
+    if any(step.select_evidence is not None for step in task.steps):
+        model_snapshot["embedding"] = embedding_route_snapshot(
+            load_embedding_targets(config_path)
+        )
+    return model_snapshot
+
+
+def _upsert_task_definition(
+    session: Session,
+    task: TaskConfig,
+    snapshot: dict,
+    digest: str,
+    now: datetime,
+) -> None:
+    session.execute(
+        insert(TaskDefinition)
+        .values(
+            id=task.id,
+            name=task.name,
+            type=task.type,
+            trigger=task.trigger.kind,
+            enabled=task.enabled,
+            strategy=task.strategy,
+            scope=deepcopy(task.run_scope),
+            config_snapshot=snapshot,
+            config_hash=digest,
+            created_at=now,
+            updated_at=now,
+        )
+        .on_conflict_do_update(
+            index_elements=["id"],
+            set_={
+                "name": task.name,
+                "type": task.type,
+                "trigger": task.trigger.kind,
+                "enabled": task.enabled,
+                "strategy": task.strategy,
+                "scope": deepcopy(task.run_scope),
+                "config_snapshot": snapshot,
+                "config_hash": digest,
+                "updated_at": now,
+            },
+        )
+    )
+
+
+def register_task_definition(
+    session: Session,
+    task: TaskConfig,
+    agents: list[AgentConfig],
+    *,
+    now: datetime,
+) -> None:
+    """Record the current Task definition without creating or claiming a Run."""
+
+    snapshot = snapshot_payload(task, agents)
+    _upsert_task_definition(
+        session, task, snapshot, snapshot_hash(snapshot), now
+    )
 
 
 def _insert_active_run(
@@ -219,67 +305,217 @@ def _insert_active_run(
     return session.scalar(statement)
 
 
-def create_claim_and_execute(
-    context: ExecutionContext,
-    task: TaskConfig,
-    agents: list[AgentConfig],
+def end_run(
+    session: Session,
+    run_id: UUID,
     *,
-    process_token: str,
-    embed=None,
-) -> tuple[TaskRun, bool, bool]:
-    claimed = create_or_get_run(
-        context.session,
-        task,
-        agents,
-        config_path=context.config_path,
-        process_token=process_token,
-    )
-    if not claimed.created:
-        return claimed.run, False, False
+    now: datetime | None = None,
+) -> TaskRun:
+    """End a queued or running Run after the Owner confirmed it is stopped.
+
+    The Owner confirmation is required by the CLI. Ending keeps every stored
+    StepResult, Evidence Package and error, clears the execution ownership and
+    records why the Run is terminal, so the Run can be retried with the
+    completed steps reused.
+    """
+
+    session.rollback()
+    # Lock the row first so a concurrent final step write by the old execution
+    # cannot interleave with the Owner's end.
+    if session.get(TaskRun, run_id, with_for_update=True) is None:
+        session.rollback()
+        raise ExecutionError("RUN_NOT_FOUND", "Task Run was not found")
+    ended = session.execute(
+        update(TaskRun)
+        .where(
+            TaskRun.id == run_id,
+            TaskRun.status.in_(('queued', 'running')),
+        )
+        .values(
+            status="cancelled",
+            process_token=None,
+            error=deepcopy(ENDED_BY_OWNER),
+            finished_at=now or _now(),
+        )
+        .returning(TaskRun.id)
+    ).scalar_one_or_none()
+    if ended is None:
+        session.rollback()
+        run = session.get(TaskRun, run_id)
+        if run is None:
+            raise ExecutionError("RUN_NOT_FOUND", "Task Run was not found")
+        raise ExecutionError(
+            "RUN_NOT_ACTIVE",
+            "Only a queued or running Task Run can be ended",
+        )
+    session.commit()
+    run = session.get(TaskRun, ended)
+    assert run is not None
+    return run
+
+
+def retry_run(
+    session: Session,
+    run_id: UUID,
+    *,
+    now: datetime | None = None,
+) -> ClaimedRun:
+    """Queue a new Run that reuses the ended Run's completed work.
+
+    The new Run copies the ended Run's configuration, model routing and prompt
+    snapshot instead of reading the current Task definition, copies its
+    succeeded StepResults and its Evidence Package, and keeps the old Run (with
+    its failed step, ModelCall rows and error) as the failure record. Skipped
+    steps are re-evaluated instead of being copied, so a retry cannot carry a
+    stale condition decision into the new attempt.
+    """
+
+    session.rollback()
     try:
-        context.session.expire_all()
-        run = find_run(context.session, claimed.run.id)
-        assert run is not None
-        return (
-            execute_claimed_run(
-                context,
-                run.id,
-                process_token=process_token,
-                embed=embed,
-            ),
-            True,
-            True,
+        source = session.get(TaskRun, run_id, with_for_update=True)
+        if source is None:
+            raise ExecutionError("RUN_NOT_FOUND", "Task Run was not found")
+        if source.status in {"queued", "running"}:
+            raise ExecutionError(
+                "RUN_NOT_ENDED",
+                "Confirm the old process stopped and end the Run before retrying",
+            )
+        if source.status not in {"failed", "cancelled"}:
+            raise ExecutionError(
+                "RUN_NOT_RETRYABLE",
+                "Only a failed or ended Task Run can be retried",
+            )
+        # A failed or cancelled Run never carries a process_token: the table
+        # constraint ``ck_task_runs_closed_owner`` forbids an owner on a closed
+        # Run, so ending the Run already revoked the old execution's ownership
+        # before its completed steps may be reused here.
+        _lock_task(session, source.task_id)
+        existing = _active_run(session, source.task_id)
+        if existing is not None:
+            raise ExecutionError(
+                "RUN_ACTIVE_EXISTS",
+                "The task already has a queued or running Run",
+            )
+        source = session.get(TaskRun, run_id)
+        assert source is not None
+        snapshot = deepcopy(source.config_snapshot)
+        try:
+            task = TaskConfig.model_validate(snapshot["task"])
+            snapshot_agents = [
+                AgentConfig.model_validate(item)
+                for item in snapshot["agents"]
+            ]
+        except (KeyError, TypeError, ValueError) as exc:
+            raise ExecutionError(
+                "RUN_CONFIG_SNAPSHOT_INVALID",
+                "Task Run configuration snapshot is invalid",
+            ) from exc
+        created_at = now or _now()
+        digest = snapshot_hash(snapshot)
+        run_id_new = _enqueue_run(
+            session,
+            task,
+            snapshot_agents,
+            config_path=None,
+            now=created_at,
+            process_token=None,
+            triggered_by=TRIGGER_RETRY,
+            retry_of_run_id=source.id,
+            snapshot=snapshot,
+            digest=digest,
+            model_snapshot=deepcopy(source.model_snapshot),
+            upsert_definition=False,
         )
-    except Exception as exc:
-        fail_claimed_run(
-            context.session,
-            claimed.run.id,
-            process_token=process_token,
-            error=(
-                exc.to_dict()
-                if hasattr(exc, "to_dict")
-                else {
-                    "code": "RUN_EXECUTION_FAILED",
-                    "message": "Task Run could not be completed",
-                }
-            ),
-        )
+        if run_id_new is None:
+            raise ExecutionError(
+                "RUN_ACTIVE_EXISTS",
+                "The task already has a queued or running Run",
+            )
+        _copy_completed_work(session, source.id, run_id_new)
+        session.commit()
+    except Exception:
+        session.rollback()
         raise
+    created = session.get(TaskRun, run_id_new)
+    assert created is not None
+    return ClaimedRun(run=created, created=True)
+
+
+def _copy_completed_work(
+    session: Session, source_run_id: UUID, target_run_id: UUID
+) -> None:
+    """Copy the reusable results of an ended Run into its retry.
+
+    The Evidence Package is re-created for the new Run, and the copied
+    ``select_evidence`` output is rewritten to reference the new package id so the
+    retried Agent step reads a package owned by its own Run. Analysis and Report
+    rows are never copied: the retried Agent step builds them for the new Run.
+    """
+
+    package = session.scalar(
+        select(EvidencePackage).where(EvidencePackage.run_id == source_run_id)
+    )
+    new_package: EvidencePackage | None = None
+    if package is not None:
+        new_package = EvidencePackage(
+            run_id=target_run_id,
+            objective=package.objective,
+            scope=deepcopy(package.scope),
+            as_of=package.as_of,
+            selection_policy_version=package.selection_policy_version,
+            selection_budget=deepcopy(package.selection_budget),
+            queries=deepcopy(package.queries),
+            selected_chunks=deepcopy(package.selected_chunks),
+            coverage=deepcopy(package.coverage),
+            candidates_discovered=package.candidates_discovered,
+            candidates_screened=package.candidates_screened,
+            selected_count=package.selected_count,
+            unexamined_count=package.unexamined_count,
+            retrieval_truncated=package.retrieval_truncated,
+            created_at=_now(),
+        )
+        session.add(new_package)
+        session.flush()
+    steps = list(
+        session.scalars(
+            select(TaskStepResult)
+            .where(TaskStepResult.run_id == source_run_id)
+            .order_by(TaskStepResult.position)
+        ).all()
+    )
+    for step in steps:
+        # Reuse only the contiguous run of steps that already succeeded. A step
+        # after the failure point is not before it, and the final research step
+        # is re-run so the retry produces its own Analysis and Report instead of
+        # borrowing one saved under the previous Run id.
+        if step.status != "succeeded" or step.step_type == "research_agent":
+            break
+        output = deepcopy(step.output)
+        if (
+            new_package is not None
+            and isinstance(output, dict)
+            and "evidence_package_id" in output
+        ):
+            output["evidence_package_id"] = str(new_package.id)
+        session.add(
+            TaskStepResult(
+                run_id=target_run_id,
+                step_id=step.step_id,
+                position=step.position,
+                step_type=step.step_type,
+                status=step.status,
+                output=output,
+                evidence_refs=deepcopy(step.evidence_refs),
+                usage=deepcopy(step.usage),
+                error=deepcopy(step.error),
+                created_at=_now(),
+            )
+        )
+    session.flush()
 
 
 def get_active_run(session: Session, task_id: str) -> TaskRun | None:
     return _active_run(session, task_id)
-
-
-def refresh_active_run(session: Session, task_id: str) -> TaskRun:
-    session.rollback()
-    active = _active_run(session, task_id)
-    if active is None:
-        raise ExecutionError(
-            "RUN_CLAIM_FAILED",
-            "The task active Run could not be read after a conflict",
-        )
-    return active
 
 
 def _active_run(session: Session, task_id: str) -> TaskRun | None:
@@ -334,6 +570,7 @@ def execute_claimed_run(
     embed=None,
 ) -> TaskRun:
     session = context.session
+    session.rollback()
     run = session.get(TaskRun, run_id)
     if run is None:
         raise ExecutionError("RUN_NOT_FOUND", "Task Run was not found")
@@ -367,11 +604,12 @@ def execute_claimed_run(
             "Task Run configuration snapshot is invalid",
         ) from exc
     agents_by_id = {agent.id: agent for agent in agents}
-    if set(agents_by_id) != {
+    expected_agents = set() if task.type == "collection" else {
         step.research_agent.agent
         for step in task.steps
         if step.research_agent is not None
-    }:
+    }
+    if set(agents_by_id) != expected_agents:
         _fail_claimed_run(
             session,
             run_id,
@@ -412,6 +650,7 @@ def execute_claimed_run(
                     run,
                     step,
                     position,
+                    process_token=process_token,
                     status="skipped",
                     output={
                         "reason": "condition_not_met",
@@ -423,8 +662,22 @@ def execute_claimed_run(
                 )
                 results[step.id] = result
                 continue
+            # Evidence Selection and collection commit their own derived rows
+            # (Evidence Package, Documents) inside their own transactions, so
+            # ownership is checked again before that work starts. This check only
+            # stops a new step or a new Source from beginning; it cannot recall a
+            # step that already committed its own derived data, and those originals
+            # stay in the Repository as real evidence. The Run itself can never be
+            # closed by this execution any more: `_assert_run_ownership` and
+            # `_finish_run` are the authoritative fences.
+            _ensure_run_still_owned(session, run.id, process_token)
             try:
                 saved_results: tuple[Any, ...] = ()
+                output: dict | None = None
+                evidence_refs: list[dict] = []
+                usage: dict = {}
+                failed_usage: dict = {}
+                failed_output: dict | None = None
                 if step.select_evidence is not None:
                     existing_package = session.scalar(
                         select(EvidencePackage).where(
@@ -449,6 +702,14 @@ def execute_claimed_run(
                             for item in existing_package.selected_chunks
                         ]
                     usage = {}
+                elif step.collect_sources is not None:
+                    output, evidence_refs, usage = _run_collection(
+                        session,
+                        context.settings,
+                        context.sources_config_path,
+                        run=run,
+                        process_token=process_token,
+                    )
                 else:
                     agent_step = step.research_agent
                     assert agent_step is not None
@@ -478,64 +739,41 @@ def execute_claimed_run(
                     )
             except _StepFailure as exc:
                 terminal_error = exc.to_dict()
-                _persist_step(
-                    session,
-                    run,
-                    step,
-                    position,
-                    status="failed",
-                    output=None,
-                    evidence_refs=[],
-                    usage={},
-                    error=terminal_error,
-                )
-                break
+                failed_usage = {}
+                failed_output = exc.output
             except ModelError as exc:
                 terminal_error = {
                     "code": exc.code,
                     "message": exc.message,
                 }
-                step_usage = _usage_from_attempts(exc.attempts)
-                _persist_step(
-                    session,
-                    run,
-                    step,
-                    position,
-                    status="failed",
-                    output=None,
-                    evidence_refs=[],
-                    usage=step_usage,
-                    error=terminal_error,
-                )
-                break
+                failed_usage = _usage_from_attempts(exc.attempts)
             except EmbeddingError as exc:
                 terminal_error = exc.to_dict()
-                _persist_step(
-                    session,
-                    run,
-                    step,
-                    position,
-                    status="failed",
-                    output=None,
-                    evidence_refs=[],
-                    usage={},
-                    error=terminal_error,
-                )
-                break
+                failed_usage = {}
+            except CollectionError as exc:
+                terminal_error = exc.to_dict()
+                failed_usage = {}
+            except ExecutionError:
+                # Losing ownership must not be turned into an ordinary step
+                # failure; the old execution has to stop writing.
+                raise
             except Exception:
                 terminal_error = {
                     "code": "STEP_FAILED",
                     "message": "Task step failed unexpectedly",
                 }
+                failed_usage = {}
+            if terminal_error is not None:
                 _persist_step(
                     session,
                     run,
                     step,
                     position,
+                    process_token=process_token,
                     status="failed",
-                    output=None,
+                    output=failed_output,
                     evidence_refs=[],
-                    usage={},
+                    usage=failed_usage,
                     error=terminal_error,
                 )
                 break
@@ -544,6 +782,7 @@ def execute_claimed_run(
                 run,
                 step,
                 position,
+                process_token=process_token,
                 additional=saved_results,
                 status="succeeded",
                 output=output,
@@ -557,7 +796,8 @@ def execute_claimed_run(
             final_output = _final_output(session, run, task, results)
             _finish_run(
                 session,
-                run,
+                run_id,
+                process_token=process_token,
                 status="succeeded",
                 output=final_output,
                 error=None,
@@ -565,7 +805,8 @@ def execute_claimed_run(
         else:
             _finish_run(
                 session,
-                run,
+                run_id,
+                process_token=process_token,
                 status="failed",
                 output=None,
                 error=terminal_error,
@@ -647,22 +888,98 @@ def _fail_claimed_run(
 
 def _finish_run(
     session: Session,
-    run: TaskRun,
+    run_id: UUID,
     *,
+    process_token: str,
     status: str,
     output: dict | None,
     error: dict | None,
 ) -> None:
-    run.status = status
-    run.process_token = None
-    run.output = deepcopy(output)
-    run.error = deepcopy(error)
-    run.finished_at = _now()
-    try:
-        session.commit()
-    except Exception:
+    """Close the Run only while this process still owns it.
+
+    The conditional update keeps a Run the Owner already ended from being
+    rewritten by its old execution into a success or failure.
+    """
+
+    finished = session.execute(
+        update(TaskRun)
+        .where(
+            TaskRun.id == run_id,
+            TaskRun.status == "running",
+            TaskRun.process_token == process_token,
+        )
+        .values(
+            status=status,
+            process_token=None,
+            output=deepcopy(output),
+            error=deepcopy(error),
+            finished_at=_now(),
+        )
+        .returning(TaskRun.id)
+    ).scalar_one_or_none()
+    if finished is None:
         session.rollback()
-        raise
+        raise ExecutionError(
+            "RUN_NOT_OWNED",
+            "Task Run is no longer owned by this process",
+        )
+    session.commit()
+
+
+def _assert_run_ownership(
+    session: Session, run_id: UUID, process_token: str
+) -> None:
+    """Check ownership while holding the Run row lock.
+
+    Used immediately before a result is written, so a Run the Owner ended cannot
+    have a StepResult, Analysis or Report committed under the old token. Original
+    data a step already committed in its own transaction is not rolled back by
+    this fence; it stays in the Repository as evidence, while the ended Run never
+    gains a succeeded step or a final status for it.
+    """
+
+    owned = session.scalar(
+        select(TaskRun.id)
+        .where(
+            TaskRun.id == run_id,
+            TaskRun.status == "running",
+            TaskRun.process_token == process_token,
+        )
+        .with_for_update()
+    )
+    if owned is None:
+        session.rollback()
+        raise ExecutionError(
+            "RUN_NOT_OWNED",
+            "Task Run is no longer owned by this process",
+        )
+
+
+def _ensure_run_still_owned(
+    session: Session, run_id: UUID, process_token: str
+) -> None:
+    """Stop an execution whose Run the Owner already ended before new work.
+
+    Evidence Selection and collection commit their own derived rows, so the
+    check runs before that work starts. It is a plain read: it takes no row lock,
+    so a step in progress never blocks the Owner ending the Run, and data a step
+    already committed stays committed. The authoritative fences remain
+    ``_assert_run_ownership`` (no StepResult after the Run was ended) and
+    ``_finish_run`` (the old execution can never close an ended Run).
+    """
+
+    owned = session.scalar(
+        select(TaskRun.id).where(
+            TaskRun.id == run_id,
+            TaskRun.status == "running",
+            TaskRun.process_token == process_token,
+        )
+    )
+    if owned is None:
+        raise ExecutionError(
+            "RUN_NOT_OWNED",
+            "Task Run is no longer owned by this process",
+        )
 
 
 def _persist_step(
@@ -671,6 +988,7 @@ def _persist_step(
     step: TaskStepConfig,
     position: int,
     *,
+    process_token: str,
     status: str,
     output: dict | None,
     evidence_refs: list[dict],
@@ -678,6 +996,7 @@ def _persist_step(
     error: dict | None,
     additional: tuple[Any, ...] = (),
 ) -> TaskStepResult:
+    _assert_run_ownership(session, run.id, process_token)
     result = TaskStepResult(
         run_id=run.id,
         step_id=step.id,
@@ -770,7 +1089,7 @@ def _run_evidence_selection(
             run_id=run.id,
             objective=run.objective,
             scope=run.scope,
-            as_of=run.created_at,
+            as_of=run.started_at or _now(),
             queries=selection.queries,
             limit_per_query=selection.limit_per_query,
             source_ids=tuple(selection.source_ids),
@@ -787,6 +1106,99 @@ def _run_evidence_selection(
     package = package_result.package
     refs = list(package_result.refs)
     return _evidence_package_output(package), refs
+
+
+def _run_collection(
+    session: Session,
+    config: Settings,
+    sources_config_path: str,
+    *,
+    run: TaskRun,
+    process_token: str,
+) -> tuple[dict, list[dict], dict]:
+    """Run the existing collection service for the Task's configured sources.
+
+    Collection reuses ``stocks.collection.service.collect_source`` so feed
+    discovery, article acquisition, completeness handling and Repository
+    idempotency stay in one place. A collection Run never resolves a chat or
+    embedding route, so a broken research model configuration cannot stop
+    collection.
+    """
+
+    scope = run.scope if isinstance(run.scope, dict) else {}
+    configured = scope.get("source_ids")
+    if (
+        not isinstance(configured, list)
+        or not configured
+        or any(not isinstance(item, str) or not item for item in configured)
+    ):
+        raise _StepFailure(
+            "COLLECTION_SCOPE_INVALID",
+            "Collection Run does not record its Source identifiers",
+        )
+    try:
+        sources = select_sources(
+            load_sources(sources_config_path), list(configured)
+        )
+    except CollectionError as exc:
+        raise _StepFailure(
+            "COLLECTION_CONFIG_UNAVAILABLE",
+            "Configured Sources could not be loaded",
+        ) from exc
+    summaries: list[dict] = []
+    failed = 0
+    source_failures = 0
+    for source in sources:
+        # ``collect_source`` commits each ingested batch itself, so ownership is
+        # re-checked before every Source: once the Owner ends the Run, no later
+        # Source in the same attempt starts collecting. Documents already ingested
+        # by an earlier Source stay in the Repository, and this Run records no
+        # succeeded step for them.
+        _ensure_run_still_owned(session, run.id, process_token)
+        try:
+            summary = collect_source(session, config, source)
+        except CollectionError as exc:
+            session.rollback()
+            failed += 1
+            source_failures += 1
+            summaries.append(
+                {"source_id": source.source_id, "error": exc.to_dict()}
+            )
+            continue
+        except Exception:  # noqa: BLE001 - isolate one source failure
+            session.rollback()
+            failed += 1
+            source_failures += 1
+            summaries.append(
+                {
+                    "source_id": source.source_id,
+                    "error": {
+                        "code": "COLLECTION_FAILED",
+                        "message": "Collection failed unexpectedly",
+                    },
+                }
+            )
+            continue
+        failed += summary.failed
+        summaries.append(summary.to_dict())
+    output = {
+        "sources": summaries,
+        "discovered": sum(item.get("discovered", 0) for item in summaries),
+        "ingested": sum(item.get("ingested", 0) for item in summaries),
+        "reused": sum(item.get("reused", 0) for item in summaries),
+        "skipped": sum(item.get("skipped", 0) for item in summaries),
+        "failed": failed,
+    }
+    if source_failures:
+        # A Source that could not be collected at all is a collection failure;
+        # per-item article failures stay in the counts because they are data
+        # gaps that the next scheduled run retries.
+        raise _StepFailure(
+            "COLLECTION_SOURCE_FAILED",
+            "A configured Source could not be collected",
+            output=output,
+        )
+    return output, [], {}
 
 
 def _evidence_package_output(package: EvidencePackage) -> dict:
@@ -1343,10 +1755,21 @@ def _final_output(
 
 
 class _StepFailure(Exception):
-    def __init__(self, code: str, message: str):
+    """A step failure that may still have partial structured output."""
+
+    def __init__(
+        self,
+        code: str,
+        message: str,
+        *,
+        output: dict | None = None,
+        evidence_refs: list[dict] | None = None,
+    ):
         super().__init__(message)
         self.code = code
         self.message = message
+        self.output = output
+        self.evidence_refs = evidence_refs or []
 
     def to_dict(self) -> dict[str, str]:
         return {"code": self.code, "message": self.message}

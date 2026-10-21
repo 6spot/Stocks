@@ -33,8 +33,8 @@ def upgrade():
         sa.Column("trigger", sa.String(16), nullable=False),
         sa.Column("enabled", sa.Boolean(), nullable=False),
         sa.CheckConstraint(
-            "trigger = 'manual'",
-            name="ck_task_definitions_manual_trigger",
+            "trigger IN ('manual', 'schedule')",
+            name="ck_task_definitions_trigger",
         ),
         sa.Column("strategy", sa.String(255)),
         sa.Column("scope", JSONB(), nullable=False),
@@ -43,6 +43,33 @@ def upgrade():
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
         sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False),
     )
+    op.create_table(
+        "task_schedules",
+        sa.Column(
+            "task_id",
+            sa.String(120),
+            sa.ForeignKey("task_definitions.id", ondelete="CASCADE"),
+            primary_key=True,
+        ),
+        sa.Column("trigger_kind", sa.String(16), nullable=False),
+        sa.Column("schedule_fingerprint", sa.String(64), nullable=False),
+        sa.Column("schedule_snapshot", JSONB(), nullable=False),
+        sa.Column("next_due_at", sa.DateTime(timezone=True), nullable=False),
+        sa.Column("last_fired_at", sa.DateTime(timezone=True)),
+        sa.Column("last_attempt_at", sa.DateTime(timezone=True)),
+        sa.Column("last_error", JSONB()),
+        sa.Column(
+            "updated_at",
+            sa.DateTime(timezone=True),
+            nullable=False,
+            server_default=sa.text("now()"),
+        ),
+        sa.CheckConstraint(
+            "trigger_kind = 'schedule'",
+            name="ck_task_schedules_trigger_kind",
+        ),
+    )
+    op.create_index("ix_task_schedules_due", "task_schedules", ["next_due_at"])
     op.create_table(
         "task_runs",
         sa.Column("id", UUID(as_uuid=True), primary_key=True),
@@ -53,6 +80,17 @@ def upgrade():
             nullable=False,
         ),
         sa.Column("status", sa.String(16), nullable=False),
+        sa.Column(
+            "triggered_by",
+            sa.String(16),
+            nullable=False,
+            server_default=sa.text("'manual'"),
+        ),
+        sa.Column(
+            "retry_of_run_id",
+            UUID(as_uuid=True),
+            sa.ForeignKey("task_runs.id"),
+        ),
         sa.Column("process_token", sa.String(200)),
         sa.Column("objective", sa.Text(), nullable=False),
         sa.Column("strategy", sa.String(255)),
@@ -67,15 +105,23 @@ def upgrade():
         sa.Column("started_at", sa.DateTime(timezone=True)),
         sa.Column("finished_at", sa.DateTime(timezone=True)),
         sa.CheckConstraint(
-            "status IN ('queued', 'running', 'succeeded', 'failed')",
+            "status IN ('queued', 'running', 'succeeded', 'failed', 'cancelled')",
             name="ck_task_runs_status",
+        ),
+        sa.CheckConstraint(
+            "triggered_by IN ('manual', 'schedule', 'retry')",
+            name="ck_task_runs_triggered_by",
+        ),
+        sa.CheckConstraint(
+            "retry_of_run_id IS NULL OR retry_of_run_id != id",
+            name="ck_task_runs_retry_distinct",
         ),
         sa.CheckConstraint(
             "status != 'running' OR process_token IS NOT NULL",
             name="ck_task_runs_running_owner",
         ),
         sa.CheckConstraint(
-            "status NOT IN ('queued', 'succeeded', 'failed') "
+            "status NOT IN ('queued', 'succeeded', 'failed', 'cancelled') "
             "OR process_token IS NULL",
             name="ck_task_runs_closed_owner",
         ),
@@ -88,6 +134,7 @@ def upgrade():
         postgresql_where=sa.text("status IN ('queued', 'running')"),
     )
     op.create_index("ix_task_runs_task_created", "task_runs", ["task_id", "created_at"])
+    op.create_index("ix_task_runs_status_created", "task_runs", ["status", "created_at"])
     op.create_table(
         "evidence_packages",
         sa.Column("id", UUID(as_uuid=True), primary_key=True),
@@ -512,7 +559,10 @@ def downgrade():
     op.drop_table("analyses")
     op.drop_table("evidence_packages")
     op.drop_index("uq_task_runs_one_active", table_name="task_runs")
+    op.drop_index("ix_task_runs_status_created", table_name="task_runs")
     op.drop_index("ix_task_runs_task_created", table_name="task_runs")
     op.drop_table("task_runs")
+    op.drop_index("ix_task_schedules_due", table_name="task_schedules")
+    op.drop_table("task_schedules")
     op.drop_table("task_definitions")
     op.drop_table("sources")

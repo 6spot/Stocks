@@ -425,6 +425,10 @@ def _run_payload(run: TaskRun | None) -> dict | None:
         "run_id": str(run.id),
         "task_id": run.task_id,
         "status": run.status,
+        "triggered_by": run.triggered_by,
+        "retry_of_run_id": (
+            str(run.retry_of_run_id) if run.retry_of_run_id else None
+        ),
         "objective": run.objective,
         "strategy": run.strategy,
         "scope": run.scope,

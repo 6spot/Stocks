@@ -70,6 +70,42 @@ tasks:
           agent: research_writer
           input: evidence
 
+  # Enable this after replacing the placeholder contact email in
+  # config/sources.yaml and reviewing the request bounds. A disabled Task is
+  # never scheduled, and its persisted schedule row is removed.
+  - id: scheduled_collection
+    name: Scheduled SEC Press Release Collection (disabled example)
+    type: collection
+    trigger: {kind: schedule, every: 15m}
+    enabled: false
+    sources: [sec_press_releases]
+    steps:
+      - id: collect
+        collect_sources:
+          kind: collect_sources
+
+  - id: scheduled_market_brief
+    name: Scheduled Market Brief (disabled example)
+    type: research
+    trigger: {kind: schedule, cron: "0 8,20 * * *", timezone: America/New_York}
+    enabled: false
+    objective: Summarize recent evidence for the configured market scope.
+    scope:
+      regions: [US]
+      topics: [macro, policy, market_sentiment]
+    steps:
+      - id: evidence
+        select_evidence:
+          kind: select_evidence
+          queries: [recent US macro policy and market sentiment evidence]
+          limit_per_query: 8
+          max_tokens: 30000
+      - id: research
+        research_agent:
+          kind: research_agent
+          agent: research_writer
+          input: evidence
+
 agents:
   - id: research_writer
     role: Research writer

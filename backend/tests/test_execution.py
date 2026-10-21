@@ -93,7 +93,6 @@ def cli_session_factory(engine, monkeypatch):
         "session_factory",
         lambda: lambda: Session(engine),
     )
-    monkeypatch.setattr(execution_cli, "settings", lambda: make_config())
 
 
 def write_config(tmp_path, *, condition: dict | None = None) -> str:
@@ -1446,7 +1445,7 @@ def test_model_calls_never_persist_credentials(engine):
         assert "Authorization" not in serialized
 
 
-def test_cli_returns_process_owned_active_run_without_execution(
+def test_cli_trigger_returns_existing_active_run_without_execution(
     engine, tmp_path, cli_session_factory, capsys
 ):
     config = _make_task_config(tmp_path)
@@ -1471,6 +1470,7 @@ def test_cli_returns_process_owned_active_run_without_execution(
             write_config(tmp_path),
             "--models-config",
             models_path,
+            "trigger",
             "--task",
             "brief",
         ]
@@ -1480,10 +1480,10 @@ def test_cli_returns_process_owned_active_run_without_execution(
     assert output["run_id"] == str(active_id)
     assert output["status"] == "running"
     assert output["created"] is False
-    assert output["executed"] is False
+    assert output["triggered_by"] == "manual"
 
 
-def test_cli_does_not_require_model_secret_when_active_run_exists(
+def test_cli_trigger_does_not_require_model_secret_when_active_run_exists(
     engine, tmp_path, monkeypatch, cli_session_factory, capsys
 ):
     monkeypatch.delenv("TEST_MODEL_KEY", raising=False)
@@ -1503,88 +1503,148 @@ def test_cli_does_not_require_model_secret_when_active_run_exists(
             str(tmp_path / "missing-or-invalid-tasks.yaml"),
             "--models-config",
             str(tmp_path / "missing-models.yaml"),
+            "trigger",
             "--task",
             "brief",
         ]
     )
     output = json.loads(capsys.readouterr().out)
+    # The active Run is reported before the Task configuration is read, so a
+    # repeated trigger never resolves model credentials.
     assert code == 0
     assert output["run_id"] == str(active.run.id)
     assert output["status"] == "queued"
 
 
-def test_cli_executes_new_run_with_same_owner_token(
-    engine, tmp_path, monkeypatch, cli_session_factory, capsys
+def test_cli_trigger_queues_run_without_executing(
+    engine, tmp_path, cli_session_factory, capsys
 ):
     models_path = write_models_config(tmp_path)
-
-    def create_and_execute(
-        context,
-        task,
-        agents,
-        *,
-        process_token,
-    ):
-        assert process_token
-        run = execution_service.create_or_get_run(
-            context.session,
-            task,
-            agents,
-            config_path=context.config_path,
-        ).run
-        assert execution_service.claim_run(
-            context.session,
-            run.id,
-            process_token=process_token,
-        )
-        run = context.session.get(TaskRun, run.id)
-        run.status = "succeeded"
-        run.process_token = None
-        run.finished_at = datetime.now(UTC)
-        context.session.commit()
-        return run, True, True
-
-    monkeypatch.setattr(
-        execution_cli,
-        "create_claim_and_execute",
-        create_and_execute,
-    )
     code = execution_cli.main(
         [
             "--config",
             write_config(tmp_path),
             "--models-config",
             models_path,
+            "trigger",
             "--task",
             "brief",
         ]
     )
     output = json.loads(capsys.readouterr().out)
     assert code == 0
-    assert output["status"] == "succeeded"
+    assert output["status"] == "queued"
     assert output["created"] is True
-    assert output["executed"] is True
-
-
-def test_cli_returns_failure_exit_code_for_new_failed_run(
-    engine, tmp_path, monkeypatch, cli_session_factory, capsys
-):
-    config_path = write_config(tmp_path)
-    models_path = write_models_config(tmp_path)
-    config = load_task_configuration(config_path)
+    assert output["triggered_by"] == "manual"
+    assert output["steps"] == []
     with Session(engine) as session:
-        failed = create_or_get_run(
+        run = session.get(TaskRun, UUID(output["run_id"]))
+        assert run is not None
+        assert run.process_token is None
+
+
+def test_cli_reports_unknown_task_and_invalid_limit(
+    engine, tmp_path, cli_session_factory, capsys
+):
+    code = execution_cli.main(
+        [
+            "--config",
+            write_config(tmp_path),
+            "--models-config",
+            write_models_config(tmp_path),
+            "trigger",
+            "--task",
+            "missing",
+        ]
+    )
+    assert code == 2
+    assert json.loads(capsys.readouterr().err)["error"]["code"] == "TASK_NOT_FOUND"
+
+    code = execution_cli.main(["runs", "--limit", "0"])
+    assert code == 2
+    assert json.loads(capsys.readouterr().err)["error"]["code"] == "LIMIT_INVALID"
+
+
+def test_cli_end_requires_owner_confirmation_and_retry_reuses_steps(
+    engine, tmp_path, cli_session_factory, capsys
+):
+    config = _make_task_config(tmp_path)
+    models_path = write_models_config(tmp_path)
+    with Session(engine) as session:
+        created = create_or_get_run(
             session,
             config.tasks[0],
             list(config.agents),
             config_path=models_path,
         )
-        assert claim_run(
-            session,
-            failed.run.id,
-            process_token=PROCESS_A,
+        assert claim_run(session, created.run.id, process_token=PROCESS_A)
+        run_id = created.run.id
+        session.add(
+            TaskStepResult(
+                run_id=run_id,
+                step_id="evidence",
+                position=0,
+                step_type="select_evidence",
+                status="succeeded",
+                output={"evidence_package_id": str(uuid4()), "items": []},
+                evidence_refs=[],
+                usage={},
+                created_at=datetime.now(UTC),
+            )
         )
-        run = session.get(TaskRun, failed.run.id)
+        session.commit()
+
+    code = execution_cli.main(["end", "--run-id", str(run_id)])
+    assert code == 2
+    assert (
+        json.loads(capsys.readouterr().err)["error"]["code"]
+        == "OWNER_CONFIRMATION_REQUIRED"
+    )
+
+    code = execution_cli.main(
+        ["end", "--run-id", str(run_id), "--confirm-stopped"]
+    )
+    ended = json.loads(capsys.readouterr().out)
+    assert code == 0
+    assert ended["status"] == "cancelled"
+    assert ended["error"]["code"] == "RUN_ENDED_BY_OWNER"
+    assert [step["status"] for step in ended["steps"]] == ["succeeded"]
+
+    code = execution_cli.main(["retry", "--run-id", str(run_id)])
+    retried = json.loads(capsys.readouterr().out)
+    assert code == 0
+    assert retried["status"] == "queued"
+    assert retried["triggered_by"] == "retry"
+    assert retried["retry_of_run_id"] == str(run_id)
+    assert [step["status"] for step in retried["steps"]] == ["succeeded"]
+
+    with Session(engine) as session:
+        old = session.get(TaskRun, run_id)
+        assert old is not None
+        assert old.status == "cancelled"
+        assert old.error["code"] == "RUN_ENDED_BY_OWNER"
+        reused = session.scalar(
+            select(TaskStepResult).where(
+                TaskStepResult.run_id == UUID(retried["run_id"])
+            )
+        )
+        assert reused is not None
+
+
+def test_cli_runs_and_show_report_status_and_errors(
+    engine, tmp_path, cli_session_factory, capsys
+):
+    config = _make_task_config(tmp_path)
+    models_path = write_models_config(tmp_path)
+    with Session(engine) as session:
+        created = create_or_get_run(
+            session,
+            config.tasks[0],
+            list(config.agents),
+            config_path=models_path,
+        )
+        assert claim_run(session, created.run.id, process_token=PROCESS_A)
+        run = session.get(TaskRun, created.run.id)
         run.status = "failed"
         run.process_token = None
         run.error = {"code": "EVIDENCE_UNAVAILABLE", "message": "No evidence"}
@@ -1592,31 +1652,17 @@ def test_cli_returns_failure_exit_code_for_new_failed_run(
         session.commit()
         failed_id = run.id
 
-    def return_failed(context, task, agents, *, process_token):
-        run = context.session.get(TaskRun, failed_id)
-        return run, True, True
+    code = execution_cli.main(["runs", "--task", "brief", "--status", "failed"])
+    listed = json.loads(capsys.readouterr().out)
+    assert code == 0
+    assert [item["run_id"] for item in listed] == [str(failed_id)]
+    assert listed[0]["error"]["code"] == "EVIDENCE_UNAVAILABLE"
 
-    monkeypatch.setattr(
-        execution_cli,
-        "create_claim_and_execute",
-        return_failed,
-    )
-    code = execution_cli.main(
-        [
-            "--config",
-            config_path,
-            "--models-config",
-            models_path,
-            "--task",
-            "brief",
-        ]
-    )
-    output = json.loads(capsys.readouterr().out)
-    assert code == 1
-    assert output["status"] == "failed"
-    assert output["created"] is True
-    assert output["executed"] is True
-    assert output["error"]["code"] == "EVIDENCE_UNAVAILABLE"
+    code = execution_cli.main(["show", "--run-id", str(failed_id)])
+    shown = json.loads(capsys.readouterr().out)
+    assert code == 0
+    assert shown["status"] == "failed"
+    assert shown["error"]["code"] == "EVIDENCE_UNAVAILABLE"
 
 
 @pytest.mark.parametrize("status", [408, 429, 500])

@@ -1,13 +1,13 @@
+"""Trigger, inspect, end and retry configured Tasks from the command line."""
 from __future__ import annotations
 
 import argparse
 import json
 import sys
-import uuid
 from collections.abc import Sequence
+from uuid import UUID
 
 from sqlalchemy import select
-from sqlalchemy.orm import Session
 
 from stocks.db import session_factory
 from stocks.execution.config import (
@@ -15,14 +15,14 @@ from stocks.execution.config import (
     load_task_configuration,
 )
 from stocks.execution.service import (
-    ExecutionContext,
     ExecutionError,
-    create_claim_and_execute,
-    fail_claimed_run,
+    create_or_get_run,
+    end_run,
+    find_run,
     get_active_run,
+    retry_run,
 )
 from stocks.models import ModelCall, TaskRun, TaskStepResult
-from stocks.settings import settings
 
 
 def _run_payload(
@@ -30,7 +30,6 @@ def _run_payload(
     run: TaskRun,
     *,
     created: bool | None = None,
-    executed: bool,
 ) -> dict:
     steps = list(
         session.scalars(
@@ -46,12 +45,15 @@ def _run_payload(
             .order_by(ModelCall.step_id, ModelCall.attempt_number)
         ).all()
     )
-    payload = {
+    return {
         "run_id": str(run.id),
         "task_id": run.task_id,
         "status": run.status,
+        "triggered_by": run.triggered_by,
+        "retry_of_run_id": (
+            str(run.retry_of_run_id) if run.retry_of_run_id else None
+        ),
         "created": created,
-        "executed": executed,
         "objective": run.objective,
         "strategy": run.strategy,
         "scope": run.scope,
@@ -70,6 +72,7 @@ def _run_payload(
                 "evidence_refs": item.evidence_refs,
                 "usage": item.usage,
                 "error": item.error,
+                "created_at": item.created_at.isoformat(),
             }
             for item in steps
         ],
@@ -93,7 +96,6 @@ def _run_payload(
             for item in calls
         ],
     }
-    return payload
 
 
 def _configured_task(config_path: str, task_id: str):
@@ -115,9 +117,144 @@ def _configured_task(config_path: str, task_id: str):
     return task, agents
 
 
-def main(argv: Sequence[str] | None = None) -> int:
+def _parse_run_id(value: str) -> UUID:
+    try:
+        return UUID(value)
+    except ValueError as exc:
+        raise ExecutionError(
+            "RUN_ID_INVALID", "Run identifier must be a UUID"
+        ) from exc
+
+
+def _trigger(args: argparse.Namespace) -> int:
+    with session_factory()() as session:
+        # Report an existing active Run before reading configuration or model
+        # routes, so a repeated trigger never waits on or resolves credentials.
+        active = get_active_run(session, args.task)
+        if active is not None:
+            print(
+                json.dumps(
+                    _run_payload(session, active, created=False),
+                    ensure_ascii=False,
+                    indent=2,
+                )
+            )
+            return 0
+        task, agents = _configured_task(args.config, args.task)
+        claimed = create_or_get_run(
+            session,
+            task,
+            agents,
+            config_path=args.models_config if agents else None,
+            triggered_by="manual",
+        )
+        print(
+            json.dumps(
+                _run_payload(session, claimed.run, created=claimed.created),
+                ensure_ascii=False,
+                indent=2,
+            )
+        )
+    return 0
+
+
+def _list_runs(args: argparse.Namespace) -> int:
+    with session_factory()() as session:
+        statement = select(TaskRun).order_by(TaskRun.created_at.desc())
+        if args.task:
+            statement = statement.where(TaskRun.task_id == args.task)
+        if args.status:
+            statement = statement.where(TaskRun.status == args.status)
+        runs = list(session.scalars(statement.limit(args.limit)).all())
+        print(
+            json.dumps(
+                [
+                    {
+                        "run_id": str(run.id),
+                        "task_id": run.task_id,
+                        "status": run.status,
+                        "triggered_by": run.triggered_by,
+                        "retry_of_run_id": (
+                            str(run.retry_of_run_id)
+                            if run.retry_of_run_id
+                            else None
+                        ),
+                        "created_at": run.created_at.isoformat(),
+                        "started_at": (
+                            run.started_at.isoformat() if run.started_at else None
+                        ),
+                        "finished_at": (
+                            run.finished_at.isoformat()
+                            if run.finished_at
+                            else None
+                        ),
+                        "error": run.error,
+                    }
+                    for run in runs
+                ],
+                ensure_ascii=False,
+                indent=2,
+            )
+        )
+    return 0
+
+
+def _show_run(args: argparse.Namespace) -> int:
+    run_id = _parse_run_id(args.run_id)
+    with session_factory()() as session:
+        run = find_run(session, run_id)
+        if run is None:
+            raise ExecutionError("RUN_NOT_FOUND", "Task Run was not found")
+        print(
+            json.dumps(
+                _run_payload(session, run),
+                ensure_ascii=False,
+                indent=2,
+            )
+        )
+    return 0
+
+
+def _end_run(args: argparse.Namespace) -> int:
+    if not args.confirm_stopped:
+        raise ExecutionError(
+            "OWNER_CONFIRMATION_REQUIRED",
+            "Ending a Run requires --confirm-stopped after verifying that no "
+            "process is still executing it",
+        )
+    run_id = _parse_run_id(args.run_id)
+    with session_factory()() as session:
+        run = end_run(session, run_id)
+        print(
+            json.dumps(
+                _run_payload(session, run),
+                ensure_ascii=False,
+                indent=2,
+            )
+        )
+    return 0
+
+
+def _retry_run(args: argparse.Namespace) -> int:
+    run_id = _parse_run_id(args.run_id)
+    with session_factory()() as session:
+        claimed = retry_run(session, run_id)
+        print(
+            json.dumps(
+                _run_payload(session, claimed.run, created=claimed.created),
+                ensure_ascii=False,
+                indent=2,
+            )
+        )
+    return 0
+
+
+def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="Create, claim and execute a configured manual research Task."
+        description=(
+            "Trigger configured Tasks into the database queue and manage "
+            "their Runs. A separate Worker executes queued Runs."
+        )
     )
     parser.add_argument(
         "--config",
@@ -129,119 +266,75 @@ def main(argv: Sequence[str] | None = None) -> int:
         default="config/models.yaml",
         help="Path to the Provider/model configuration YAML.",
     )
-    parser.add_argument("--task", required=True, help="Task identifier.")
-    args = parser.parse_args(argv)
+    commands = parser.add_subparsers(dest="command", required=True)
 
-    try:
-        with session_factory()() as session:
-            active = get_active_run(session, args.task)
-            if active is not None:
-                print(
-                    json.dumps(
-                        _run_payload(
-                            session,
-                            active,
-                            created=False,
-                            executed=False,
-                        ),
-                        ensure_ascii=False,
-                        indent=2,
-                    )
-                )
-                return 0
-    except (ExecutionError, ValueError, OSError) as exc:
-        code = getattr(exc, "code", "EXECUTION_UNAVAILABLE")
-        message = getattr(
-            exc,
-            "message",
-            "Task execution could not be initialized",
-        )
-        print(
-            json.dumps({"error": {"code": code, "message": message}}),
-            file=sys.stderr,
-        )
-        return 2
-    except Exception:  # noqa: BLE001 - CLI must return safe diagnostics
+    trigger = commands.add_parser(
+        "trigger", help="Queue a Run for one configured Task."
+    )
+    trigger.add_argument("--task", required=True, help="Task identifier.")
+    trigger.set_defaults(handler=_trigger)
+
+    runs = commands.add_parser(
+        "runs", help="List Run status, steps and safe errors."
+    )
+    runs.add_argument("--task", default=None, help="Filter by Task identifier.")
+    runs.add_argument(
+        "--status",
+        default=None,
+        help="Filter by Run status (queued, running, succeeded, failed, cancelled).",
+    )
+    runs.add_argument("--limit", type=int, default=20)
+    runs.set_defaults(handler=_list_runs)
+
+    show = commands.add_parser("show", help="Show one Run with its step results.")
+    show.add_argument("--run-id", required=True)
+    show.set_defaults(handler=_show_run)
+
+    end = commands.add_parser(
+        "end",
+        help=(
+            "End a queued or running Run after confirming its process stopped. "
+            "Stored steps, evidence and errors are kept."
+        ),
+    )
+    end.add_argument("--run-id", required=True)
+    end.add_argument(
+        "--confirm-stopped",
+        action="store_true",
+        help="Confirm that no process is still executing this Run.",
+    )
+    end.set_defaults(handler=_end_run)
+
+    retry = commands.add_parser(
+        "retry",
+        help="Queue a new Run that reuses the ended Run's completed steps.",
+    )
+    retry.add_argument("--run-id", required=True)
+    retry.set_defaults(handler=_retry_run)
+    return parser
+
+
+def main(argv: Sequence[str] | None = None) -> int:
+    args = _build_parser().parse_args(argv)
+    if not 1 <= getattr(args, "limit", 1) <= 200:
         print(
             json.dumps(
                 {
                     "error": {
-                        "code": "EXECUTION_UNAVAILABLE",
-                        "message": "Task execution could not be initialized",
+                        "code": "LIMIT_INVALID",
+                        "message": "limit must be between 1 and 200",
                     }
                 }
             ),
             file=sys.stderr,
         )
         return 2
-
     try:
-        task, relevant_agents = _configured_task(args.config, args.task)
-    except ExecutionConfigError as exc:
+        return args.handler(args)
+    except (ExecutionError, ExecutionConfigError) as exc:
         print(json.dumps({"error": exc.to_dict()}), file=sys.stderr)
         return 2
-
-    process_token = uuid.uuid4().hex
-    try:
-        with session_factory()() as session:
-            try:
-                run, created, executed = create_claim_and_execute(
-                    ExecutionContext(
-                        session=session,
-                        settings=settings(),
-                        config_path=args.models_config,
-                    ),
-                    task,
-                    relevant_agents,
-                    process_token=process_token,
-                )
-            except Exception as exc:
-                serialize_error = getattr(exc, "to_dict", None)
-                session.rollback()
-                active_id = None
-                active_token = None
-                with Session(session.get_bind()) as recovery:
-                    recovery_row = recovery.scalar(
-                        select(TaskRun)
-                        .where(
-                            TaskRun.task_id == task.id,
-                            TaskRun.status == "running",
-                            TaskRun.process_token == process_token,
-                        )
-                        .limit(1)
-                    )
-                    if recovery_row is not None:
-                        active_id = recovery_row.id
-                        active_token = recovery_row.process_token
-                if active_id is not None and active_token is not None:
-                    fail_claimed_run(
-                        session,
-                        active_id,
-                        process_token=active_token,
-                        error=(
-                            serialize_error()
-                            if callable(serialize_error)
-                            else {
-                                "code": "RUN_EXECUTION_FAILED",
-                                "message": "Task Run could not be completed",
-                            }
-                        ),
-                    )
-                raise ExecutionError(
-                    "RUN_EXECUTION_FAILED",
-                    "Task Run could not be completed",
-                ) from exc
-            payload = _run_payload(
-                session,
-                run,
-                created=created,
-                executed=executed,
-            )
-            print(json.dumps(payload, ensure_ascii=False, indent=2))
-            if not executed:
-                return 0
-            return 0 if run.status == "succeeded" else 1
-    except (ExecutionError, ValueError, OSError) as exc:
+    except (ValueError, OSError) as exc:
         code = getattr(exc, "code", "EXECUTION_UNAVAILABLE")
         message = getattr(
             exc,

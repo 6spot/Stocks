@@ -3,14 +3,16 @@
 Requires Docker Compose. An S3-compatible endpoint is needed to collect and persist article snapshots.
 
 1. Copy .env.example to .env. Change POSTGRES_PASSWORD and update DATABASE_URL to use the same password. Configure S3_ENDPOINT_URL, non-empty S3_BUCKET and a paired S3_ACCESS_KEY/S3_SECRET_KEY when using snapshot storage.
-2. Run: `docker compose up -d --build postgres api`
+2. Run: `docker compose up -d --build postgres api worker`
 3. Initialize a fresh development database with the current schema: `docker compose run --rm api alembic upgrade head` (bootstrap only; no historical data upgrade or backward compatibility).
 4. Check that the initialized schema matches the current models: `docker compose run --rm api alembic check`
 5. Verify: http://127.0.0.1:8000/health
 6. View stored records: http://127.0.0.1:8000/api/documents (empty on a fresh database).
 7. Read a saved report and the originals it actually used, see [Read a report and its evidence](#read-a-report-and-its-evidence).
 
-The current implementation provides Source/Document/Chunk models, fresh-database initialization, a versioned Document repository, configured RSS/Atom discovery, safe HTTP article acquisition, a manual collection CLI, a manual HTML/text parsing CLI, manual pgvector indexing and semantic/exact search CLI, a document-list API, a generic S3 snapshot helper, an HTTP model client, and a manual configured research Task runner. The runner persists an Evidence Package with actual Chunk/Document versions, validates structured findings against that snapshot, and saves an Analysis plus a readable Report. The repository checks `(source_id, dedupe_key)` and SHA-256 before writing storage, reuses an immutable Document version and updates a separate collection state for identical bytes, and creates the next immutable Document version for changed bytes. The read-only report and evidence API is implemented; see the next section. Classification, Fact extraction, scheduled execution, and the Web console remain to be implemented.
+`api` and `worker` are separate processes from the same image and configuration. The API only reads and never executes a Task Run; the Worker polls PostgreSQL for `queued` Runs and evaluates due schedules, so a restart of either one does not lose queued work. The Worker has no published port.
+
+The current implementation provides Source/Document/Chunk models, fresh-database initialization, a versioned Document repository, configured RSS/Atom discovery, safe HTTP article acquisition, a manual collection CLI, a manual HTML/text parsing CLI, manual pgvector indexing and semantic/exact search CLI, a document-list API, a generic S3 snapshot helper, an HTTP model client, a configured Task runner, a persistent Task scheduler, and an independent Worker. The runner persists an Evidence Package with actual Chunk/Document versions, validates structured findings against that snapshot, and saves an Analysis plus a readable Report. The repository checks `(source_id, dedupe_key)` and SHA-256 before writing storage, reuses an immutable Document version and updates a separate collection state for identical bytes, and creates the next immutable Document version for changed bytes. The read-only report and evidence API is implemented; see the next section. Classification, Fact extraction, reliable change watermarks, and the Web console remain to be implemented.
 
 The snapshot helper stores the exact bytes supplied by its caller, computes their SHA-256 hash, and uses the supplied content type; it does not assume XML or a particular collection channel. `stocks.repository.ingest_document()` remains the only Document write entry point.
 
@@ -24,7 +26,7 @@ docker compose run --rm api python -m stocks.collection --config config/sources.
 
 The command prints one JSON summary with discovered, ingested, reused, skipped, and failed counts plus per-item status. It processes at most the configured `max_items` feed entries per run, with no watchlist or investment-relevance filter. A successful HTTP response is accepted only for RSS/Atom feed types and HTML, XHTML, or plain-text article pages. Feed and article requests require HTTPS, reject non-default ports, URL credentials, and non-public DNS answers, revalidate every redirect, and enforce total timeout, redirect count, compressed and decompressed response-size limits. Article responses are allowed by their media type, while the stored content type keeps the declared `charset` so the later parser can strictly decode the original bytes. A failed or empty article response still registers the acquired Feed title and summary as `partial`; it never registers the feed itself as article evidence, and every later run retries the article even when the source gives no time signal. A feed entry whose article link cannot be parsed is recorded as that entry's own failure and the remaining entries continue. Items whose stored content is complete are skipped without an article request unless a changed `updated` or `pubDate` signal triggers a recheck, and the article byte hash determines whether a new version is created.
 
-The collector is manual and does not create Task/Run records, a collection cursor, chunks, embeddings, classifications, or Facts. It does not include a browser renderer for JavaScript-only article pages. A real SEC run still requires configured PostgreSQL and S3 services; the unit tests use fixed HTTP responses and injected storage and do not contact SEC or S3.
+The standalone `stocks.collection` CLI is still available for a one-off manual collection. It does not create Task/Run records, a collection cursor, chunks, embeddings, classifications, or Facts; a scheduled collection Task does create a Run record. Neither includes a browser renderer for JavaScript-only article pages. A real SEC run still requires configured PostgreSQL and S3 services; the unit tests use fixed HTTP responses and injected storage and do not contact SEC or S3.
 
 ## Manual document parsing
 
@@ -54,9 +56,9 @@ successful batch and its Chunks remain readable and unchanged; a later success b
 the current batch without deleting history. Unsupported formats and documents with no
 extractable evidence text are recorded as `unsupported` or `failed`; they are never
 stored as empty successful chunks. PDF/JSON/XML parsing, OCR, classification, Facts,
-scheduled execution, and the Web console remain future work.
-The separate manual Task runner is implemented; see
-[Manual research Task](#manual-research-task).
+unified background backlog handling, and the Web console remain future work.
+The separate Task trigger, scheduler and Worker are implemented; see
+[Tasks, scheduling and the Worker](#tasks-scheduling-and-the-worker).
 
 ## Manual embedding indexing and search
 
@@ -109,33 +111,118 @@ needed. Follow AGENTS.md and the backend testing specification for environment r
 container cleanup, and when broader checks are warranted. If the test server is not
 reachable, report the checks as unverified and do not fall back to the local machine.
 
-## Manual research Task
+## Tasks, scheduling and the Worker
 
-`config/tasks.yaml` defines the controlled step/Agent registry and
-`config/models.yaml` defines the research model routing. The current runner supports
-ordered `select_evidence` steps and a final `research_agent` step. It reads the current
-saved Chunks, persists the selected Evidence Package, validates each finding against
-the recorded Document/Chunk versions, and saves an Analysis plus a readable Report. It
-does not collect, parse, index, or call external Tools. The Agent input is sent as
-untrusted JSON data and the configured `tools` list must be empty.
+`config/tasks.yaml` defines Tasks and Agents, `config/models.yaml` defines the model
+routing, and `config/sources.yaml` defines Sources. A Task is either:
 
-After PostgreSQL and the intended embedding index are ready:
+* `type: research` — ordered `select_evidence` steps plus a final `research_agent` step.
+  It reads the currently saved Chunks, persists the selected Evidence Package,
+  validates every finding against the recorded Document/Chunk versions, and saves an
+  Analysis plus a readable Report. It does not collect, parse, index, or call external
+  Tools; the Agent input is untrusted JSON data and the configured `tools` list must be
+  empty.
+* `type: collection` — a single `collect_sources` step plus `sources: [id, ...]`. It
+  reuses `stocks.collection.service.collect_source`, `config/sources.yaml` and the
+  existing Repository idempotency, and never resolves a chat or embedding route, so a
+  broken research model configuration cannot stop collection. Per-article fetch or
+  ingest failures are counted in the step output and retried by the next scheduled run;
+  a Source that cannot be collected at all makes the Run fail with
+  `COLLECTION_SOURCE_FAILED` while still reporting every Source summary in the output.
 
-```bash
-docker compose run --rm api python -m stocks.execution \
-  --config config/tasks.yaml \
-  --models-config config/models.yaml \
-  --task saved_evidence_brief
+A Task `trigger` is either `manual` or a schedule:
+
+```yaml
+trigger: {kind: schedule, every: 15m}                                  # fixed interval
+trigger: {kind: schedule, cron: "0 8,20 * * *", timezone: America/New_York}
 ```
 
-The command prints one JSON object containing `run_id`, `status`, `created`,
-`executed`, the objective/scope snapshots, ordered step results, and safe model-call
-metadata. Exit code `0` means the newly executed Run succeeded, or that an existing
-queued/running Run was returned; `1` means a newly executed Run failed; `2` means
-configuration or execution initialization failed and the safe error is printed to
-stderr. Repeated triggering while a Run is queued or running returns that Run and exits
-`0` without taking ownership. A new Run becomes possible only after the previous Run
-has ended.
+`every` accepts `s`/`m`/`h`/`d` durations between 60s and 30d and keeps a fixed anchor,
+so a Task does not drift by its own Run duration. `cron` requires a known IANA
+`timezone`; a wall-clock time skipped by a daylight-saving jump does not fire, and a
+repeated wall-clock time fires once at its first occurrence. The two forms are mutually
+exclusive. There is no schedule on a Source — the collection Task owns the cadence.
+
+### Enqueue, inspect, end and retry
+
+Triggering only queues a Run; a Worker executes it. Every command prints one JSON object
+and keeps the same ownership rules:
+
+```bash
+# Queue a Run for one Task (manual trigger). Repeated triggering returns the
+# existing queued/running Run and does not resolve model credentials.
+docker compose run --rm api python -m stocks.execution trigger --task saved_evidence_brief
+
+# Inspect Runs; show one Run with its ordered steps, safe errors and model calls.
+docker compose run --rm api python -m stocks.execution runs --task saved_evidence_brief
+docker compose run --rm api python -m stocks.execution runs --status failed --limit 5
+docker compose run --rm api python -m stocks.execution show --run-id <run-id>
+
+# End a Run whose process has stopped, then retry it.
+docker compose run --rm api python -m stocks.execution end \
+  --run-id <run-id> --confirm-stopped
+docker compose run --rm api python -m stocks.execution retry --run-id <run-id>
+```
+
+`trigger` exits `0` when the Run is queued or an existing active Run is returned, and
+`2` on configuration or database failures with the safe error on stderr. `end` refuses
+to run without `--confirm-stopped`: the Owner has to confirm that the old process is
+really gone, because the Worker never takes over or reaps a `running` Run on its own.
+Ending sets `status: cancelled` with `error.code: RUN_ENDED_BY_OWNER`, clears the
+execution owner, and keeps every stored StepResult, Evidence Package and error. `retry`
+is allowed only for a `failed` or `cancelled` Run; it creates a new Run that copies the
+ended Run's configuration, model routing and prompt snapshot plus the succeeded steps
+before the failure point, re-creates an Evidence Package owned by the new Run, and
+records `retry_of_run_id`. The final `research_agent` step is always re-run, so the
+retry writes its own Analysis and Report. The original Run, its failed step,
+ModelCalls, Analysis/Report and error stay intact, so a retry never pretends the earlier
+attempt did not happen.
+
+Ending and retrying both respect the per-Task single active Run index: a retry is
+rejected while the Task still has a queued or running Run.
+
+### Worker
+
+The Compose `worker` service runs the Worker continuously from the same image:
+
+```bash
+docker compose up -d worker
+docker compose logs -f worker
+```
+
+It performs one scheduler round and then claims queued Runs. A scheduler round
+registers newly configured scheduled Tasks with `next_due_at` in the future, fires at
+most one Run per due Task, and advances `next_due_at` in the same Task-serialized
+transaction as the enqueue. A Task that already has an active Run skips its due instant
+without reading model configuration or credentials and still advances; a Worker that was
+down for several intervals collapses them into one Run and advances to the next future
+instant; disabled, removed or switched-to-manual Tasks lose their persisted schedule.
+
+Claiming uses `FOR UPDATE SKIP LOCKED`, so several Workers pick different Runs instead
+of duplicating one. Within one Worker, `WORKER_MAX_CONCURRENT_RUNS` (default `2`, bounded
+to 1..16) caps how many Runs execute at the same time. The execution slots are persistent:
+a slot that just executed a Run claims the next one immediately instead of waiting for the
+slowest Run or for the polling interval, while a slot that finds an empty queue waits for
+`--poll-seconds` (or until the scheduler queues a Run) rather than re-polling PostgreSQL
+continuously, and repeated unexpected failures back off exponentially (bounded at the poll
+interval plus 60 seconds). One long research call therefore cannot hold a due collection
+Run in the queue, and idle scheduling costs one claim per interval. Set the limit to `1`
+to keep collection and research strictly serialized. Each Run uses its own database
+Session, and a failure in one Task is recorded on that Run without stopping the round.
+
+For a single cycle (tests, smoke checks):
+
+```bash
+docker compose run --rm worker python -m stocks.worker --once
+docker compose run --rm worker python -m stocks.worker --rounds 1 --poll-seconds 1
+```
+
+`--once` prints the scheduler outcomes plus the executed Run summary. A continuously
+running Worker evaluates the due schedules once per `--poll-seconds` independently of its
+execution slots, and a stopping slot still takes one last claim, so `--rounds N` also
+executes the Run its final round queued. A Worker that is killed mid-Run leaves the Run
+`running` with its last persisted steps and errors; there is no automatic crash
+detection. Confirm the process stopped, then `end` and `retry` it.
 
 Each `select_evidence` step may set up to eight `queries`, a `limit_per_query`, a
 `max_tokens` budget, and up to 20 unique `source_ids`. With no explicit `queries`, the

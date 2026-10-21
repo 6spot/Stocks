@@ -11,12 +11,13 @@ Task 属性：
 | 属性 | 语义 |
 | --- | --- |
 | id / name | 稳定标识、可读标题 |
-| type | collection / processing / analysis / report 等显示分类，不限制允许的步骤 |
+| type | `research` 或 `collection`；其他类型尚未实现 |
 | strategy | 可选策略 ID；无策略的采集任务正常运行 |
-| trigger | V0 使用 manual；V1 增加 schedule，cron 明确时区，every 表示固定间隔；文档事件型研究触发属于后续增强 |
-| scope | 市场/地域、公司名称、股票代码、行业与主题等研究范围；在 Task 顶层 YAML 唯一定义，研究 Run 固定为 `run.scope` 快照 |
+| trigger | `manual`，或 `{kind: schedule, …}`：cron 必须带 IANA `timezone`，或 `every` 固定间隔秒/分钟/小时/天；两者互斥 |
+| scope | 研究 Task 的市场/地域、公司名称、股票代码、行业与主题范围；在 Task 顶层 YAML 唯一定义，Run 固定为 `run.scope` 快照。采集 Task 不设 scope |
+| sources | 采集 Task 的 Source 标识列表；研究 Task 不接受该字段 |
 | steps | 有序步骤及参数/上游结果引用 |
-| enabled | 是否参与触发 |
+| enabled | 是否参与触发；disabled 的 Task 不会被调度，残留的调度记录也会被清除 |
 
 目标步骤种类：Connector 获取、Repository 持久化/查询、解析与分块、Decision Model 分类及抽取决策、按需 LLM 抽取、Embedding 与索引、研究 Agent 调用、授权 Tool 查询及报告保存。**V0 手动获取和研究；V1 用 YAML 定时采集、异步整理数据，并按任务自身设定的早晚/日/周时间生成综合报告；任何阶段都不按文章逐篇生成报告。**
 
@@ -24,7 +25,7 @@ Task 属性：
 
 研究的取材、游标、分析与报告共用 `run.scope`，步骤不再另定义一份研究范围；补充查询可带具体检索条件以查找直接资料或相关背景，但不能修改 Run 的研究范围。采集轮询由采集 Task 的 `trigger` 唯一调度，Source 只保存获取参数和可选更新预期，不另设第二个调度入口。
 
-**V0 已实现的手动研究子集：** YAML 只接受 `select_evidence` 与 `research_agent` 两种步骤，研究 Task 的最后一个步骤必须是 `research_agent`。`select_evidence` 从已保存的当前 Chunk 中生成并持久化 Evidence Package；可配置最多 8 条 `queries`、每条候选上限 `limit_per_query`、总估算 Token 预算 `max_tokens`，以及最多 20 个去重的 `source_ids`。未配置 `queries` 时按 `run.scope` 生成直接研究和背景查询。`research_agent` 只接收该 Run 已保存的 Evidence Package；成功结果在同一事务中保存 Analysis 与 Report；`tools` 必须为空，不执行外部 Tool/MCP。`when` 只允许引用更早的 `select_evidence` 结果，并仅支持以下白名单判断：
+**V1 已实现的 Task 子集：** 研究 Task 接受 `select_evidence` 与 `research_agent` 两种步骤，最后一个步骤必须是 `research_agent`；采集 Task 只接受一个 `collect_sources` 步骤，由 `sources` 指定 Source，不加载任何研究模型路由。`trigger` 接受 `manual` 或 `schedule`。`select_evidence` 从已保存的当前 Chunk 中生成并持久化 Evidence Package；可配置最多 8 条 `queries`、每条候选上限 `limit_per_query`、总估算 Token 预算 `max_tokens`，以及最多 20 个去重的 `source_ids`。未配置 `queries` 时按 `run.scope` 生成直接研究和背景查询。`research_agent` 只接收该 Run 已保存的 Evidence Package；成功结果在同一事务中保存 Analysis 与 Report；`tools` 必须为空，不执行外部 Tool/MCP。`when` 只允许引用更早的 `select_evidence` 结果，并仅支持以下白名单判断：
 
 | `op` | 允许的 `field` | 语义 |
 | --- | --- | --- |
@@ -53,14 +54,35 @@ StepResult、Analysis 与 finding 保存的证据引用只保留可回查的身�
 
 按任务记录配置/策略/模型/提示词快照，便于解释历史研究结果。Task 使用独立运行记录，Worker 与 Web API 分进程；待执行记录及任务运行占用保存在 PostgreSQL。外部调用需有超时、有限重试和幂等键。原始资料及处理状态成功持久化后，Worker 才处理相应待办步骤；这不触发逐篇研究，综合研究仍由自身的 manual/schedule 触发。
 
-V0 Run 在创建时快照 Task 的 objective、strategy、scope、步骤/Agent 配置、research prompt 和 Research Agent 模型路由，也快照 Repository 搜索使用的 Embedding 路由（别名、模型、维度、能力、超时及可用于核对配置是否有变化的端点哈希）。执行时重新取得环境凭据，并核对当前路由与快照；发生不兼容变化时步骤失败，不静默换成另一模型或向量空间。Task 和 Run 不保存 endpoint 明文、API key 或 Authorization。每个 StepResult 保存结构化 output、持久证据引用、usage 和结构化 error；ModelCall 保存请求/实际 alias 与模型名、供应商返回模型名、耗时、Token、回退原因和安全错误，不保存请求或响应正文。
+V0 Run 在创建时快照 Task 的 objective、strategy、scope、步骤/Agent 配置、research prompt 和 Research Agent 模型路由，也快照 Repository 搜索使用的 Embedding 路由（别名、模型、维度、能力、超时及可用于核对配置是否有变化的端点哈希）。排队与执行解耦后，执行只使用 Run 自己的快照，不静默用新任务定义替换；Evidence Selection 的 `as_of` 取 Run 实际开始执行时间（`started_at`），而非队列创建时间。执行时重新取得环境凭据，并核对当前路由与快照；发生不兼容变化时步骤失败，不静默换成另一模型或向量空间。Task 和 Run 不保存 endpoint 明文、API key 或 Authorization。每个 StepResult 保存结构化 output、持久证据引用、usage 和结构化 error；ModelCall 保存请求/实际 alias 与模型名、供应商返回模型名、耗时、Token、回退原因和安全错误，不保存请求或响应正文。
 
 ### 同一任务运行与异常处理
 
 - **同一个 Task 同时只允许一个待执行或正在运行的 Run。** 手动触发、定时触发与重试共用同一入口，由数据库原子检查并占用；任务已占用时不再创建新 Run，手动请求返回现有运行信息，定时触发跳过本次。不同 Task 可以独立运行。
-- V0 的手动 CLI 在一个命令中完成原子创建、领取和执行。数据库对 `status IN ('queued', 'running')` 建立每个 Task 唯一的条件索引；重复触发若已有活跃 Run，立即输出该 Run 的 JSON 摘要并以成功退出码返回，不查询模型凭据、不等待或抢占其他进程。新 Run 结束后才可创建下一次 Run。所有权令牌只标识当前执行进程，普通触发不会接管其他进程已领取的 Run。
-- V1 起，Run 未正常结束、Worker 中断或处理失败时，保留已保存的进度、结果和错误，供控制台统一查看。Owner 确认旧执行已停止后，可结束异常 Run，再重试或继续处理；不要求自动租约接管或复杂崩溃恢复调度。
+- 数据库对 `status IN ('queued', 'running')` 建立每个 Task 唯一的条件索引。手动触发只创建 `queued` Run 并立即输出其 JSON 摘要，不等待执行、不抢占其他进程；重复触发若已有活跃 Run，直接返回该 Run 并以成功退出码结束，不读取 Task 配置、不查询模型凭据。
+- 执行由独立 Worker 完成：它在一个事务内用 `FOR UPDATE SKIP LOCKED` 原子领取最旧的 `queued` Run，并写入所有权令牌；多个 Worker 不会重复执行同一 Run，也不会接管其他进程已领取的 `running` Run。Worker 支持单轮执行与带界轮询：到期调度按 `poll_seconds` 独立评估，`max_concurrent_runs` 个执行槽位常驻——刚执行完一份 Run 的槽位立即领取下一份，空队列的槽位按 `poll_seconds` 等待（可被“本轮已入队 Run”提前唤醒）而不是忙轮询，连续意外失败按指数退避（上限为 `poll_seconds` + 60 秒）；开始停止后每个槽位最多再领取一次，因此 `--rounds` 最后一轮入队的 Run 不会被丢下，也不会把停机变成无限追赶。这使得一次长研究调用既不阻塞采集，也不推迟到期调度。单 Worker 并发上限默认 2（可配 1–16）。
+- 每个执行上下文使用独立数据库 Session；某一 Task 的配置、模型初始化或执行失败只记录为该 Run 的结构化错误，不终止 Worker 轮次，也不影响其他 Task 的执行。
+- 采集 Run 只加载 `config/sources.yaml` 与现有 `collect_source`，不解析 chat/embedding 路由；研究模型配置损坏不影响采集入队与执行，采集故障也不阻止研究读取存量资料。
+- Run 未正常结束、Worker 中断或步骤失败时，保留已保存的步骤结果、Evidence Package、原始错误与 ModelCall 记录。Worker 自身不检测死进程、不做自动接管。Owner 必须先确认旧进程已停止，再通过受控 CLI 显式结束该 Run；结束后清除运行占用并保留全部进度与错误。
+- 重试创建新的 Run 记录，复用被结束 Run 的配置/模型/提示词快照、失败点之前已成功的 StepResult，并复制其 Evidence Package（新包的 `run_id` 属于新 Run，`select_evidence` 输出中的 `evidence_package_id` 同步改指新包），把 `retry_of_run_id` 指向原 Run。`research_agent` 步骤不复制，Analysis/Report 由重试重新生成，不借用旧 Run 名下的结果。原 Run、其失败步骤、ModelCall、Analysis/Report 与错误继续保留为失败历史，不删除失败证据、不伪装为首次执行。`skipped` 步骤不复制而是重新判断条件，避免把旧判断带入新一次尝试。重试只允许针对 `failed` 或 `cancelled` 的 Run，且仍受同一 Task 单个活跃 Run 约束。
+- 结束 Run、写入步骤结果与写入最终状态都核对 Run 状态与所有权；Owner 结束之后，旧执行不能再把 StepResult、Analysis/Report 或 Run 最终状态写成成功，这一步是确定性 fence。`select_evidence` 与 `collect_sources` 会在步骤内部提交自己的派生结果（Evidence Package、Document），因此在执行每一步前以及每个 Source 开始前再核对一次所有权，避免被结束的 Run 启动新的步骤或新的 Source；这层事前检查不持行锁，也不能回滚已经开始的步骤已在自身事务中提交的资料，采集到的原文仍按统一入库规则保留，只是该 Run 不会因此获得成功的步骤结果或报告。结束 Run 的前提始终是 Owner 已确认旧进程停止。
 - 解析、分类、抽取、索引和取材积压使用 Task/Run 或 Document 处理状态管理；有限自动重试后，可由 Owner 在控制台手动重试或继续处理，不另建积压管理服务。交互见[界面设计](interface.md)。
+
+#### 持久调度状态与漏触发策略
+
+调度配置及其 `next_due_at` 保存在与 Task 相邻的最小记录中（`task_schedules`），不使用纯内存 `last_run` 作为去重依据。并发 scheduler 对同一 Task 的到期判定、触发入队与 `next_due_at` 更新在同一个 Task 级 advisory lock 与事务内完成，越界写入无法只完成一半。
+
+| 情形 | 行为 |
+| --- | --- |
+| 首次注册（新 Task 或首次启动） | 保存调度配置指纹，`next_due_at` 取当前时刻之后的下一个触发点；首次注册不立即触发 |
+| 调度配置变更（cron、时区或间隔） | 一旦调度指纹不同即重新锚定，避免旧配置继续生效 |
+| `every` 固定间隔 | `next_due_at` 按持久锚点累加，不按 Run 完成时间漂移；停机或繁忙错过多个触发点时合并为至多一次到期处理，并直接推进到下一未来触发点 |
+| `cron` + 时区 | 用受维护的 cron 解析库在任务时区墙上时间计算；夏令时跳过的时刻不触发，重复时刻只在上一次出现时触发一次，保存为 UTC |
+| Task 已有活跃 Run | 跳过本次到期（不读取模型配置、不记录配置失败），仍推进 `next_due_at`，不创建第二个 Run |
+| Task disabled、从配置移除或改回 manual | 不触发，并删除残留调度记录，避免旧定义继续调度 |
+| 单个 Task 配置/模型初始化失败 | 记录安全错误与该 Task 的 `next_due_at` 推进，继续处理其他 Task，不终止调度轮次 |
+
+上述「繁忙跳过、错过合并」的选择是有意的：定时研究是周期性取样，不补历史 Run 风暴；已经错过的时间段仍由后续正常 Run 覆盖其时的资料。
 
 
 ### V1 数据处理与定时研究
@@ -188,6 +210,36 @@ tasks:
         input: save.output
 
 ~~~
+
+这里的研究示例仍属于逻辑配置：`window`、`repository.*`、`agent.researcher` 的具体字段尚未全部实现，增量窗口属于 V1-05。**V1-01 已实现的实际配置形式**（见 `config/tasks.yaml`）如下：
+
+~~~yaml
+  - id: scheduled_collection
+    name: Scheduled SEC Press Release Collection (disabled example)
+    type: collection
+    trigger: {kind: schedule, every: 15m}
+    enabled: false
+    sources: [sec_press_releases]
+    steps:
+      - id: collect
+        collect_sources:
+          kind: collect_sources
+
+  - id: scheduled_market_brief
+    name: Scheduled Market Brief (disabled example)
+    type: research
+    trigger: {kind: schedule, cron: "0 8,20 * * *", timezone: America/New_York}
+    enabled: false
+    objective: Summarize recent evidence for the configured market scope.
+    scope: {regions: [US], topics: [macro]}
+    steps:
+      - id: evidence
+        select_evidence: {kind: select_evidence, queries: [recent macro evidence]}
+      - id: research
+        research_agent: {kind: research_agent, agent: research_writer, input: evidence}
+~~~
+
+`collect_sources` 直接复用 `stocks.collection.service.collect_source`、`config/sources.yaml` 与既有 Repository 幂等链路，不另写获取/持久化代码；一个采集 Run 处理其 `sources` 中的全部 Source。单篇文章获取或入库失败记为 `failed` 计数并保留在 output，下一轮采集会重试；整个 Source 无法采集（配置、Feed 请求或解析失败）时仍继续处理剩余 Source，但 Run 以 `COLLECTION_SOURCE_FAILED` 结束，保留含各 Source 摘要与错误的 output，便于定位。`objective`、`scope`、`strategy` 是研究 Task 属性；采集 Run 的 `run.scope` 固定为 `{"source_ids": [...]}`，`objective` 取 Task 名称，不包含研究语义。
 
 这里的 `financial_news`、`collection.acquire_content`、Agent ID 与时间都是逻辑配置示例，并非已实现接口；`acquire` 表示任意渠道只取得标题/摘要/链接时需补取正文，已取得全文或完整响应则无需重复下载。**fetch 和 acquire 之间不执行逐篇相关性过滤。** `scope: run.scope` 表示读取当前 Run 的研究范围快照；入库后处理依赖遵循[数据设计](data.md#后台解析片段与索引)，综合研究仍由各自 YAML Task 调度。
 

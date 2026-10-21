@@ -3,7 +3,7 @@
   "name": "v1-01-worker-scheduling",
   "title": "V1-01 独立 Worker 定时调度与 Run 恢复",
   "description": "采集和研究按各自配置独立调度，失败可定位并由 Owner 恢复。",
-  "status": "planning",
+  "status": "in_progress",
   "dev_type": "backend",
   "scope": null,
   "package": null,
@@ -12,7 +12,7 @@
   "assignee": "me",
   "createdAt": "2026-10-20",
   "completedAt": null,
-  "branch": null,
+  "branch": "feat/v0-07-evidence-api-acceptance",
   "base_branch": "main",
   "worktree_path": null,
   "commit": null,
@@ -26,15 +26,15 @@
     "docs/data.md",
     "docs/validation.md"
   ],
-  "notes": "本轮仅规划；依赖写入 meta.depends_on 及规划文档，Trellis 父子关系不会自动调度。开工前复核现状和技术细节并取得该子任务的实施确认。",
+  "notes": "2026-10-21 用户在范围说明后明确要求开始实施；包含最小采集 Task 接入，后台处理状态与积压留给 V1-02。V0 真实闭环按 PA-1 延后，不能视为已验收。",
   "meta": {
     "milestone": "V1",
     "kind": "delivery",
     "depends_on": [
-      ".trellis/tasks/10-20-v0-07-evidence-api-acceptance"
+      ".trellis/tasks/archive/2026-10/10-20-v0-07-evidence-api-acceptance"
     ],
-    "planning_review": "pending",
-    "planning_depth": "delivery-plan",
-    "implementation_authorized": false
+    "planning_review": "approved",
+    "planning_depth": "implementation-plan",
+    "implementation_authorized": true
   }
 }

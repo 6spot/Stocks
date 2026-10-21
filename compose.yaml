@@ -29,6 +29,29 @@ services:
     command: ["uvicorn", "stocks.api:app", "--host", "0.0.0.0", "--port", "8000"]
     networks: [internal]
 
+  worker:
+    build: ./backend
+    restart: unless-stopped
+    env_file: .env
+    volumes:
+      - ./config:/app/config:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command:
+      [
+        "python",
+        "-m",
+        "stocks.worker",
+        "--config",
+        "config/tasks.yaml",
+        "--models-config",
+        "config/models.yaml",
+        "--sources-config",
+        "config/sources.yaml",
+      ]
+    networks: [internal]
+
 volumes:
   pgdata:
 

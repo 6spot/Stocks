@@ -41,8 +41,8 @@ class TaskDefinition(Base):
     __tablename__ = "task_definitions"
     __table_args__ = (
         CheckConstraint(
-            "trigger = 'manual'",
-            name="ck_task_definitions_manual_trigger",
+            "trigger IN ('manual', 'schedule')",
+            name="ck_task_definitions_trigger",
         ),
     )
     id: Mapped[str] = mapped_column(String(120), primary_key=True)
@@ -58,11 +58,47 @@ class TaskDefinition(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
 
 
+class TaskSchedule(Base):
+    """Persistent due state for a scheduled Task.
+
+    A row exists only while the current configuration defines an enabled
+    scheduled Task, so a removed, disabled or manual Task cannot keep firing
+    from a leftover definition.
+    """
+
+    __tablename__ = "task_schedules"
+    __table_args__ = (
+        CheckConstraint(
+            "trigger_kind = 'schedule'",
+            name="ck_task_schedules_trigger_kind",
+        ),
+        Index("ix_task_schedules_due", "next_due_at"),
+    )
+    task_id: Mapped[str] = mapped_column(
+        ForeignKey("task_definitions.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    trigger_kind: Mapped[str] = mapped_column(String(16))
+    schedule_fingerprint: Mapped[str] = mapped_column(String(64))
+    schedule_snapshot: Mapped[dict] = mapped_column(JSONB)
+    next_due_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    last_fired_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    last_attempt_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    last_error: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
 class TaskRun(Base):
     __tablename__ = "task_runs"
     __table_args__ = (
         CheckConstraint(
-            "status IN ('queued', 'running', 'succeeded', 'failed')",
+            "status IN ('queued', 'running', 'succeeded', 'failed', 'cancelled')",
             name="ck_task_runs_status",
         ),
         CheckConstraint(
@@ -70,7 +106,7 @@ class TaskRun(Base):
             name="ck_task_runs_running_owner",
         ),
         CheckConstraint(
-            "status NOT IN ('queued', 'succeeded', 'failed') "
+            "status NOT IN ('queued', 'succeeded', 'failed', 'cancelled') "
             "OR process_token IS NULL",
             name="ck_task_runs_closed_owner",
         ),
@@ -81,10 +117,25 @@ class TaskRun(Base):
             postgresql_where=text("status IN ('queued', 'running')"),
         ),
         Index("ix_task_runs_task_created", "task_id", "created_at"),
+        Index("ix_task_runs_status_created", "status", "created_at"),
+        CheckConstraint(
+            "triggered_by IN ('manual', 'schedule', 'retry')",
+            name="ck_task_runs_triggered_by",
+        ),
+        CheckConstraint(
+            "retry_of_run_id IS NULL OR retry_of_run_id != id",
+            name="ck_task_runs_retry_distinct",
+        ),
     )
     id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, default=uuid4)
     task_id: Mapped[str] = mapped_column(ForeignKey("task_definitions.id"))
     status: Mapped[str] = mapped_column(String(16))
+    triggered_by: Mapped[str] = mapped_column(
+        String(16), default="manual", server_default=text("'manual'")
+    )
+    retry_of_run_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("task_runs.id"), nullable=True
+    )
     process_token: Mapped[str | None] = mapped_column(String(200), nullable=True)
     objective: Mapped[str] = mapped_column(Text)
     strategy: Mapped[str | None] = mapped_column(String(255), nullable=True)
