@@ -479,3 +479,25 @@ Removed Pi Trellis subprocess dispatch, routed Pi workflow through the main sess
 ### Status
 
 [OK] **Completed**
+
+
+## Session 16: V1-05 提交可见变化水位与可继续扫描
+<!-- trellis-session: v=2 fp=1f49a9187cb7b757 -->
+
+**Date**: 2026-10-21
+**Task**: V1-05 提交可见变化水位与可继续扫描
+**Branch**: `main`
+
+### Summary
+
+实现并验证 V1-05：变化记录与业务写入同事务（共享计数行锁使水位顺序等于提交顺序），六个写入点接入；研究 Run 固定 (start,end] 窗口与版本化扫描检查点，恢复同 Task+Scope 最新有效未完成检查点，retry 复制来源窗口；原始变化页在 SQL 中先过滤后 LIMIT 并返回 (watermark, change_id) 续点；最终 Step/Analysis/Report/游标/Run 成功原子提交，失败或失去所有权不推进游标。测试服务器全新库 alembic upgrade head 与 alembic check 均 exit 0，watermark 28 + execution 59 用例通过（无 skip），全量 366 passed。AC-1 用两个真实 PostgreSQL 连接断言快写入者被计数行锁阻塞。修正 docs/data.md 遗留过期陈述与 docs/execution.md 检索入口路径。V1-06 统一增量/历史证据合并仍未实现。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `281e065` | feat(changes): make research increments follow committed changes |
+
+### Status
+
+[OK] **Completed**

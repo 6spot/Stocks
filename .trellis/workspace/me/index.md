@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 15
+- **Total Sessions**: 16
 - **Last Active**: 2026-10-21
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~481 | Active |
+| `journal-1.md` | ~503 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 16 | 2026-10-21 | V1-05 提交可见变化水位与可继续扫描 | `281e065` | `main` |
 | 15 | 2026-10-21 | Inline Pi Trellis and remove OpenCode integration | `86d5376` | `chore/pi-trellis-inline-opencode` |
 | 14 | 2026-10-21 | 完成 V1-02 文档处理恢复 | `d192a4f` | `feat/v0-07-evidence-api-acceptance` |
 | 13 | 2026-10-21 | Pi/Trellis/Magpie 角色组与子进程反馈配置归档 | `431abb1` | `feat/v0-07-evidence-api-acceptance` |
