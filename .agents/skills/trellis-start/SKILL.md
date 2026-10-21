@@ -47,7 +47,7 @@ From Step 1 you know the current task and status. Check the task directory:
   ```bash
   python3 ./.trellis/scripts/get_context.py --mode phase --step 2.1 --platform <platform>
   ```
-  In Pi, use `--platform pi`. The main session dispatches implementation through the native `trellis_subagent` tool; it does not switch its own model when a task starts.
+  In Pi, follow the inline workflow and implement in the main session; task start does not switch the selected model.
 - **No active task** → first resolve an existing task named by the user or uniquely identified as the authorized next task. Resume it under the existing execution instruction; archive or planning refinement does not renew the approval requirement. Ask for task-creation consent only for genuinely new work when it has not already been given. If the user declines creation, follow the workflow's scope rules.
 
 ---
