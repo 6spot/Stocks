@@ -545,3 +545,42 @@ Implemented deny-by-default Tool catalog, remote MCP Streamable HTTP client, bou
 ### Status
 
 [OK] **Completed**
+
+
+## Session 19: V2-02 JSON/XML/PDF 解析适配与 PDF 文章获取
+<!-- trellis-session: v=2 fp=eb8613be56c2ad4f -->
+
+**Date**: 2026-10-22
+**Task**: V2-02 JSON/XML/PDF 解析适配与 PDF 文章获取
+**Branch**: `main`
+
+### Summary
+
+按 V2 任务列表逐个实施：parse 阶段新增 JSON（含 +json）、XML（含 +xml）与 PDF 解析，分别用 JSON Pointer、元素路径、页码+页内字符范围定位；数值与单位按原文保留，损坏/重复键/超限/无文字层按稳定错误码失败而不产生空正文。RSS 文章获取接受 application/pdf，处理器版本升到 semantic-text-v2（旧文档下次解析生成新的不可变批次，历史批次与已引用片段保留）。config/sources.yaml 增加公开 Fed 新闻 RSS 与需 Owner 确认的 SEC EDGAR submissions 示例（disabled）。
+
+### Main Changes
+
+- 新增 stocks.processing.structured（JSON Pointer / XML 元素路径定位、重复键与非有限数拒绝、值/字符/深度上限）与 stocks.processing.pdf（逐页取文、页码定位、页数/字符上限、pypdf 依赖）
+- parse_content() 按 MIME 族分发并升级处理器版本；collection/http.py 与 ARTICLE_ACCEPT 允许 application/pdf
+- config/sources.yaml 增加 fed_press_releases（enabled）与 sec_edgar_submissions（disabled 样例）；docs/data.md、docs/quickstart.md、docs/validation.md、docs/architecture.md 同步契约与待验收边界
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `bc2220c` | feat(parsing): locate JSON, XML and PDF originals as citable chunks |
+
+### Testing
+
+- [OK] 测试服务器隔离目录：test_parsing_formats 14 passed、test_processing+test_processing_retry 67 passed、test_collection 48 passed、worker_processing/facts/classification/api/report_api 98 passed
+- [OK] 全新空库 alembic upgrade head + alembic check（无差异）
+- [OK] 真实来源 drill 10/10 pass：公开 Fed RSS 真实采集 20 条入库且 20/20 原件哈希与库内一致；真实 HTML 42/42 片段可回查原文、重跑复用批次、显式重处理保留历史 Chunk；真实 Fed PDF 189,823 字节经文章获取通道解析为 8 页 15 Chunk、页内字符一一映射
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- 待 Owner 最终验收：Fed/SEC 来源换成真实联系邮箱、SEC EDGAR CIK 与访问政策确认及真实 API 映射；XML XPath 字段映射、OCR、PDF 表格结构重建未实现
+- 继续按任务列表实施 V2-03 来源冲突与跨来源复核
