@@ -133,7 +133,12 @@ Stocks 是面向单一 Owner、以美股为主要市场的个人投资情报与�
 | AI | 配置驱动的 HTTP Provider/协议 Adapter |
 | 调度 | 独立 Worker + PostgreSQL 任务记录与运行占用；具体规则见[执行设计](execution.md) |
 | 前端 | React + TypeScript + Vite |
-| UI | shadcn/ui + Base UI + Tailwind CSS |
+| UI | shadcn/ui（Nova 风格）+ Base UI + Tailwind CSS |
+| 图标 | Lucide（`lucide-react`） |
+| 动画 | Motion（`motion`，React 入口 `motion/react`） |
+| 可调整面板布局 | react-resizable-panels |
+| 拖拽 | dnd-kit |
+| 客户端共享状态 | Zustand |
 | 表格/图表 | TanStack Table、Recharts |
 | 部署 | Docker Compose、Nginx；API 与 Worker 共享后端代码，分进程运行 |
 

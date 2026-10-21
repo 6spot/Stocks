@@ -9,6 +9,7 @@
 {"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "后端实现/数据库/错误与必要验证约定"}
 {"file": ".trellis/spec/frontend/index.md", "reason": "前端组件、类型与验证约定"}
 {"file": ".trellis/spec/frontend/component-guidelines.md", "reason": "前端组件、类型与验证约定"}
+{"file": ".trellis/spec/frontend/state-management.md", "reason": "Zustand 客户端共享状态、服务端数据与持久化边界"}
 {"file": ".trellis/spec/frontend/type-safety.md", "reason": "前端组件、类型与验证约定"}
 {"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "前端组件、类型与验证约定"}
 {"file": ".trellis/tasks/10-20-stocks-roadmap/research/baseline.md", "reason": "本轮代码现状与分期依据，后续开工需复核"}
