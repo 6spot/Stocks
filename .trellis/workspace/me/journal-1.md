@@ -355,3 +355,39 @@ Fixed the four defects found reviewing archived V0-01/V0-02: the latest-content 
 - V1-01 独立 Worker 定时调度与 Run 恢复：开工前需与 Owner 确认 V1-01/V1-02 边界
   （采集步骤种类归属 V1-02，V1-01 只做 trigger schedule + Worker 进程 + 异常 Run 结束）。
 - 统一验收轮次：补模型凭据与 SEC 联系邮箱后，按 PA-1 跑 V0 真实闭环并回填记录。
+
+
+## Session 11: 统一前端技术选型与开发规范
+<!-- trellis-session: v=2 fp=40923586cab64763 -->
+
+**Date**: 2026-10-21
+**Task**: 统一前端技术选型与开发规范
+**Branch**: `feat/v0-07-evidence-api-acceptance`
+
+### Summary
+
+统一 Nova 风格、Lucide、Motion、react-resizable-panels、dnd-kit 与 Zustand 的前端规范，同步架构、界面文档和 V1-08 规范引用。按用户要求不创建 Trellis 任务，以会话记录归档本轮工作；V1-08 保持 planning。
+
+### Main Changes
+
+- 补充设计变量、图标可访问性、动画与减少动态效果、响应式面板及拖拽交互规则。
+- 确定 Zustand 客户端共享状态、selector、持久化白名单及上下文清理边界。
+- 保留此前 Pi/Trellis 多模型配置相关未提交改动，未纳入本轮提交。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `dde68da` | docs(frontend): standardize UI stack and development conventions |
+
+### Testing
+
+- [OK] 本轮仅修改文档，已人工审阅 Git 差异及相关表述；未运行测试、构建、lint 或类型检查。
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- V1-08 实施时按实际依赖版本确认 API，并在指定测试服务器执行相关验证。
