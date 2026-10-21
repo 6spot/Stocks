@@ -435,3 +435,25 @@ Fixed the four defects found reviewing archived V0-01/V0-02: the latest-content 
 ### Status
 
 [OK] **Completed**
+
+
+## Session 14: 完成 V1-02 文档处理恢复
+<!-- trellis-session: v=2 fp=1195620b4a5bc992 -->
+
+**Date**: 2026-10-21
+**Task**: 完成 V1-02 文档处理恢复
+**Branch**: `feat/v0-07-evidence-api-acceptance`
+
+### Summary
+
+实现统一文档处理阶段队列、独立 Worker 处理槽位及有界重试与 Owner 恢复入口；远程验证 106 项相关测试、34/34 子进程 smoke，新数据库初始化与 alembic check 通过。V1-02 已提交并归档。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `d192a4f` | feat(processing): add resumable document stages and backlog recovery |
+
+### Status
+
+[OK] **Completed**
