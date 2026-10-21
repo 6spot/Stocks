@@ -168,6 +168,10 @@ First resolve any existing task explicitly named by the user or uniquely identif
 - Preserve the authorized next actions across commit, archive, journal recording, and compaction. Record the instruction and resolved scope in existing task notes or `implement.md` when useful. Finishing one task must not consume an explicit instruction to start the next.
 - Before asking a process-confirmation question, identify exactly what decision or permission is still missing. If the action is already authorized and no material scope decision remains, report the next action and perform it.
 
+### Execution Boundaries and Blocker Handoff
+
+For all phases, read and follow the project [Agent Execution Guide](spec/guides/agent-execution-guide.md). Use bounded diagnosis and evidence of progress; distinguish completion, blocker handoff, and a partial return at the execution budget. A child returns to its parent; the main session resolves what it can and asks the user only for genuinely missing inputs or decisions. Preserve existing authorization and partial work. This rule does not enable delegation or add task statuses.
+
 ### Planning Artifacts
 
 - `prd.md` — requirements, constraints, and acceptance criteria. Do not put technical design or execution checklists here.
@@ -567,7 +571,7 @@ Load the `trellis-check` skill and verify the code per its guidance:
 - lint / type-check / tests
 - Cross-layer consistency (when changes span layers)
 
-If issues are found → fix → re-check, until green.
+If issues are found, fix confirmed in-scope defects and re-check only affected behavior. Stop when the agreed check scope passes; for blockers, exhausted budgets, or changes beyond authorization, return evidence and remaining work under the [Agent Execution Guide](spec/guides/agent-execution-guide.md).
 
 [/codex-inline, Pi, Kilo, Antigravity, Devin, DeepSeek Harness]
 

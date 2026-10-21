@@ -38,7 +38,7 @@ Read the specific guideline files referenced — the index is a pointer, not the
 
 ## Step 3: Run Project Checks
 
-Run the project's lint, type-check, and test commands. Fix any failures before proceeding.
+Run only the checks required by the changed behavior and permitted by project instructions. Fix confirmed in-scope failures and re-run the affected checks. Follow the project [Agent Execution Guide](../../../.trellis/spec/guides/agent-execution-guide.md) for blockers, missing decisions, lack of progress, or exhausted budgets; return evidence and unfinished checks instead of repeating indefinitely. Pure documentation changes do not require runtime checks.
 
 ## Step 4: Review Against Checklist
 
@@ -105,7 +105,7 @@ Skip this step if your change is confined to a single layer.
 
 Report every violation you find. Then:
 
-- Mechanical and local (lint nit, missing type, wrong import, dead branch, failing assertion) → fix in place, then re-run project checks.
+- Mechanical and local (lint nit, missing type, wrong import, dead branch, failing assertion) → fix in place within the execution budget, then re-run only affected checks.
 - Design or judgment (naming a shared concept, moving a module boundary, changing a public interface, reassigning where behavior lives) → record the evidence and your recommendation, and stop. Do not rewrite it silently.
 
 If a fix would touch files outside the current task's scope, say so and stop instead of widening the change.

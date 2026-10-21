@@ -21,12 +21,14 @@ AST/静态扫描、编译或格式检查同样不属于允许的检查手段，�
 - 目标机可能只开放**密码认证**（无授权密钥）。此时密码只能由 Owner 在当前会话中临时提供，
   通过 `sshpass -d<fd>` 之类的方式从文件描述符或一次性环境注入，**不得**写入仓库、脚本、
   远程可见的命令行参数、日志或验证记录，也不得保存为 `~/.ssh` 配置或本地文件长期复用。
-- `ssh -o BatchMode=yes` 只允许密钥认证：它返回 `Permission denied (publickey,password)`
-  （exit 255）时**结论是"本命令未提供可用认证方式"，不是"测试服务器不可达"**。判定 SSH 不可用
-  前必须按 `PreferredAuthentications=password` 等方式重试；同一命令瞬时失败一次可原样重试一次，
-  连续失败再报告。
-- 缺少认证凭据、Docker 镜像或外部服务时，**第一时间向 Owner 说明具体缺哪一项**（例如
-  "需要 root 密码认证，BatchMode 不通"），不要先做多轮静态审查再把环境缺失写成"未验证"收尾。
+- `ssh -o BatchMode=yes` 禁止交互式密码认证：它返回 `Permission denied (publickey,password)`
+  （exit 255）时**结论是"本命令未提供可用认证方式"，不是"测试服务器不可达"**。
+  已有会话授权与凭据时，按 `PreferredAuthentications=password` 等方式进行有界尝试；缺少必要条件时
+  不原样重试，也不搜索凭据。仅对有依据的瞬时失败，在当前预算内原样重试一次。
+- 测试执行同样遵循[Agent 执行边界与阻塞交回](../guides/agent-execution-guide.md)。认证、依赖服务、
+  外部资源或决策等条件缺失且无法自主解除时，及时报告具体事实、已完成工作与继续所需条件。
+  子 Agent 返回主会话，由主会话判断是否需要 Owner 提供输入；不重复索取已有凭据或授权。
+  未执行检查保留“未验证”，独立且已授权的工作可在剩余预算内继续，但不能因此延迟反馈。
 
 ## Persistent Runtime
 
@@ -158,7 +160,7 @@ DATABASE_URL='postgresql+psycopg://stocks:<random-test-value>@127.0.0.1:55432/st
 
 | 条件 | 预期处理 |
 | --- | --- |
-| SSH 认证被拒（如 BatchMode 下 `Permission denied (publickey,password)`） | 先改用密码认证并向 Owner 取凭据，原样重试一次；仍不可用时才保留"未验证"，记录实际命令与退出码，不得回退本机，也不得把认证失败写成"服务器不可达" |
+| SSH 认证被拒（如 BatchMode 下 `Permission denied (publickey,password)`） | 已有凭据时改用密码认证有界尝试；缺少凭据或仍无法解除时按通用规则交回。记录实际命令与退出码、保留“未验证”，不得回退本机或把认证失败写成“服务器不可达” |
 | SSH 网络不可达/超时 | 停止验证并保留未验证状态；不得回退到本机，明确记录环境不可用 |
 | 远程无 Docker | 安装 Docker Engine，确认守护进程可执行 |
 | 镜像不存在 | 拉取 `pgvector/pgvector:0.8.7-pg17-bookworm` |
