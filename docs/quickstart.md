@@ -2,28 +2,55 @@
 
 Requires Docker Compose. An S3-compatible endpoint is needed to collect and persist article snapshots.
 
-1. Copy .env.example to .env. Change POSTGRES_PASSWORD and update DATABASE_URL to use the same password. Configure S3_ENDPOINT_URL, non-empty S3_BUCKET and a paired S3_ACCESS_KEY/S3_SECRET_KEY when using snapshot storage. Set a unique `OWNER_PASSWORD` and a separate `OWNER_SESSION_SECRET` of at least 32 random characters (for example, generated with `openssl rand -hex 32`). Set `OWNER_COOKIE_SECURE=true` for HTTPS access.
-2. Run: `docker compose up -d --build postgres api worker`
-3. Initialize a fresh development database with the current schema: `docker compose run --rm api alembic upgrade head` (bootstrap only; no historical data upgrade or backward compatibility).
-4. Check that the initialized schema matches the current models: `docker compose run --rm api alembic check`
-5. Verify: http://127.0.0.1:8000/health
+1. Copy `.env.example` to `.env`. Change `POSTGRES_PASSWORD` and update
+   `DATABASE_URL` to use the same password. Configure `S3_ENDPOINT_URL`, non-empty
+   `S3_BUCKET` and a paired `S3_ACCESS_KEY`/`S3_SECRET_KEY` when using snapshot
+   storage. Set a unique `OWNER_PASSWORD` and a separate `OWNER_SESSION_SECRET` of at
+   least 32 random characters (for example, generated with `openssl rand -hex 32`).
+   Set `OWNER_COOKIE_SECURE=true` when the browser reaches the console through HTTPS.
+   On the target ARM server, set `TARGET_PLATFORM=linux/arm64`.
+2. Start PostgreSQL and initialize a fresh development database with the current
+   schema: `docker compose up -d --wait postgres`, then
+   `docker compose run --rm api alembic upgrade head` (bootstrap only; no historical
+   data upgrade or backward compatibility).
+3. Check that the initialized schema matches the current models:
+   `docker compose run --rm api alembic check`.
+4. Build and start the API, Worker and Web entry point:
+   `docker compose up -d --build --wait api worker web`.
+5. Verify the Web entry point and its same-origin API health route at
+   `http://127.0.0.1:8080/` and `http://127.0.0.1:8080/health`. Change `WEB_PORT` or
+   `WEB_BIND_ADDRESS` to select another local entry point. PostgreSQL, the API and the
+   Worker publish no host ports; Nginx is the only Compose service with a published
+   port.
 6. Create an Owner session, then view stored records. The session Cookie is HttpOnly; retain the returned CSRF token for POST requests. The documents route is empty on a fresh database.
 
 ```bash
 curl -c stocks-cookie.txt -s \
   -H 'Content-Type: application/json' \
   -d "{\"password\":\"$OWNER_PASSWORD\"}" \
-  http://127.0.0.1:8000/api/session/login
-curl -b stocks-cookie.txt http://127.0.0.1:8000/api/documents
+  http://127.0.0.1:8080/api/session/login
+curl -b stocks-cookie.txt http://127.0.0.1:8080/api/documents
 ```
 7. Read a saved report and the originals it actually used, see [Read a report and its evidence](#read-a-report-and-its-evidence).
 
-`api` and `worker` are separate processes from the same image and configuration. The API reads console state and queues authorized recovery actions; it never executes a Task Run. The Worker polls PostgreSQL for `queued` Runs and evaluates due schedules, so a restart of either one does not lose queued work. The Worker has no published port.
+`api` and `worker` are separate processes from the same image and configuration. The Web
+image builds the React client and serves it from Nginx; Node is not a production
+process. Nginx forwards `/api/` and `/health` from the published Web port to the internal
+API, so browsers use one origin for the console, session Cookie, CSRF checks, reports
+and original downloads. The API reads console state and queues authorized recovery
+actions; it never executes a Task Run. The Worker polls PostgreSQL for `queued` Runs and
+evaluates due schedules, so a restart of either one does not lose queued work.
+PostgreSQL, the API and the Worker have no published ports. The Web port is safe to
+publish through the host's HTTPS or private reverse proxy after
+`OWNER_COOKIE_SECURE=true` is set.
 
 ### Web console development
 
-The Web client lives in `frontend/` and requires Node.js 20.19 or newer. Start the API
-first, then install the locked dependencies and start Vite from the repository root:
+The Web client lives in `frontend/` and requires Node.js 20.19 or newer. For local Vite
+development, publish the API only on a loopback address with a Compose override or use
+an SSH tunnel; do not add an API host port to the production `compose.yaml`. With the
+API reachable at `127.0.0.1:8000`, install the locked dependencies and start Vite from
+the repository root:
 
 ```bash
 cd frontend
@@ -264,8 +291,8 @@ docker compose run --rm api python -m stocks.processing reprocess \
 
 # Read-only views: these never start extraction.
 docker compose run --rm api python -m stocks.processing facts --source-id bls_cpi
-curl -s -b stocks-cookie.txt 'http://127.0.0.1:8000/api/facts?source_id=bls_cpi&limit=20'
-curl -s -b stocks-cookie.txt "http://127.0.0.1:8000/api/documents/<document-uuid>/facts"
+curl -s -b stocks-cookie.txt 'http://127.0.0.1:8080/api/facts?source_id=bls_cpi&limit=20'
+curl -s -b stocks-cookie.txt "http://127.0.0.1:8080/api/documents/<document-uuid>/facts"
 ```
 
 Repeating a stage for the same content version does not duplicate Facts: identity is
@@ -520,14 +547,14 @@ Document and Chunk version the report actually cited, with the current collectio
 reported separately so a newer version stays visible without rewriting an older report.
 
 ```bash
-curl -s -b stocks-cookie.txt http://127.0.0.1:8000/api/reports | jq '.items[0]'
-curl -s -b stocks-cookie.txt "http://127.0.0.1:8000/api/reports?task_id=saved_evidence_brief" | jq '.items[].report_id'
-curl -s -b stocks-cookie.txt http://127.0.0.1:8000/api/reports/<report-id> | jq '{title: .report.title, content: .report.content, gaps: .coverage_gaps}'
-curl -s -b stocks-cookie.txt http://127.0.0.1:8000/api/reports/<report-id> | jq '.evidence[] | {chunk_id, document_id, document_version, text, original: .original.endpoint}'
-curl -s -b stocks-cookie.txt http://127.0.0.1:8000/api/reports/<report-id>/evidence/<chunk-id> | jq '.evidence'
-curl -s -b stocks-cookie.txt http://127.0.0.1:8000/api/documents/<document-id> | jq '{document: .document.title, versions: [.versions[].version]}'
-curl -s -b stocks-cookie.txt http://127.0.0.1:8000/api/documents/<document-id>/original | head
-curl -sOJ -b stocks-cookie.txt "http://127.0.0.1:8000/api/documents/<document-id>/original?download=true"
+curl -s -b stocks-cookie.txt http://127.0.0.1:8080/api/reports | jq '.items[0]'
+curl -s -b stocks-cookie.txt "http://127.0.0.1:8080/api/reports?task_id=saved_evidence_brief" | jq '.items[].report_id'
+curl -s -b stocks-cookie.txt http://127.0.0.1:8080/api/reports/<report-id> | jq '{title: .report.title, content: .report.content, gaps: .coverage_gaps}'
+curl -s -b stocks-cookie.txt http://127.0.0.1:8080/api/reports/<report-id> | jq '.evidence[] | {chunk_id, document_id, document_version, text, original: .original.endpoint}'
+curl -s -b stocks-cookie.txt http://127.0.0.1:8080/api/reports/<report-id>/evidence/<chunk-id> | jq '.evidence'
+curl -s -b stocks-cookie.txt http://127.0.0.1:8080/api/documents/<document-id> | jq '{document: .document.title, versions: [.versions[].version]}'
+curl -s -b stocks-cookie.txt http://127.0.0.1:8080/api/documents/<document-id>/original | head
+curl -sOJ -b stocks-cookie.txt "http://127.0.0.1:8080/api/documents/<document-id>/original?download=true"
 ```
 
 `/api/reports/{report_id}` returns the report body, the Run snapshot (status, objective,

@@ -214,6 +214,8 @@ def _load_config(path: str) -> dict:
             config = yaml.load(stream, Loader=_UniqueKeySafeLoader) or {}
     except yaml.YAMLError as exc:
         raise ValueError("Model configuration is not valid YAML") from exc
+    except (OSError, UnicodeError) as exc:
+        raise ValueError("Model configuration cannot be read") from exc
     if not isinstance(config, dict):
         raise ValueError("Model configuration must be a mapping")
     unknown_sections = set(config) - CONFIG_SECTIONS

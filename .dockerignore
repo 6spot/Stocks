@@ -1,0 +1,34 @@
+# The Web build only needs frontend sources and its Nginx configuration.
+*
+!frontend/
+!frontend/**
+!deploy/
+deploy/*
+!deploy/nginx.conf
+
+# Never send credentials, local state, or generated files from the root context.
+**/.env
+**/.env.*
+**/.git/
+**/.svn/
+**/.idea/
+**/.vscode/
+**/node_modules/
+**/dist/
+**/coverage/
+**/.vite/
+**/*.tsbuildinfo
+**/.npmrc
+**/.pypirc
+**/*.pem
+**/*.key
+**/id_rsa*
+**/__pycache__/
+**/*.py[cod]
+**/.pytest_cache/
+**/.mypy_cache/
+**/.ruff_cache/
+**/.venv/
+**/venv/
+**/.DS_Store
+**/._*

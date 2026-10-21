@@ -746,6 +746,91 @@ def test_duplicate_trigger_returns_active_run_even_with_broken_yaml(
     assert response.json()["status"] == "queued"
 
 
+def test_trigger_returns_safe_error_when_model_configuration_is_unavailable(
+    engine, config, client, tmp_path, monkeypatch
+):
+    tmp_path.joinpath("models.yaml").write_text(
+        """
+providers:
+  default:
+    protocol: openai_compatible
+    base_url: https://private-model.invalid/v1
+    api_key: ${MODEL_API_KEY}
+    capabilities: [chat, text, structured_output]
+    timeout_seconds: 10
+models:
+  research:
+    provider: default
+    name: research-model
+    capabilities: [chat, text, structured_output]
+agents:
+  research:
+    routing:
+      primary: research
+      fallbacks: []
+      required_capabilities: [chat, structured_output]
+      timeout_seconds: 10
+      retries: 0
+""",
+        encoding="utf-8",
+    )
+    monkeypatch.delenv("MODEL_API_KEY", raising=False)
+    csrf = login(client)
+
+    response = client.post(
+        "/api/tasks/research_task/runs",
+        headers={"X-CSRF-Token": csrf},
+    )
+
+    assert response.status_code == 503
+    assert response.json() == {
+        "detail": {
+            "code": "MODEL_CONFIGURATION_UNAVAILABLE",
+            "message": (
+                "Task could not be queued because model configuration "
+                "is unavailable"
+            ),
+        }
+    }
+    assert "MODEL_API_KEY" not in response.text
+    assert "private-model.invalid" not in response.text
+    assert "Missing environment variable" not in response.text
+    with Session(engine) as session:
+        assert session.query(TaskRun).count() == 0
+
+
+@pytest.mark.parametrize("failure", ["missing", "invalid_utf8"])
+def test_trigger_returns_safe_error_when_model_configuration_cannot_be_read(
+    engine, config, client, tmp_path, failure
+):
+    models_path = tmp_path / "models.yaml"
+    if failure == "missing":
+        models_path.unlink()
+    else:
+        models_path.write_bytes(b"\xff")
+    csrf = login(client)
+
+    response = client.post(
+        "/api/tasks/research_task/runs",
+        headers={"X-CSRF-Token": csrf},
+    )
+
+    assert response.status_code == 503
+    assert response.json() == {
+        "detail": {
+            "code": "MODEL_CONFIGURATION_UNAVAILABLE",
+            "message": (
+                "Task could not be queued because model configuration "
+                "is unavailable"
+            ),
+        }
+    }
+    assert str(models_path) not in response.text
+    assert "codec" not in response.text
+    with Session(engine) as session:
+        assert session.query(TaskRun).count() == 0
+
+
 def test_run_detail_redacts_model_errors_but_keeps_locators(
     engine, config, client
 ):
@@ -1260,6 +1345,84 @@ def test_continue_uses_source_run_and_newer_scan(
     )
     assert complete.status_code == 409
     assert complete.json()["detail"]["code"] == "RUN_SCAN_COMPLETE"
+
+
+def test_continue_returns_safe_error_when_model_configuration_is_unavailable(
+    engine, config, client, tmp_path, monkeypatch
+):
+    tmp_path.joinpath("models.yaml").write_text(
+        """
+providers:
+  default:
+    protocol: openai_compatible
+    base_url: https://private-model.invalid/v1
+    api_key: ${MODEL_API_KEY}
+    capabilities: [chat, text, structured_output]
+    timeout_seconds: 10
+models:
+  research:
+    provider: default
+    name: research-model
+    capabilities: [chat, text, structured_output]
+agents:
+  research:
+    routing:
+      primary: research
+      fallbacks: []
+      required_capabilities: [chat, structured_output]
+      timeout_seconds: 10
+      retries: 0
+""",
+        encoding="utf-8",
+    )
+    monkeypatch.delenv("MODEL_API_KEY", raising=False)
+    csrf = login(client)
+    with Session(engine) as session:
+        add_task_definition(session, "research_task", task_type="research")
+        source = TaskRun(
+            task_id="research_task",
+            status="succeeded",
+            objective="Research",
+            strategy=None,
+            scope={"topics": ["macro"]},
+            config_snapshot={},
+            model_snapshot={},
+            prompt_snapshot={},
+            config_hash="a" * 64,
+            change_watermark_start=1,
+            change_watermark_end=2,
+            window_start=NOW - timedelta(hours=1),
+            window_end=NOW,
+            change_scan_completed=False,
+            change_scan_progress={"status": "page_complete"},
+            created_at=NOW,
+            finished_at=NOW,
+        )
+        session.add(source)
+        session.commit()
+        source_id = source.id
+
+    response = client.post(
+        f"/api/runs/{source_id}/continue",
+        headers={"X-CSRF-Token": csrf},
+        json={"resumed_from_run_id": str(source_id)},
+    )
+
+    assert response.status_code == 503
+    assert response.json() == {
+        "detail": {
+            "code": "MODEL_CONFIGURATION_UNAVAILABLE",
+            "message": (
+                "Task could not be queued because model configuration "
+                "is unavailable"
+            ),
+        }
+    }
+    assert "MODEL_API_KEY" not in response.text
+    assert "private-model.invalid" not in response.text
+    assert "Missing environment variable" not in response.text
+    with Session(engine) as session:
+        assert session.query(TaskRun).count() == 1
 
 
 def test_original_is_authenticated_safe_and_does_not_expose_query_secrets(

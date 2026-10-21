@@ -96,7 +96,8 @@ POST /api/processing/retry
 | 条件 | 处理 |
 | --- | --- |
 | 未认证、会话损坏或过期 | `401`，稳定错误码；能区分必需会话、无效和过期 |
-| 变更请求缺少或错配 CSRF token | `403`，不改变状态 |
+| 变更请求缺少或错配 CSRF token | `403`，不改变状态；必须先于模型配置解析 |
+| 手动触发或续扫所需模型配置不可用 | `503` + `MODEL_CONFIGURATION_UNAVAILABLE`，固定消息，不创建 Run，不回显环境变量、端点或解析器原文 |
 | 路径 id 未知，或请求的 chunk 不在该 Run 的证据包内 | `404`，稳定短消息 |
 | 包内引用解析不到 Document/Chunk 行 | `200` + `chunk_available=false` + 对应缺口；**不得改成 404 或空正文**，那会抹掉证据可见性 |
 | 请求路径 id 非 UUID | `422`（由 FastAPI 类型校验产生） |
@@ -111,7 +112,8 @@ POST /api/processing/retry
   同时 `latest_collection_states` 显示指针已前移。
 - Base：只采集未索引的 Document，报告片段仍可读，缺口含 `chunk_not_in_current_index`。
 - Bad：为了"方便"把证据解析到 `latest_document_id`；把 HTML 原件以 `text/html` 返回；
-  对象存储不可用时返回空正文或 `200`；用宽 `except Exception` 把配置错误伪装成可重试故障。
+  对象存储不可用时返回空正文或 `200`；用宽 `except Exception` 把配置错误伪装成可重试故障；
+  把缺失模型凭据的 `ValueError` 原样返回成 `500` 或异常文本。
 
 ## Tests Required
 
@@ -121,6 +123,9 @@ POST /api/processing/retry
   未配置存储 → `503` 稳定码且响应体不含 endpoint、外来 chunk → `404`、缺失行 → 缺口词表齐全。
 - 认证覆盖：公开 health/login、私有读取与原件拒绝匿名、签名/过期/损坏 Cookie、
   登录失败限流、变更 CSRF、登出，以及外部错误中的 URL/凭据不泄露。
+- 模型配置边界：手动触发和续扫在缺少环境变量或路由无效时返回稳定 `503`，
+  响应不包含变量名、端点或异常原文，且不写入新 Run；已有活跃 Run 的重复触发
+  仍先返回该 Run。
 - 恢复覆盖：重复触发返回既有 Run、重试关联原 Run、续扫创建后续 Run、
   未确认结束返回 `OWNER_CONFIRMATION_REQUIRED`，确认后才释放所有权。
 - `/api/documents` 列表对**每个版本行**都返回其 `(source_id, dedupe_key)` 的采集状态（不只是指针行），

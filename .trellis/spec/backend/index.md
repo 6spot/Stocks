@@ -9,6 +9,7 @@
 | [Worker 与调度](worker-guidelines.md) | Worker/调度/文档阶段领取、事务与 Session 新鲜度、所有权 fence、空闲等待与重试 |
 | [错误处理](error-handling.md) | 配置、外部请求、API 失败路径 |
 | [HTTP 读取接口](api-guidelines.md) | 报告/证据/原件只读路由、按引用版本读取、安全响应头与状态码 |
+| [单机 Compose 部署](deployment-guidelines.md) | 服务拓扑、同源入口、端口隔离、平台构建与部署验收 |
 | [日志](logging-guidelines.md) | 运行诊断与敏感信息处理 |
 | [质量与验证](quality-guidelines.md) | 代码审查与测试选择 |
 | [测试环境](testing-guidelines.md) | 仅限测试服务器、隔离数据库与资源清理 |

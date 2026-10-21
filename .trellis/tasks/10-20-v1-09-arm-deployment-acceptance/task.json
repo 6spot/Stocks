@@ -3,7 +3,7 @@
   "name": "v1-09-arm-deployment-acceptance",
   "title": "V1-09 ARM Compose 部署与 V1 日常运行验收",
   "description": "在目标单机环境运行受保护控制台、API 与 Worker，完成日常运行和恢复验收。",
-  "status": "planning",
+  "status": "in_progress",
   "dev_type": "fullstack",
   "scope": null,
   "package": null,
@@ -12,7 +12,7 @@
   "assignee": "me",
   "createdAt": "2026-10-20",
   "completedAt": null,
-  "branch": null,
+  "branch": "main",
   "base_branch": "main",
   "worktree_path": null,
   "commit": null,
@@ -27,15 +27,15 @@
     "docs/validation.md",
     "docs/quickstart.md"
   ],
-  "notes": "本轮仅规划；依赖写入 meta.depends_on 及规划文档，Trellis 父子关系不会自动调度。开工前复核现状和技术细节并取得该子任务的实施确认。",
+  "notes": "已完成 Compose/Nginx 生产形态、受保护同源入口和安全模型配置 503；amd64 隔离栈 smoke、Worker 单轮与 70 项定向测试通过。目标 ARM、真实 Provider/S3、真实移动设备与公网/TLS 保留 pending，详见 acceptance.md。",
   "meta": {
     "milestone": "V1",
     "kind": "delivery",
     "depends_on": [
-      ".trellis/tasks/10-20-v1-08-web-console"
+      ".trellis/tasks/archive/2026-10/10-20-v1-08-web-console"
     ],
-    "planning_review": "pending",
+    "planning_review": "completed",
     "planning_depth": "delivery-plan",
-    "implementation_authorized": false
+    "implementation_authorized": true
   }
 }

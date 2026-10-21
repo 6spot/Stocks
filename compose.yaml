@@ -1,6 +1,7 @@
 services:
   postgres:
     image: pgvector/pgvector:0.8.7-pg17-bookworm
+    platform: ${TARGET_PLATFORM:-linux/amd64}
     restart: unless-stopped
     environment:
       POSTGRES_USER: stocks
@@ -16,21 +17,29 @@ services:
     networks: [internal]
 
   api:
-    build: ./backend
+    build:
+      context: ./backend
+    platform: ${TARGET_PLATFORM:-linux/amd64}
     restart: unless-stopped
     env_file: .env
     volumes:
       - ./config:/app/config:ro
-    ports:
-      - "127.0.0.1:8000:8000"
     depends_on:
       postgres:
         condition: service_healthy
     command: ["uvicorn", "stocks.api:app", "--host", "0.0.0.0", "--port", "8000"]
     networks: [internal]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=2)"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
 
   worker:
-    build: ./backend
+    build:
+      context: ./backend
+    platform: ${TARGET_PLATFORM:-linux/amd64}
     restart: unless-stopped
     env_file: .env
     volumes:
@@ -52,8 +61,28 @@ services:
       ]
     networks: [internal]
 
+  web:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+    platform: ${TARGET_PLATFORM:-linux/amd64}
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_healthy
+    ports:
+      - "${WEB_BIND_ADDRESS:-0.0.0.0}:${WEB_PORT:-8080}:8080"
+    networks: [internal]
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
+
 volumes:
   pgdata:
+    name: ${POSTGRES_VOLUME_NAME:-stocks-pgdata}
 
 networks:
   internal:

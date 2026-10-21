@@ -75,7 +75,10 @@ V0 Run 在创建时快照 Task 的 objective、strategy、scope、步骤/Agent �
 `POST /api/runs/{run_id}/continue` 为仍有未完成扫描检查点的研究 Run 创建正常后续 Run，
 请求中的 `resumed_from_run_id` 必须再次指明同一来源 Run；
 `POST /api/runs/{run_id}/end` 与 `POST /api/processing/retry` 在涉及运行中所有权时都要求
-显式确认旧执行已停止。阶段重试只重新排队，实际执行仍由 Worker 领取。
+显式确认旧执行已停止。阶段重试只重新排队，实际执行仍由 Worker 领取。手动触发或续扫
+需要解析模型路由但环境凭据缺失、路由无效时返回 `503` +
+`MODEL_CONFIGURATION_UNAVAILABLE`，使用固定消息且不创建 Run；已有活跃 Run 的重复触发
+仍直接返回该 Run，不读取模型配置。
 所有变更请求都经过 Owner 会话和 CSRF 校验；API 不把 Run 快照、模型调用错误或
 Document 获取错误中的凭据、Provider 端点和响应正文返回给前端。
 

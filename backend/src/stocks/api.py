@@ -956,13 +956,21 @@ def trigger_task(task_id: str) -> dict:
             detail=exc.to_dict(),
         ) from exc
     with session_factory()() as session:
-        claimed = create_or_get_run(
-            session,
-            task,
-            agents,
-            config_path=config.models_config_path if agents else None,
-            triggered_by="manual",
-        )
+        try:
+            claimed = create_or_get_run(
+                session,
+                task,
+                agents,
+                config_path=config.models_config_path if agents else None,
+                triggered_by="manual",
+            )
+        except ValueError as exc:
+            logger.warning(
+                "Task queue model configuration is unavailable for task %s: %s",
+                task_id,
+                type(exc).__name__,
+            )
+            raise _model_configuration_unavailable(exc) from exc
         return {
             **_run_summary(session, claimed.run),
             "created": claimed.created,
@@ -1087,6 +1095,13 @@ def continue_task_run(run_id: UUID, payload: RunContinue) -> dict:
                 status_code=409 if exc.code != "TASK_NOT_FOUND" else 404,
                 detail=exc.to_dict(),
             ) from exc
+        except ValueError as exc:
+            logger.warning(
+                "Task queue model configuration is unavailable for run %s: %s",
+                run_id,
+                type(exc).__name__,
+            )
+            raise _model_configuration_unavailable(exc) from exc
         except ExecutionError as exc:
             raise _execution_error(exc) from exc
         return _continuation_payload(
@@ -2730,6 +2745,21 @@ def _failed_steps_preview(steps: list[TaskStepResult]) -> list[dict]:
 def _execution_error(exc: ExecutionError) -> HTTPException:
     status = 404 if exc.code == "RUN_NOT_FOUND" else 409
     return HTTPException(status_code=status, detail=exc.to_dict())
+
+
+def _model_configuration_unavailable(_exc: ValueError) -> HTTPException:
+    """Return a stable error without exposing model or environment details."""
+
+    return HTTPException(
+        status_code=503,
+        detail={
+            "code": "MODEL_CONFIGURATION_UNAVAILABLE",
+            "message": (
+                "Task could not be queued because model "
+                "configuration is unavailable"
+            ),
+        },
+    )
 
 
 def _continuation_payload(
