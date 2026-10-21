@@ -3,7 +3,7 @@
   "name": "v2-03-source-conflicts",
   "title": "V2-03 来源独立性与冲突证据呈现",
   "description": "研究区分同源转载、独立观点和口径冲突，避免报道数量制造虚假确定性。",
-  "status": "planning",
+  "status": "in_progress",
   "dev_type": "fullstack",
   "scope": null,
   "package": null,
@@ -26,15 +26,15 @@
     "docs/data.md",
     "docs/validation.md"
   ],
-  "notes": "本轮仅规划；依赖写入 meta.depends_on 及规划文档，Trellis 父子关系不会自动调度。开工前复核现状和技术细节并取得该子任务的实施确认。",
+  "notes": "Owner 已授权按 V2 任务列表逐个实施。范围：只按来源声明的原件合并（canonical 链接 / 文章绝对地址 / feed 绝对 http(s) id）、未知来源如实记为未知、同指标冲突值与不同口径并列且不平均不覆盖不标为已核实；不做事件关系库 / 来源真值评分 / 独立核查平台。实现：新增 stocks.origins（canonical 解析 + URL 归一化 + document_origin/origin_key）、采集写入 Document.extra.origin、feed 声明来源作为 declared_sources、repository.document_origins()、research/evidence 的 EvidenceGroup.origin / group_origins() / metric_comparisons()、覆盖新增 origin_group_count / merged_origin_group_count / origin_groups / metric_comparisons、render_report() 确定性 Sources and Conflicts 段落、报告详情接口 origin_id/origin/metric_comparisons、Web 报告页来源独立性与同指标对比卡片；evidence_packages 增加 metric_comparisons JSONB（改 0001 初始化定义，不做增量迁移）。验证（测试服务器 100.120.14.84 隔离目录 /tmp/stocks-v2-03-source-conflicts + 独立 postgres 55440 + 自有 seaweedfs bucket 18337）：test_evidence_conflicts 13 passed、test_collection+test_incremental_evidence 56 passed、test_report_api+test_research+test_execution 78 passed；全新空库 alembic upgrade head + check 通过；前端 typecheck 通过、vitest 6 文件 12 tests passed；真实来源核对 Fed/SEC 公开 RSS 各 20 条条目得到 20 个互不相同的原件键（无误合并），SEC 真实新闻页声明 canonical → canonical_url，Fed 页面无 canonical → article_url。待 Owner 验收（不阻塞）：真实转载成对样例与真实同指标冲突值。",
   "meta": {
     "milestone": "V2",
     "kind": "delivery",
     "depends_on": [
       ".trellis/tasks/10-20-v1-09-arm-deployment-acceptance"
     ],
-    "planning_review": "pending",
+    "planning_review": "approved",
     "planning_depth": "delivery-plan",
-    "implementation_authorized": false
+    "implementation_authorized": true
   }
 }

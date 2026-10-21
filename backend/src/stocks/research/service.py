@@ -30,12 +30,14 @@ from stocks.models import (
     EvidencePackage,
     Fact,
 )
-from stocks.repository import current_document_hits
+from stocks.repository import current_document_hits, document_origins
 from stocks.research.evidence import (
     HISTORICAL_CONTEXT,
     NEW_INFORMATION,
     EvidenceCollector,
+    group_origins,
     mark_conflicting_facts,
+    metric_comparisons,
 )
 from stocks.providers import (
     EmbeddingResponse,
@@ -428,6 +430,19 @@ def select_evidence(
         )
 
     groups = collector.groups()
+    # Origins are read once for every selected Document, then reused by the
+    # groups, the origin clusters and the report, so one declaration cannot be
+    # counted two different ways.
+    origins = document_origins(session, [group.document_id for group in groups])
+    for group in groups:
+        group.origin = origins.get(group.document_id)
+    origin_groups = group_origins(groups)
+    comparisons = metric_comparisons(groups)
+    origin_membership = {
+        document_id: (item.origin_id, len(item.document_ids))
+        for item in origin_groups
+        for document_id in item.document_ids
+    }
     for group in groups:
         for index, chunk in enumerate(group.chunks, start=1):
             ref = _selected_chunk_ref(
@@ -442,10 +457,20 @@ def select_evidence(
             ref["estimated_tokens"] = estimate_tokens(chunk.text)
             ref["chunk_ids"] = group.chunk_ids
             ref["fact_ids"] = group.fact_ids
+            membership = origin_membership.get(group.document_id)
+            if membership is not None:
+                ref["origin_id"] = membership[0]
             ref["reasons"] = list(dict.fromkeys(group.reasons))
             ref["kinds"] = list(group.kinds)
             selected.append(ref)
-    evidence_groups = [group.to_ref() for group in groups]
+    origin_refs = [item.to_ref() for item in origin_groups]
+    evidence_groups = []
+    for group in groups:
+        ref = group.to_ref()
+        membership = origin_membership.get(group.document_id)
+        if membership is not None:
+            ref["origin_id"], ref["origin_group_size"] = membership
+        evidence_groups.append(ref)
     # Counts describe what the queries actually did. ``candidates_discovered``
     # stays unknown as soon as a bounded query (or the raw change page) may hide
     # more material; an empty ``unexamined_count`` means the pool is unknown,
@@ -470,7 +495,15 @@ def select_evidence(
         "candidates_screened": candidates_screened,
         "selected_count": len(selected),
         "evidence_group_count": len(evidence_groups),
+        # Documents that declared the same original count once. The report must
+        # use these two counts, never the material count, as independent support.
+        "origin_group_count": len(origin_groups),
+        "merged_origin_group_count": sum(
+            item["merged"] for item in origin_refs
+        ),
+        "origin_groups": origin_refs,
         "fact_count": collector.fact_count,
+        "metric_comparisons": comparisons,
         "filtered_out_count": filtered_out,
         "unexamined_count": unexamined_total,
         "retrieval_truncated": retrieval_truncated,
@@ -519,6 +552,7 @@ def select_evidence(
         queries=query_records,
         selected_chunks=selected,
         evidence_groups=evidence_groups,
+        metric_comparisons=comparisons,
         coverage=coverage,
         candidates_discovered=coverage["candidates_discovered"],
         candidates_screened=coverage["candidates_screened"],
@@ -1100,6 +1134,105 @@ def validate_analysis_content(
     return normalized_findings, list(raw_questions)
 
 
+MAX_REPORT_ORIGIN_GROUPS = 20
+MAX_REPORT_COMPARISONS = 20
+
+
+def _independence_section(
+    analysis: Analysis, metric_comparisons: list[dict]
+) -> list[str]:
+    """Deterministic source-independence and conflict text.
+
+    The Research Agent may describe these facts, but the numbers and the
+    published values must never depend on the model returning them: a report
+    always shows how many independent originals the selection reached, which
+    documents were confirmed as the same original, and every same-metric value
+    that disagrees. Nothing is averaged and nothing is marked verified.
+    """
+
+    coverage = analysis.coverage if isinstance(analysis.coverage, dict) else {}
+    groups = [
+        item
+        for item in coverage.get("origin_groups") or []
+        if isinstance(item, dict)
+    ]
+    lines = ["", "## Sources and Conflicts", ""]
+    if not groups:
+        lines.append(
+            "No origin declaration was recorded for this selection, so the "
+            "number of independent originals is unknown rather than equal to "
+            "the number of documents."
+        )
+    else:
+        merged = [item for item in groups if item.get("merged")]
+        lines.append(
+            f"Independent originals: {len(groups)} covering "
+            f"{sum(int(item.get('document_count') or 0) for item in groups)} "
+            "document version(s)."
+        )
+        if merged:
+            lines.append(
+                "Confirmed reprints of one original are counted once "
+                f"({len(merged)} group(s)); their copies stay open below."
+            )
+        for item in groups[:MAX_REPORT_ORIGIN_GROUPS]:
+            if not item.get("merged"):
+                continue
+            sources = ", ".join(str(value) for value in item.get("source_ids") or [])
+            lines.append(
+                f"- {item.get('origin_id')}: {item.get('document_count')} "
+                f"document(s) from {sources or 'unknown sources'} — the same "
+                f"original by {item.get('kind')} {item.get('url') or ''}".rstrip()
+            )
+        if len(groups) > MAX_REPORT_ORIGIN_GROUPS:
+            lines.append(
+                f"- … {len(groups) - MAX_REPORT_ORIGIN_GROUPS} more origin "
+                "group(s) stay in the Evidence Package."
+            )
+    lines.extend(["", "Same-metric values:"])
+    if not metric_comparisons:
+        lines.append(
+            "No two selected Facts describe the same metric, so no comparison "
+            "was possible."
+        )
+    for item in metric_comparisons[:MAX_REPORT_COMPARISONS]:
+        flags = [
+            label
+            for label, flag in (
+                ("values differ", item.get("value_conflict")),
+                ("basis differs", item.get("basis_mismatch")),
+                ("periods differ", item.get("period_mismatch")),
+            )
+            if flag
+        ]
+        lines.append(
+            f"- {item.get('metric_id')} "
+            f"({item.get('symbol') or item.get('subject_name') or 'unlabelled'}): "
+            + ", ".join(flags or ["consistent"])
+        )
+        for fact in item.get("facts") or []:
+            lines.append(
+                "  - "
+                f"{fact.get('value')} {fact.get('unit') or ''}"
+                + (f" {fact['currency']}" if fact.get("currency") else "")
+                + f" · period {fact.get('period_start') or 'unknown'} – "
+                f"{fact.get('period_end') or 'unknown'}"
+                f" · available {fact.get('available_at') or 'unknown'}"
+                f" · document {fact.get('document_id')}"
+            )
+    if len(metric_comparisons) > MAX_REPORT_COMPARISONS:
+        lines.append(
+            f"- … {len(metric_comparisons) - MAX_REPORT_COMPARISONS} more "
+            "comparison(s) stay in the Evidence Package."
+        )
+    if metric_comparisons:
+        lines.append(
+            "Conflicting or differently based values are listed as published; "
+            "none of them is averaged, overwritten or marked verified."
+        )
+    return lines
+
+
 def render_report(
     *,
     title: str,
@@ -1107,6 +1240,7 @@ def render_report(
     scope: dict,
     as_of: datetime,
     analysis: Analysis,
+    metric_comparisons: list[dict] | None = None,
 ) -> str:
     """Render the readable Report deterministically from the saved Analysis."""
     lines = [
@@ -1149,6 +1283,7 @@ def render_report(
         lines.extend(f"- {question}" for question in analysis.open_questions)
     else:
         lines.append("None identified from the selected evidence.")
+    lines.extend(_independence_section(analysis, metric_comparisons or []))
     gaps = analysis.coverage.get("gaps", [])
     lines.extend(["", "## Coverage", ""])
     if gaps:

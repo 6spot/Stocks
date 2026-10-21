@@ -26,6 +26,10 @@ class FeedItem:
     summary: str | None
     published_at: datetime | None
     source_updated_at: datetime | None
+    # Syndication labels the entry itself declares (RSS ``<source url>`` or the
+    # Atom ``atom:source`` block). Recorded as provenance, never used to merge
+    # two articles: one channel publishes many different ones.
+    declared_sources: tuple[dict, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -160,7 +164,34 @@ def _parse_entry(
         summary=summary,
         published_at=published,
         source_updated_at=updated,
+        declared_sources=_declared_sources(entry, is_atom),
     )
+
+
+def _declared_sources(
+    entry: ElementTree.Element, is_atom: bool
+) -> tuple[dict, ...]:
+    """Bounded syndication labels from the entry, or an empty tuple."""
+
+    output: list[dict] = []
+    seen: set[tuple[str, str]] = set()
+    for element in _children(entry, "source"):
+        if is_atom:
+            name = (_text(element, "title") or "").strip()
+            url = (_atom_link(element) or _text(element, "id") or "").strip()
+        else:
+            name = (element.text or "").strip()
+            url = (element.get("url") or "").strip()
+        if not name and not url:
+            continue
+        key = (name, url)
+        if key in seen:
+            continue
+        seen.add(key)
+        output.append({"name": name, "url": url})
+        if len(output) >= 5:
+            break
+    return tuple(output)
 
 
 def _atom_link(entry: ElementTree.Element) -> str | None:

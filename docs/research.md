@@ -111,7 +111,13 @@ V0 当前实现使用每次 Run 一份持久 Evidence Package：保存 objective
 
 统计同时记录 `candidates_discovered`、`candidates_screened`、`selected_count`（实际选入的 Chunk 数）、`evidence_group_count`（合并后的证据链组数）、`filtered_out_count`（已筛选但未入选）与 `unexamined_count`（未扫描）。筛选后未入选与未扫描分开表达；任一查询或原始变化页触顶时 `candidates_discovered` / `unexamined_count` 保持 `null`，不填 0。`selected_count` 与 `evidence_group_count` 不同正是转载/合并后的结果，报告不能把组数当作独立来源数。分类失败不参与召回过滤：只要存在可读当前 Chunk 或结构化 Fact，资料仍可进入研究。
 
-纯结构化 API 响应（无可用 Chunk）只以 Fact 组出现，`ref` 为 `null` 并保留每个 Fact 的 `evidence_ref`。当前仍未实现跨 Document 的转载识别、高级跨源冲突解释与历史报告比较 UI。
+纯结构化 API 响应（无可用 Chunk）只以 Fact 组出现，`ref` 为 `null` 并保留每个 Fact 的 `evidence_ref`。仅凭标题或向量相似不做转载合并；V2-03 起按来源自己声明的原件合并，见下。历史报告比较 UI 仍未实现。
+
+**V2-03 当前实现：** 采集时把来源声明的原件记在 Document 内容版本上（[来源声明](data.md#来源关联去重与政策资料)），取材阶段只用这个声明合并，不做相似度猜测。`document_origins()` 一次读回本次选中 Document 的声明，`group_origins()` 据此把多份资料归为一个 **origin group**：`coverage.origin_groups[]` 记录 `origin_id`、`kind`、`key`、`url`、`declared_sources`、`document_ids`、`source_ids`、`document_count`、固定的 `independent_source_count = 1` 与 `merged`；每条 `selected_chunks[]` 与 `evidence_groups[]` 另带 `origin_id`（组内还有 `origin_group_size`），所以报告和证据详情既能说明「这是同一原件」，也仍能逐份打开各副本。覆盖统计新增 `origin_group_count` 与 `merged_origin_group_count`：`selected_count`、`evidence_group_count`、`origin_group_count` 是三个不同数量，报告不能用前两个冒充独立来源数。**没有声明的资料记为 `kind = single_document`、`key = document:<id>`，表示来源关系未知，不等于已确认唯一。**
+
+**同指标比较（V2-03）：** Evidence Package 另存 `metric_comparisons[]`。同一 `(subject_name, symbol, metric_id)` 出现两个及以上 Fact 时生成一条对比，分别标记 `value_conflict`（同一 unit/currency/观测期下取值不同）、`basis_mismatch`（单位或币种不同）与 `period_mismatch`（观测期不同），并逐个列出各来源的 `value`、`unit`、`currency`、`period_start`、`period_end`、`available_at`、`statement` 与 `document_id`。同一个 Fact 在 `evidence_groups[].fact_refs` 中带上 `comparison_id` 与三个标记，模型输入与报告看到的是并列值本身。**不做平均、不做静默覆盖、不把冲突或未确认值标为已核实**；只有一条 Fact 的指标不生成对比，也不因此被判定为「已核实」。
+
+**报告呈现（V2-03）：** `render_report()` 在 Coverage 之前确定性生成 `## Sources and Conflicts`：先写本次选中的独立原件数与覆盖的 Document 版本数、列出确认同源的合并组，再逐个列出同指标取值与差异类型，并明确说明这些值按发布原样并列、未平均、未标记已核实。该段落来自已保存的 Evidence Package 与 Analysis.coverage，不依赖模型输出；模型只负责解释影响与不确定性。段落在 20 个 origin group / 20 条对比处截断，其余仍保存在 Evidence Package 中。
 
 **V2-01 起的可引用边界：** 补充检索取得的资料只有在统一入库、解析并成为持久 Chunk 后才能支撑 finding；Fact-only 的补充组（例如纯 JSON 响应）仍进入证据组与覆盖统计，但不能作为引用对象，相关内容只能以 open questions 或覆盖说明表达。该限制对初始选择与补充输入一视同仁。
 

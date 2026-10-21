@@ -115,7 +115,14 @@ agents:
       Analyze only the supplied saved evidence. Distinguish facts from
       source opinions and model inference. Mention coverage gaps, and return
       concise structured findings with the exact evidence references used by
-      each finding.
+      each finding. Count independent originals, not documents: evidence listed
+      in one coverage.origin_groups entry is a single source, so more copies of
+      it never make a finding more certain, and material whose origin is unknown
+      stays unknown. When coverage.metric_comparisons lists same-metric values,
+      state each published value with its unit and observation period side by
+      side, never an average, and never call a conflict or an unconfirmed value
+      verified. Report important counter-evidence and unresolved relationships
+      as they are.
     model_ref: research
     tools: []
     input_schema:

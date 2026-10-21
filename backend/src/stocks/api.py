@@ -1998,6 +1998,7 @@ def _package_payload(package: EvidencePackage) -> dict:
         "selection_policy_version": package.selection_policy_version,
         "selection_budget": package.selection_budget,
         "queries": _safe_external_payload(package.queries),
+        "metric_comparisons": _safe_external_payload(package.metric_comparisons),
         "coverage": _safe_external_payload(package.coverage),
         "candidates_discovered": package.candidates_discovered,
         "candidates_screened": package.candidates_screened,
@@ -2225,6 +2226,9 @@ def _resolve_evidence(
                 ),
                 "role": item.get("role"),
                 "reason": item.get("reason"),
+                # The confirmed-origin cluster this Document belongs to, so a
+                # reader can see that several entries are one original.
+                "origin_id": item.get("origin_id"),
                 "similarity": item.get("similarity"),
                 "query_rank": item.get("query_rank"),
                 "estimated_tokens": item.get("estimated_tokens"),
@@ -2239,6 +2243,9 @@ def _resolve_evidence(
                 "parse_state": _parse_state(parse_state),
                 "embedding_state": embedding_state,
                 "document": payload,
+                "origin": _safe_external_payload(
+                    document.extra.get("origin") if document is not None else None
+                ),
                 "original": _original_descriptor(config, document),
                 "is_current_collection_pointer": bool(
                     state is not None and str(state.latest_document_id) == payload["id"]

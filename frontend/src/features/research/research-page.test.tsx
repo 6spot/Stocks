@@ -138,6 +138,106 @@ describe("ReportReader", () => {
     ).toBeTruthy();
   });
 
+  it("counts confirmed reprints once and lists conflicting values as published", async () => {
+    const origin = {
+      kind: "canonical_url",
+      key: "canonical_url:https://origin.example/story",
+      url: "https://origin.example/story",
+      declared_sources: [{ name: "Wire", url: "https://wire.example/feed" }],
+    };
+    reportMock.mockResolvedValue({
+      ...report,
+      evidence_package: {
+        ...report.evidence_package,
+        coverage: {
+          evidence_group_count: 3,
+          origin_group_count: 1,
+          merged_origin_group_count: 1,
+          origin_groups: [
+            {
+              origin_id: "origin-1",
+              kind: "canonical_url",
+              key: "canonical_url:https://origin.example/story",
+              url: "https://origin.example/story",
+              source_ids: ["wire", "mirror"],
+              document_count: 2,
+              merged: true,
+            },
+          ],
+        },
+        metric_comparisons: [
+          {
+            comparison_id: "comparison-1",
+            subject_name: "US CPI",
+            symbol: null,
+            metric_id: "cpi_yoy",
+            value_conflict: true,
+            basis_mismatch: false,
+            period_mismatch: false,
+            fact_count: 2,
+            units: ["percent"],
+            facts: [
+              {
+                fact_id: "f1",
+                document_id: "d1",
+                value: 2.4,
+                unit: "percent",
+                currency: null,
+                period_start: null,
+                period_end: "2026-09-30T00:00:00Z",
+                available_at: "2026-10-20T01:00:00Z",
+                statement: "The bureau reported 2.4 percent.",
+              },
+              {
+                fact_id: "f2",
+                document_id: "d2",
+                value: 3.1,
+                unit: "percent",
+                currency: null,
+                period_start: null,
+                period_end: "2026-09-30T00:00:00Z",
+                available_at: "2026-10-20T01:00:00Z",
+                statement: "A commentary reported 3.1 percent.",
+              },
+            ],
+            note: "Values are listed as published.",
+          },
+        ],
+      },
+      evidence: [
+        { ...report.evidence[0], origin_id: "origin-1", origin },
+        {
+          ...report.evidence[0],
+          chunk_id: "c2",
+          document_id: "d2",
+          origin_id: "origin-1",
+          origin,
+          document: { ...report.evidence[0].document, id: "d2" },
+        },
+      ],
+    });
+    render(
+      <MemoryRouter>
+        <ReportReader reportId="r1" />
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByText("来源独立性")).toBeVisible();
+    expect(screen.getByText("1 个独立原件")).toBeVisible();
+    expect(screen.getByText("1 个")).toBeVisible();
+    // Both copies stay open, each labelled as the same original.
+    expect(screen.getAllByText("同一原件（2 份）")).toHaveLength(2);
+    expect(screen.getAllByText(/页面声明的 canonical 链接/)).toHaveLength(2);
+    expect(
+      screen.getByText(/这些副本仍分别列在下方证据包中/),
+    ).toBeVisible();
+
+    expect(screen.getByText("同指标取值对比")).toBeVisible();
+    expect(screen.getByText("数值冲突")).toBeVisible();
+    expect(screen.getByText("2.4 percent")).toBeVisible();
+    expect(screen.getByText("3.1 percent")).toBeVisible();
+  });
+
   it("renders report HTML-looking content as plain text", async () => {
     reportMock.mockResolvedValue({
       ...report,

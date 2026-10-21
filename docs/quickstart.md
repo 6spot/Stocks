@@ -391,7 +391,17 @@ routing, and `config/sources.yaml` defines Sources. A Task is either:
   distinguishes `candidates_discovered`, `candidates_screened`, `selected_count`
   (Chunks), `evidence_group_count` (chains), `filtered_out_count` (screened but not
   chosen) and `unexamined_count` (not scanned; `null` when the bounded pool is unknown).
-  Cross-Document reprint detection is not implemented. It does not collect, parse,
+  V2-03 adds `origin_group_count` / `merged_origin_group_count` and the
+  `origin_groups[]` / `metric_comparisons[]` detail: Documents that declared the same
+  canonical link, article URL or absolute feed id count once as an independent
+  original, every copy keeps its own citation and original bytes, a Document whose
+  source declared nothing is reported as unknown (`single_document`), and same-metric
+  values are listed side by side with `value_conflict` / `basis_mismatch` /
+  `period_mismatch` flags instead of being averaged or marked verified. The stored
+  Report ends with a deterministic `## Sources and Conflicts` section built from the
+  saved Evidence Package, not from model text. Reprint merging is limited to what the
+  sources themselves declared; title or vector similarity never merges anything.
+  It does not collect, parse,
   or index Documents, and it does not call external Tools unless its Agent declares an
   authorized `tools` list. The Agent input is untrusted JSON data. A research Agent may
   name only ids that are `enabled` in `config/tools.yaml`; an unconfigured, disabled,

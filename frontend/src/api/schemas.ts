@@ -609,6 +609,13 @@ export const factSchema = z
     attributes: z.unknown(),
     processor_version: nullableString,
     created_at: nullableString,
+    // V2-03 comparison flags: the same Fact may be listed beside another value
+    // or beside a different basis instead of being merged with it.
+    comparison_id: nullableString.optional(),
+    conflict: z.boolean().optional(),
+    value_conflict: z.boolean().optional(),
+    basis_mismatch: z.boolean().optional(),
+    period_mismatch: z.boolean().optional(),
   })
   .passthrough();
 
@@ -624,6 +631,76 @@ export const reportListItemSchema = recentReportSchema.extend({
 export type ReportListItem = z.infer<typeof reportListItemSchema>;
 
 export const reportsResponseSchema = pageSchema(reportListItemSchema);
+
+export const documentOriginSchema = z
+  .object({
+    kind: z.string(),
+    key: z.string(),
+    url: nullableString,
+    declared_sources: z
+      .array(z.object({ name: z.string(), url: z.string() }).passthrough())
+      .optional(),
+  })
+  .passthrough();
+
+export type DocumentOrigin = z.infer<typeof documentOriginSchema>;
+
+export const originGroupSchema = z
+  .object({
+    origin_id: z.string(),
+    kind: z.string(),
+    key: z.string(),
+    url: nullableString,
+    source_ids: z.array(z.string()),
+    document_count: z.number().int().positive(),
+    merged: z.boolean(),
+  })
+  .passthrough();
+
+export type OriginGroup = z.infer<typeof originGroupSchema>;
+
+// Only the independence counts this page shows are parsed; the rest of the
+// stored coverage stays available as-is.
+export const evidenceCoverageSchema = z
+  .object({
+    evidence_group_count: nullableNumber.optional(),
+    origin_group_count: nullableNumber.optional(),
+    merged_origin_group_count: nullableNumber.optional(),
+    origin_groups: z.array(originGroupSchema).optional(),
+  })
+  .passthrough();
+
+export const metricComparisonFactSchema = z
+  .object({
+    fact_id: nullableString,
+    document_id: nullableString,
+    value: z.unknown(),
+    unit: nullableString,
+    currency: nullableString,
+    period_start: nullableString,
+    period_end: nullableString,
+    available_at: nullableString,
+    statement: nullableString,
+  })
+  .passthrough();
+
+export const metricComparisonSchema = z
+  .object({
+    comparison_id: z.string(),
+    subject_name: nullableString,
+    symbol: nullableString,
+    metric_id: z.string(),
+    value_conflict: z.boolean(),
+    basis_mismatch: z.boolean(),
+    period_mismatch: z.boolean(),
+    fact_count: z.number().int().nonnegative(),
+    units: z.array(z.string()),
+    facts: z.array(metricComparisonFactSchema),
+    note: nullableString,
+  })
+  .passthrough();
+
+export type MetricComparison = z.infer<typeof metricComparisonSchema>;
 
 export const evidenceDocumentSchema = documentSummarySchema.partial().extend({
   id: z.string(),
@@ -653,6 +730,8 @@ export const reportEvidenceSchema = z
     reasons: z.array(z.string()).optional(),
     fact_ids: z.array(z.string()).optional(),
     facts: z.array(factSchema).optional(),
+    origin_id: nullableString.optional(),
+    origin: documentOriginSchema.nullable().optional(),
     chunk_available: z.boolean(),
     text: nullableString,
     locator: z.unknown(),
@@ -702,6 +781,7 @@ export const reportDetailSchema = z
         selection_budget: z.unknown(),
         queries: z.unknown(),
         coverage: z.unknown(),
+        metric_comparisons: z.array(metricComparisonSchema).optional(),
         candidates_discovered: nullableNumber,
         candidates_screened: nullableNumber,
         selected_count: z.number().int().nonnegative(),

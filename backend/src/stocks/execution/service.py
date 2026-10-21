@@ -659,6 +659,7 @@ def _copy_evidence_package(
         queries=deepcopy(package.queries),
         selected_chunks=deepcopy(package.selected_chunks),
         evidence_groups=deepcopy(package.evidence_groups),
+        metric_comparisons=deepcopy(package.metric_comparisons),
         coverage=deepcopy(package.coverage),
         candidates_discovered=package.candidates_discovered,
         candidates_screened=package.candidates_screened,
@@ -2666,6 +2667,7 @@ def _analysis_and_report(
             scope=run.scope,
             as_of=package.as_of,
             analysis=analysis,
+            metric_comparisons=package.metric_comparisons,
         ),
         created_at=created_at,
     )

@@ -20,6 +20,7 @@ from stocks.collection.http import (
     SafeFetcher,
 )
 from stocks.models import DocumentCollectionState, Source
+from stocks.origins import document_origin
 from stocks.repository import (
     DocumentInput,
     get_collection_state,
@@ -235,6 +236,15 @@ def collect_source(
             summary=item.summary,
             completeness=completeness,
             fetch_error=fetch_error.to_dict() if fetch_error else None,
+            # What the sources declared about this original, so reprints of one
+            # article can be grouped later without guessing from similarity.
+            origin=document_origin(
+                article_url=item.article_url,
+                payload=payload,
+                content_type=content_type,
+                declared=list(item.declared_sources),
+                external_id=item.external_id,
+            ),
         )
         try:
             ingested = ingest_document(session, config, item_input, store=store)

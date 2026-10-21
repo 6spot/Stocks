@@ -24,6 +24,7 @@ from stocks.models import (
     Source,
 )
 from stocks.changes import record_change
+from stocks.origins import origin_key
 from stocks.processing.stages import (
     STAGE_INDEX,
     STAGE_PARSE,
@@ -52,6 +53,9 @@ class DocumentInput:
     summary: str | None = None
     completeness: str = "complete"
     fetch_error: dict | None = None
+    # Explicit origin declaration for this Document (see ``stocks.origins``).
+    # Stored on the content version; it is provenance, never a similarity score.
+    origin: dict | None = None
 
 
 @dataclass(frozen=True)
@@ -170,6 +174,8 @@ def ingest_document(
         raise ValueError("partial content must include fetch_error")
     if item.completeness == "complete" and item.fetch_error is not None:
         raise ValueError("complete content must not include fetch_error")
+    if item.origin is not None and origin_key(item.origin) is None:
+        raise ValueError("origin must declare a supported kind and key")
 
     content_hash = hashlib.sha256(item.payload).hexdigest()
     rows = _document_rows(session, item)
@@ -212,6 +218,9 @@ def ingest_document(
         content_hash=content_hash,
         snapshot_key=object_key,
         trust_tier_snapshot=source.trust_tier,
+        # Origin lives with the content version it describes: extra is per
+        # version, so a corrected declaration never rewrites history.
+        extra={"origin": deepcopy(item.origin)} if item.origin else {},
     )
     session.add(document)
     try:
@@ -279,6 +288,27 @@ def _document_rows(session: Session, item: DocumentInput) -> list[Document]:
             .order_by(Document.version.desc())
         ).all()
     )
+
+
+def document_origins(
+    session: Session, document_ids: list[UUID]
+) -> dict[UUID, dict | None]:
+    """Read the stored origin declaration of each Document version.
+
+    Origin lives in ``extra`` because it describes that content version; a
+    declaration is only ever read back, never inferred from title or similarity.
+    """
+
+    if not document_ids:
+        return {}
+    rows = session.execute(
+        select(Document.id, Document.extra).where(Document.id.in_(document_ids))
+    ).all()
+    origins: dict[UUID, dict | None] = {}
+    for document_id, extra in rows:
+        origin = extra.get("origin") if isinstance(extra, dict) else None
+        origins[document_id] = origin if isinstance(origin, dict) else None
+    return origins
 
 
 def get_document(session: Session, document_id: UUID) -> Document | None:

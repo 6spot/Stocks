@@ -9,9 +9,14 @@ of material twice.
 A *group* is one Document version plus the structured Facts derived from it. The
 report still cites a stored Chunk, because a Fact must be traceable to the bytes
 that produced it; the Facts are attached to that group so a Document and its Fact
-are never counted as independent support. Only a same-Document relationship is
-merged here: fuzzy duplicate detection from titles or vector similarity is
-deliberately absent.
+are never counted as independent support.
+
+Two merges exist and both stay deterministic. Documents that are the same
+evidence chain merge by identity. Documents that declare the same original — a
+canonical link, the same article URL, or the same absolute feed id — merge into
+one *origin group*, so a syndicated article never looks like several independent
+confirmations. Fuzzy duplicate detection from titles or vector similarity is
+deliberately absent, and Facts that disagree are compared, never averaged.
 """
 from __future__ import annotations
 
@@ -22,6 +27,7 @@ from typing import Literal
 from uuid import UUID
 
 from stocks.models import Fact
+from stocks.origins import origin_key
 from stocks.repository import SearchHit
 
 NEW_INFORMATION = "new_information"
@@ -45,6 +51,9 @@ class EvidenceGroup:
     # material; ``role`` above describes whether it is new or historical. Keeping
     # both lets a background query still surface a genuinely new change.
     match_role: str | None = None
+    # Explicit origin declaration of this Document version, when the source made
+    # one. ``None`` means "no confirmed original", never "probably unique".
+    origin: dict | None = None
     kinds: list[str] = field(default_factory=list)
     watermark: int | None = None
     chunks: list[SearchHit] = field(default_factory=list)
@@ -99,6 +108,7 @@ class EvidenceGroup:
             "fact_refs": deepcopy(self.facts),
             "chunk_count": len(self.chunks),
             "fact_count": len(self.facts),
+            "origin": deepcopy(self.origin),
         }
 
 
@@ -125,6 +135,7 @@ class EvidenceCollector:
         facts: list[dict] | None = None,
         kinds: tuple[str, ...] | list[str] = (),
         watermark: int | None = None,
+        origin: dict | None = None,
     ) -> EvidenceGroup:
         group = self._groups.get(hit.document_id)
         if group is None:
@@ -136,6 +147,7 @@ class EvidenceCollector:
                 document_version=hit.version,
                 published_at=hit.published_at,
                 collected_at=hit.collected_at,
+                origin=deepcopy(origin),
             )
             self._groups[hit.document_id] = group
         if hit.chunk_id not in self._chunk_ids:
@@ -172,6 +184,7 @@ class EvidenceCollector:
         facts: list[dict],
         kinds: tuple[str, ...] | list[str] = (),
         watermark: int | None = None,
+        origin: dict | None = None,
     ) -> EvidenceGroup | None:
         """Keep structured evidence whose Document has no readable current Chunk.
 
@@ -193,6 +206,7 @@ class EvidenceCollector:
                 published_at=published_at,
                 collected_at=collected_at,
                 reasons=["new_structured_evidence"],
+                origin=deepcopy(origin),
             )
             self._groups[document_id] = group
         self.add_facts(group, facts)
@@ -258,6 +272,196 @@ class EvidenceCollector:
     @property
     def fact_count(self) -> int:
         return len(self._fact_ids)
+
+
+@dataclass
+class OriginGroup:
+    """Documents that declared the same original, presented as one source.
+
+    The group never replaces the material: every Document keeps its own Chunks,
+    Facts and original bytes, so a reader can still open each copy. It only says
+    how many *independent originals* the selection actually reached.
+    """
+
+    origin_id: str
+    kind: str
+    key: str
+    url: str | None
+    declared_sources: list[dict] = field(default_factory=list)
+    document_ids: list[UUID] = field(default_factory=list)
+    source_ids: list[str] = field(default_factory=list)
+
+    def to_ref(self) -> dict:
+        return {
+            "origin_id": self.origin_id,
+            "kind": self.kind,
+            "key": self.key,
+            "url": self.url,
+            "declared_sources": deepcopy(self.declared_sources),
+            "document_ids": [str(value) for value in self.document_ids],
+            "source_ids": list(dict.fromkeys(self.source_ids)),
+            "document_count": len(self.document_ids),
+            "independent_source_count": 1,
+            "merged": len(self.document_ids) > 1,
+        }
+
+
+def group_origins(groups: list[EvidenceGroup]) -> list[OriginGroup]:
+    """One group per confirmed original, in the order the groups were ranked.
+
+    A Document whose source declared nothing keeps its own group keyed by its
+    Document id: "no declaration" is reported as unknown, never as unique.
+    """
+
+    collected: dict[str, OriginGroup] = {}
+    order: list[str] = []
+    for group in groups:
+        key = origin_key(group.origin)
+        if key is None:
+            kind = "single_document"
+            key = f"document:{group.document_id}"
+            url = None
+            declared: list[dict] = []
+        else:
+            kind = str(group.origin["kind"])
+            url = group.origin.get("url")
+            declared = list(group.origin.get("declared_sources") or [])
+        entry = collected.get(key)
+        if entry is None:
+            entry = OriginGroup(
+                origin_id=f"origin-{len(order) + 1}",
+                kind=kind,
+                key=key,
+                url=url,
+                declared_sources=declared,
+            )
+            collected[key] = entry
+            order.append(key)
+        if group.document_id not in entry.document_ids:
+            entry.document_ids.append(group.document_id)
+        if group.source_id not in entry.source_ids:
+            entry.source_ids.append(group.source_id)
+    return [collected[key] for key in order]
+
+
+@dataclass(frozen=True)
+class _FactBasis:
+    value: object
+    unit: str | None
+    currency: str | None
+    period_start: object
+    period_end: object
+
+
+def metric_comparisons(groups: list[EvidenceGroup]) -> list[dict]:
+    """Compare same-metric Facts across the whole selection, side by side.
+
+    A differing value with an identical basis, a different basis (unit or
+    currency), and a different observation period are separate flags on one
+    entry. Nothing is averaged, overwritten or marked resolved: the entry only
+    states what the selected originals actually said.
+    """
+
+    by_metric: dict[tuple, list[tuple[dict, _FactBasis]]] = {}
+    order: list[tuple] = []
+    for group in groups:
+        for item in group.facts:
+            metric_id = item.get("metric_id")
+            if not metric_id:
+                continue
+            identity = (
+                item.get("subject_name"),
+                item.get("symbol"),
+                metric_id,
+            )
+            if identity not in by_metric:
+                by_metric[identity] = []
+                order.append(identity)
+            attributes = item.get("attributes")
+            currency = (
+                attributes.get("currency")
+                if isinstance(attributes, dict)
+                else None
+            )
+            basis = _FactBasis(
+                value=item.get("value"),
+                unit=item.get("unit"),
+                currency=currency if isinstance(currency, str) else None,
+                period_start=item.get("period_start"),
+                period_end=item.get("period_end"),
+            )
+            by_metric[identity].append((item, basis))
+
+    comparisons: list[dict] = []
+    for identity in order:
+        entries = by_metric[identity]
+        if len(entries) < 2:
+            continue
+        bases = {
+            (basis.unit, basis.currency, basis.period_start, basis.period_end)
+            for _, basis in entries
+        }
+        values_by_basis: dict[tuple, set] = {}
+        for _, basis in entries:
+            keys = values_by_basis.setdefault(
+                (basis.unit, basis.currency, basis.period_start, basis.period_end),
+                set(),
+            )
+            keys.add(_hashable(basis.value))
+        periods = {(basis.period_start, basis.period_end) for _, basis in entries}
+        units = {basis.unit for _, basis in entries}
+        value_conflict = any(len(values) > 1 for values in values_by_basis.values())
+        basis_mismatch = len(units) > 1 or len(
+            {(basis.unit, basis.currency) for _, basis in entries}
+        ) > 1
+        period_mismatch = len(periods) > 1
+        comparison_id = f"comparison-{len(comparisons) + 1}"
+        subject_name, symbol, metric_id = identity
+        for item, _basis in entries:
+            item["comparison_id"] = comparison_id
+            item["value_conflict"] = value_conflict
+            item["basis_mismatch"] = basis_mismatch
+            item["period_mismatch"] = period_mismatch
+        comparisons.append(
+            {
+                "comparison_id": comparison_id,
+                "subject_name": subject_name,
+                "symbol": symbol,
+                "metric_id": metric_id,
+                "value_conflict": value_conflict,
+                "basis_mismatch": basis_mismatch,
+                "period_mismatch": period_mismatch,
+                "fact_count": len(entries),
+                "units": sorted({unit for unit in units if unit}),
+                "facts": [
+                    {
+                        "fact_id": item.get("fact_id"),
+                        "document_id": item.get("document_id"),
+                        "value": item.get("value"),
+                        "unit": item.get("unit"),
+                        "currency": basis.currency,
+                        "period_start": item.get("period_start"),
+                        "period_end": item.get("period_end"),
+                        "available_at": item.get("available_at"),
+                        "statement": item.get("statement"),
+                    }
+                    for item, basis in entries
+                ],
+                "note": (
+                    "Values are listed as published; nothing is averaged or "
+                    "marked verified."
+                ),
+            }
+        )
+    return comparisons
+
+
+def _hashable(value: object) -> object:
+    if isinstance(value, dict):
+        return tuple(sorted((key, _hashable(item)) for key, item in value.items()))
+    if isinstance(value, list):
+        return tuple(_hashable(item) for item in value)
+    return value
 
 
 def fact_selection_ref(fact: Fact, *, conflict: bool = False) -> dict:

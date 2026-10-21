@@ -216,6 +216,12 @@ def upgrade():
             nullable=False,
             server_default=sa.text("'[]'::jsonb"),
         ),
+        sa.Column(
+            "metric_comparisons",
+            JSONB(),
+            nullable=False,
+            server_default=sa.text("'[]'::jsonb"),
+        ),
         sa.Column("coverage", JSONB(), nullable=False),
         sa.Column("candidates_discovered", sa.Integer()),
         sa.Column("candidates_screened", sa.Integer()),

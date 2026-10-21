@@ -14,6 +14,15 @@ function FactCard({ fact }: { fact: Fact }) {
           <CardTitle>{fact.statement}</CardTitle>
           <Badge variant="outline">{fact.fact_type}</Badge>
           {fact.symbol ? <Badge>{fact.symbol}</Badge> : null}
+          {fact.value_conflict ? (
+            <Badge variant="destructive">与其他来源数值冲突</Badge>
+          ) : null}
+          {fact.basis_mismatch ? (
+            <Badge variant="outline">口径与其他来源不同</Badge>
+          ) : null}
+          {!fact.value_conflict && !fact.basis_mismatch && fact.conflict ? (
+            <Badge variant="destructive">同指标取值不一致</Badge>
+          ) : null}
         </div>
       </CardHeader>
       <CardContent className="space-y-3">

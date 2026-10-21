@@ -300,6 +300,12 @@ class EvidencePackage(Base):
     evidence_groups: Mapped[list] = mapped_column(
         JSONB, default=list, server_default=text("'[]'::jsonb")
     )
+    # V2-03 same-metric comparisons across every selected Document: differing
+    # values, differing bases and differing periods side by side. Nothing here is
+    # averaged or marked resolved, so a report can always show both numbers.
+    metric_comparisons: Mapped[list] = mapped_column(
+        JSONB, default=list, server_default=text("'[]'::jsonb")
+    )
     coverage: Mapped[dict] = mapped_column(JSONB)
     candidates_discovered: Mapped[int | None] = mapped_column(Integer, nullable=True)
     candidates_screened: Mapped[int | None] = mapped_column(Integer, nullable=True)

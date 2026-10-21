@@ -198,7 +198,7 @@ def mark_indexed(session, saved: dict) -> None:
     session.commit()
 
 
-def selected_ref(saved: dict) -> dict:
+def selected_ref(saved: dict, *, origin_id: str | None = None) -> dict:
     return {
         "chunk_id": str(saved["chunk_id"]),
         "document_id": str(saved["document_id"]),
@@ -206,6 +206,7 @@ def selected_ref(saved: dict) -> dict:
         "document_version": saved["version"],
         "source_id": saved["source_id"],
         "position": saved["position"],
+        "origin_id": origin_id,
         "role": "direct",
         "reason": "direct_scope_match",
         "similarity": 0.81,
@@ -529,6 +530,42 @@ def test_report_detail_reads_the_versions_it_cited_after_a_new_version(engine, c
     assert document_detail["original"]["stored"] is True
     assert document_detail["original"]["readable"] is True
     assert document_detail["embedding_state"]["indexed_count"] == 1
+
+
+def test_report_detail_exposes_the_declared_origin(engine, client, snapshot_store):
+    """V2-03: a reader sees which confirmed original a cited Document belongs to."""
+
+    config = make_config()
+    _objects, store, _read = snapshot_store
+    origin = {
+        "kind": "canonical_url",
+        "key": "canonical_url:https://origin.example/story",
+        "url": "https://origin.example/story",
+        "declared_sources": [
+            {"name": "Wire", "url": "https://wire.example/feed"}
+        ],
+    }
+    with Session(engine) as session:
+        persist_source(session)
+        first = persist_parsed_version(
+            session,
+            config,
+            store,
+            make_item(ARTICLE_V1, origin=origin),
+            CHUNK_V1,
+        )
+        mark_indexed(session, first)
+        _run, _package, report = persist_run(
+            session,
+            selected_chunks=[selected_ref(first, origin_id="origin-1")],
+        )
+
+    detail = client.get(f"/api/reports/{report['report_id']}").json()
+    entry = detail["evidence"][0]
+    assert entry["origin_id"] == "origin-1"
+    assert entry["origin"] == origin
+    # The frozen package always carries the comparison list, even when empty.
+    assert detail["evidence_package"]["metric_comparisons"] == []
 
 
 def test_failed_run_never_replaces_the_last_successful_report(engine, client, snapshot_store):

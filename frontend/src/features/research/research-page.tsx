@@ -12,9 +12,15 @@ import { dashboardApi } from "@/api/dashboard";
 import type { ReportEvidence } from "@/api/schemas";
 import { EmptyPanel, ErrorPanel, LoadingPanel } from "@/components/async-state";
 import { FactList } from "@/components/fact-list";
+import {
+  MetricComparisonsCard,
+  SourceIndependenceCard,
+} from "@/components/source-independence";
 import { OriginalLinks } from "@/components/original-links";
 import { PageHeader } from "@/components/page-header";
 import { StatusBadge } from "@/components/status-badge";
+import type { OriginGroup } from "@/api/schemas";
+import { evidenceCoverageSchema } from "@/api/schemas";
 import { Badge } from "@/components/ui/badge";
 import {
   Card,
@@ -161,6 +167,19 @@ export function ReportReader({ reportId }: { reportId: string }) {
 
   const data = report.data;
   const cited = new Set(data.cited_chunk_ids);
+  const coverage = evidenceCoverageSchema.safeParse(
+    data.evidence_package.coverage,
+  );
+  const originGroups = coverage.success
+    ? coverage.data.origin_groups ?? []
+    : [];
+  const evidenceGroupCount = coverage.success
+    ? coverage.data.evidence_group_count ?? null
+    : null;
+  const comparisons = data.evidence_package.metric_comparisons ?? [];
+  const originById = new Map(
+    originGroups.map((group) => [group.origin_id, group]),
+  );
   return (
     <article className="space-y-4">
       <Card>
@@ -180,7 +199,7 @@ export function ReportReader({ reportId }: { reportId: string }) {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          <dl className="grid gap-3 text-xs sm:grid-cols-3">
+          <dl className="grid gap-3 text-xs sm:grid-cols-2 lg:grid-cols-4">
             <div>
               <dt className="text-muted-foreground">研究 as_of</dt>
               <dd className="mt-0.5">
@@ -197,6 +216,12 @@ export function ReportReader({ reportId }: { reportId: string }) {
               <dt className="text-muted-foreground">选定证据</dt>
               <dd className="mt-0.5">
                 {data.evidence_package.selected_count} 组
+              </dd>
+            </div>
+            <div>
+              <dt className="text-muted-foreground">独立原件</dt>
+              <dd className="mt-0.5">
+                {originGroups.length ? `${originGroups.length} 个` : "未知"}
               </dd>
             </div>
           </dl>
@@ -234,6 +259,14 @@ export function ReportReader({ reportId }: { reportId: string }) {
         </Card>
       ) : null}
 
+      <SourceIndependenceCard
+        groups={originGroups}
+        evidenceGroupCount={evidenceGroupCount}
+        referenceCount={data.evidence.length}
+      />
+
+      <MetricComparisonsCard comparisons={comparisons} />
+
       <Card>
         <CardHeader>
           <div className="flex flex-wrap items-center gap-2">
@@ -253,6 +286,11 @@ export function ReportReader({ reportId }: { reportId: string }) {
                   key={`${evidence.document_id}-${evidence.chunk_id}`}
                   evidence={evidence}
                   cited={cited.has(evidence.chunk_id)}
+                  originGroup={
+                    evidence.origin_id
+                      ? originById.get(evidence.origin_id)
+                      : undefined
+                  }
                   index={index}
                 />
               ))}
@@ -303,14 +341,29 @@ export function ReportReader({ reportId }: { reportId: string }) {
   );
 }
 
+function originKindLabel(kind: string): string {
+  switch (kind) {
+    case "canonical_url":
+      return "页面声明的 canonical 链接";
+    case "article_url":
+      return "同一文章地址";
+    case "external_id":
+      return "同一 feed 条目标识";
+    default:
+      return kind;
+  }
+}
+
 function EvidenceCard({
   evidence,
   cited,
+  originGroup,
   index,
 }: {
   evidence: ReportEvidence;
   cited: boolean;
   index: number;
+  originGroup?: OriginGroup;
 }) {
   return (
     <section className="overflow-hidden rounded-xl border border-border">
@@ -322,6 +375,11 @@ function EvidenceCard({
           {evidence.document.title}
         </p>
         {cited ? <Badge variant="info">报告已引用</Badge> : null}
+        {originGroup?.merged ? (
+          <Badge variant="outline">
+            同一原件（{originGroup.document_count} 份）
+          </Badge>
+        ) : null}
         {evidence.chunk_available ? (
           <Badge variant="success">片段可读</Badge>
         ) : (
@@ -334,6 +392,12 @@ function EvidenceCard({
             <span className="text-muted-foreground">来源：</span>
             {evidence.document.source_id}
           </p>
+          {evidence.origin?.kind ? (
+            <p>
+              <span className="text-muted-foreground">来源声明：</span>
+              {originKindLabel(evidence.origin.kind)}
+            </p>
+          ) : null}
           <p>
             <span className="text-muted-foreground">引用版本：</span>v
             {evidence.cited_document_version ?? "未记录"}

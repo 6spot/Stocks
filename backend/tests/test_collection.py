@@ -457,6 +457,39 @@ def test_rss_and_atom_parsing_preserve_source_times(tmp_path):
     ).items[0].dedupe_key
 
 
+def test_declared_sources_are_recorded_as_provenance_not_merge_keys(tmp_path):
+    """V2-03: a feed's own syndication label never identifies the original."""
+
+    source = make_source(tmp_path)
+    payload = RSS.replace(
+        b"<description>Policy summary.</description>",
+        b'<source url="https://wire.example/feed">Wire Service</source>'
+        b'<source url="https://wire.example/feed">Wire Service</source>'
+        b"<description>Policy summary.</description>",
+    )
+
+    item = parse_feed(payload, source, "https://www.sec.gov/feed").items[0]
+
+    assert item.declared_sources == (
+        {"name": "Wire Service", "url": "https://wire.example/feed"},
+    )
+    # The label describes the publisher, so the article URL stays the entry's.
+    assert item.article_url == "https://www.sec.gov/news/release-1"
+
+    atom_payload = ATOM.replace(
+        b"<summary>Guidance summary.</summary>",
+        b"<source><title>Wire Service</title>"
+        b'<link rel="alternate" href="https://wire.example/feed"/></source>'
+        b"<summary>Guidance summary.</summary>",
+    )
+    atom = parse_feed(atom_payload, source, "https://www.sec.gov/feed").items[0]
+
+    assert atom.declared_sources == (
+        {"name": "Wire Service", "url": "https://wire.example/feed"},
+    )
+    assert atom.article_url == "https://www.sec.gov/news/release-2"
+
+
 def test_feed_time_without_timezone_remains_unknown(tmp_path):
     source = make_source(tmp_path)
     payload = RSS.replace(
@@ -1069,6 +1102,14 @@ def test_collection_ingests_full_article_and_skips_unchanged_item(
     ]
     assert session.states[(source.source_id, session.documents[0].dedupe_key)].completeness == "complete"
     assert objects[session.documents[0].snapshot_key] == ARTICLE
+    # The stored origin is what the collection saw, so a reprint can be grouped
+    # later without guessing from titles or similarity.
+    assert session.documents[0].extra["origin"] == {
+        "kind": "article_url",
+        "key": "article_url:https://sec.gov/news/release-1",
+        "url": "https://sec.gov/news/release-1",
+        "declared_sources": [],
+    }
 
 
 def test_collection_failure_saves_partial_content_and_retries(
