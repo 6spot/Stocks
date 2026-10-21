@@ -28,7 +28,7 @@
     "docs/architecture.md",
     "docs/validation.md"
   ],
-  "notes": "本轮仅规划；依赖写入 meta.depends_on 及规划文档，Trellis 父子关系不会自动调度。开工前复核现状和技术细节并取得该子任务的实施确认。跨任务的延后验收项统一登记在 pending-acceptance.md（PA-1 V0 真实闭环、PA-2 解析器缺陷），不得当作已完成。",
+  "notes": "本轮仅规划；依赖写入 meta.depends_on 及规划文档，Trellis 父子关系不会自动调度。开工前复核现状和技术细节并取得该子任务的实施确认。跨任务的延后验收项统一登记在 pending-acceptance.md（PA-1 V0 真实闭环；PA-2 解析器逐字符换行缺陷已于 2026-10-22 修复并留下回归用例），不得当作已完成；各阶段人工与第三方待验收项另见 docs/validation.md 的「待最终验收」清单。",
   "meta": {
     "milestone": "roadmap",
     "kind": "coordination",
