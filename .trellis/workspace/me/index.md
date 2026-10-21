@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 12
+- **Total Sessions**: 13
 - **Last Active**: 2026-10-21
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~415 | Active |
+| `journal-1.md` | ~437 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 13 | 2026-10-21 | Pi/Trellis/Magpie 角色组与子进程反馈配置归档 | `431abb1` | `feat/v0-07-evidence-api-acceptance` |
 | 12 | 2026-10-21 | V1-01 scheduled Worker and Owner recovery delivery | `8f67efe` | `feat/v0-07-evidence-api-acceptance` |
 | 11 | 2026-10-21 | 统一前端技术选型与开发规范 | `dde68da` | `feat/v0-07-evidence-api-acceptance` |
 | 10 | 2026-10-21 | V0-07 报告证据读取 API 实现与远程验收 | `bc70735` | `feat/v0-07-evidence-api-acceptance` |

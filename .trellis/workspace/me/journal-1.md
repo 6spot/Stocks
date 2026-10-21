@@ -413,3 +413,25 @@ Fixed the four defects found reviewing archived V0-01/V0-02: the latest-content 
 ### Status
 
 [OK] **Completed**
+
+
+## Session 13: Pi/Trellis/Magpie 角色组与子进程反馈配置归档
+<!-- trellis-session: v=2 fp=7ee439b9959a445d -->
+
+**Date**: 2026-10-21
+**Task**: Pi/Trellis/Magpie 角色组与子进程反馈配置归档
+**Branch**: `feat/v0-07-evidence-api-acceptance`
+
+### Summary
+
+按用户要求提交并归档配置任务：主会话使用 OpenAi 组，Implement/Check 使用 Deepseek/Qwen 组；修正 Pi 平台与派发提示，补齐公开进度、失败/重试/静默展示和 BLOCKED 返回。准备离线回归用例，保留运行验收未执行状态；BatchMode 未提供可用认证，未进行密码认证或本机测试，归档不表示验收通过。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `431abb1` | fix(pi): bind role groups and report subagent progress and blockers |
+
+### Status
+
+[OK] **Completed**
