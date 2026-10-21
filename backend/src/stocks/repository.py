@@ -306,17 +306,33 @@ def get_collection_state(
     return session.get(DocumentCollectionState, (source_id, dedupe_key))
 
 
-def list_document_versions(session: Session, source_id: str, dedupe_key: str) -> list[Document]:
-    return list(
-        session.scalars(
-            select(Document)
-            .where(
-                Document.source_id == source_id,
-                Document.dedupe_key == dedupe_key,
-            )
-            .order_by(Document.version)
-        ).all()
+def list_document_versions(
+    session: Session,
+    source_id: str,
+    dedupe_key: str,
+    *,
+    limit: int | None = None,
+    after_version: int | None = None,
+) -> list[Document]:
+    """List immutable content versions with an optional version keyset page."""
+
+    if limit is not None and not 1 <= limit <= 1000:
+        raise ValueError("limit must be between 1 and 1000")
+    if after_version is not None and after_version < 0:
+        raise ValueError("after_version must be zero or greater")
+    statement = (
+        select(Document)
+        .where(
+            Document.source_id == source_id,
+            Document.dedupe_key == dedupe_key,
+        )
+        .order_by(Document.version)
     )
+    if after_version is not None:
+        statement = statement.where(Document.version > after_version)
+    if limit is not None:
+        statement = statement.limit(limit)
+    return list(session.scalars(statement).all())
 
 
 def read_document_bytes(config: Settings, document: Document) -> bytes:
@@ -915,7 +931,13 @@ def list_parse_chunks(
     *,
     batch_id: UUID | None = None,
     current: bool = True,
+    limit: int | None = None,
+    after_position: int | None = None,
 ) -> list[DocumentChunk]:
+    if limit is not None and not 1 <= limit <= 1000:
+        raise ValueError("limit must be between 1 and 1000")
+    if after_position is not None and after_position < -1:
+        raise ValueError("after_position must be -1 or greater")
     selected_batch = batch_id
     if selected_batch is None:
         state = get_parse_state(session, document_id)
@@ -926,16 +948,19 @@ def list_parse_chunks(
         )
     if selected_batch is None:
         return []
-    return list(
-        session.scalars(
-            select(DocumentChunk)
-            .where(
-                DocumentChunk.document_id == document_id,
-                DocumentChunk.parse_batch_id == selected_batch,
-            )
-            .order_by(DocumentChunk.position)
-        ).all()
+    statement = (
+        select(DocumentChunk)
+        .where(
+            DocumentChunk.document_id == document_id,
+            DocumentChunk.parse_batch_id == selected_batch,
+        )
+        .order_by(DocumentChunk.position)
     )
+    if after_position is not None:
+        statement = statement.where(DocumentChunk.position > after_position)
+    if limit is not None:
+        statement = statement.limit(limit)
+    return list(session.scalars(statement).all())
 
 
 def persist_parse_result(

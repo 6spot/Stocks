@@ -3,7 +3,7 @@
   "name": "v1-07-owner-console-api",
   "title": "V1-07 Owner 访问控制与控制台后端 API",
   "description": "跨设备开放前保护报告、原件和操作，并提供日常控制台所需查询及恢复接口。",
-  "status": "planning",
+  "status": "in_progress",
   "dev_type": "backend",
   "scope": null,
   "package": null,
@@ -12,7 +12,7 @@
   "assignee": "me",
   "createdAt": "2026-10-20",
   "completedAt": null,
-  "branch": null,
+  "branch": "main",
   "base_branch": "main",
   "worktree_path": null,
   "commit": null,
@@ -27,15 +27,15 @@
     "docs/data.md",
     "docs/validation.md"
   ],
-  "notes": "本轮仅规划；依赖写入 meta.depends_on 及规划文档，Trellis 父子关系不会自动调度。开工前复核现状和技术细节并取得该子任务的实施确认。",
+  "notes": "Owner 已明确授权按 V1 任务列表顺序执行 V1-07、V1-08、V1-09；真人验收、第三方 API 与目标 ARM 环境条件先记录，不阻塞可独立完成的开发。V1-07 已启动实现。",
   "meta": {
     "milestone": "V1",
     "kind": "delivery",
     "depends_on": [
       ".trellis/tasks/10-20-v1-06-incremental-evidence"
     ],
-    "planning_review": "pending",
+    "planning_review": "completed",
     "planning_depth": "delivery-plan",
-    "implementation_authorized": false
+    "implementation_authorized": true
   }
 }

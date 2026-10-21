@@ -24,6 +24,24 @@ V1 采用响应式单人研究工作台，不开发 UI 组件库，不制作图�
 
 Intelligence 的搜索结果展示已存片段、来源、时间及命中依据，可读取相邻片段查看上下文。Document 详情分别提供已解析片段、Fact、原件查看/下载及处理状态；“已采集”与“可语义检索”分别显示。解析或索引未完成时可从详情进入相应重试操作，搜索不会为了展示结果触发全库解析。
 
+### Owner 会话与 API 边界
+
+API 只服务单一 Owner，不建设用户库或角色系统。`/health` 与
+`POST /api/session/login` 公开，其余 HTTP 路由在应用级统一验证服务端签发的
+HttpOnly、SameSite=Strict 短期 Cookie；原件下载走同一检查，不能通过直链绕过。
+登录成功后，变更请求还必须带与当前会话绑定的 `X-CSRF-Token`。会话过期、损坏或
+签名不符时返回 `401`，不读取私有报告、原件或执行操作；连续失败登录受时间窗限制。
+
+控制台读取 `/api/overview`、`/api/sources`、`/api/documents`、`/api/facts`、
+`/api/tasks`、`/api/runs`、`/api/processing` 与报告详情。列表使用有界
+`limit` 和稳定游标，时间序列以 `(timestamp, UUID)` 或对应稳定标识翻页；
+Document Fact 和 Document 版本各自按创建标识或版本号推进，不无界读取整段历史。
+
+恢复操作包括触发 Task、重试或续扫 Run、结束异常 Run，以及只排队不执行的 Document
+阶段重试。触发已有活跃 Run 时返回该 Run 并标记 `created=false`。结束 Run 与释放仍有
+所有权的 Document 阶段都要求显式确认旧执行已停止，避免两个进程同时写入。Runs 详情
+只返回去敏后的步骤定位、模型调用信息和安全错误，不输出凭据、Provider 端点或响应正文。
+
 ### 统一 Research 阅读与证据交互
 
 市场、行业、个股使用同一个报告阅读界面，章节依据研究目标及实际证据动态呈现，不强制空栏目或空图表。

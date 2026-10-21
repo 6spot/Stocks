@@ -1,6 +1,6 @@
 from functools import lru_cache
 
-from pydantic import Field
+from pydantic import Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -24,11 +24,27 @@ class Settings(BaseSettings):
     fact_extraction_max_characters: int = Field(default=12000, ge=200, le=80000)
     worker_max_concurrent_runs: int = Field(default=2, ge=1, le=16)
     worker_max_concurrent_documents: int = Field(default=1, ge=1, le=16)
+    # The API is a single-Owner deployment. Both values are required before any
+    # protected request can succeed; /health and the session login stay available
+    # so a missing deployment secret fails closed with a safe diagnostic.
+    owner_password: SecretStr | None = None
+    owner_session_secret: SecretStr | None = None
+    owner_session_ttl_seconds: int = Field(default=43200, ge=300, le=604800)
+    owner_cookie_secure: bool = False
+    sources_config_path: str = "config/sources.yaml"
+    tasks_config_path: str = "config/tasks.yaml"
+    models_config_path: str = "config/models.yaml"
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
     def model_post_init(self, __context: object, /) -> None:
         if self.parse_chunk_overlap >= self.parse_chunk_size:
             raise ValueError("PARSE_CHUNK_OVERLAP must be smaller than PARSE_CHUNK_SIZE")
+        if self.owner_password is not None and not self.owner_password.get_secret_value():
+            raise ValueError("OWNER_PASSWORD must not be empty")
+        if self.owner_session_secret is not None and len(
+            self.owner_session_secret.get_secret_value()
+        ) < 32:
+            raise ValueError("OWNER_SESSION_SECRET must contain at least 32 characters")
 
 
 @lru_cache

@@ -131,6 +131,12 @@ class TaskRun(Base):
         ),
         Index("ix_task_runs_task_created", "task_id", "created_at"),
         Index("ix_task_runs_status_created", "status", "created_at"),
+        Index(
+            "ix_task_runs_scope_sources",
+            "scope",
+            postgresql_using="gin",
+            postgresql_ops={"scope": "jsonb_path_ops"},
+        ),
         CheckConstraint(
             "triggered_by IN ('manual', 'schedule', 'retry')",
             name="ck_task_runs_triggered_by",

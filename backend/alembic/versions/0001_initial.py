@@ -177,6 +177,13 @@ def upgrade():
     )
     op.create_index("ix_task_runs_task_created", "task_runs", ["task_id", "created_at"])
     op.create_index("ix_task_runs_status_created", "task_runs", ["status", "created_at"])
+    op.create_index(
+        "ix_task_runs_scope_sources",
+        "task_runs",
+        ["scope"],
+        postgresql_using="gin",
+        postgresql_ops={"scope": "jsonb_path_ops"},
+    )
     op.create_table(
         "evidence_packages",
         sa.Column("id", UUID(as_uuid=True), primary_key=True),
@@ -823,6 +830,7 @@ def downgrade():
     op.drop_table("analyses")
     op.drop_table("evidence_packages")
     op.drop_index("uq_task_runs_one_active", table_name="task_runs")
+    op.drop_index("ix_task_runs_scope_sources", table_name="task_runs")
     op.drop_index("ix_task_runs_status_created", table_name="task_runs")
     op.drop_index("ix_task_runs_task_created", table_name="task_runs")
     op.drop_table("task_runs")

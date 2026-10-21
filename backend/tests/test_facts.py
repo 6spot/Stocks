@@ -121,6 +121,8 @@ def make_config(**overrides) -> Settings:
         "parse_chunk_size": 400,
         "parse_chunk_overlap": 40,
         "fact_extraction_max_characters": 4000,
+        "owner_password": "test-owner-password",
+        "owner_session_secret": "test-owner-session-secret-32-characters",
     }
     values.update(overrides)
     return Settings(**values)
@@ -842,6 +844,10 @@ def test_repeated_extraction_does_not_duplicate_facts(engine):
     # An explicit reprocess really calls the model again, yet the same citation
     # still maps to one stored Fact: idempotency is a database guarantee.
     assert len(rows) == 1
+    with Session(engine) as session:
+        assert len(
+            list_document_facts(session, document.id, limit=1)
+        ) == 1
     assert len(calls) == 2
 
 
@@ -1283,7 +1289,14 @@ def test_fact_api_reads_by_document_and_filter(engine, monkeypatch):
         session.commit()
 
     monkeypatch.setattr(api_module, "session_factory", lambda: lambda: Session(engine))
+    monkeypatch.setattr(api_module, "settings", lambda: config)
     client = TestClient(api_module.app)
+    assert client.get("/api/facts").status_code == 401
+    login = client.post(
+        "/api/session/login",
+        json={"password": "test-owner-password"},
+    )
+    assert login.status_code == 200
 
     listing = client.get("/api/facts", params={"source_id": "sec"})
     assert listing.status_code == 200

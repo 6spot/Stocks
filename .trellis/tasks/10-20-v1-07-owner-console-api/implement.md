@@ -2,30 +2,33 @@
 
 ## 开工条件
 
-- [ ] 复核 PRD 与最新领域契约；前置任务：[V1-06](../10-20-v1-06-incremental-evidence/prd.md)
-- [ ] 重新检查现有代码及测试，落实建议路径、具体 Schema 和必要技术决策。
-- [ ] 用户确认本子任务的最终实施范围；之后才运行 task.py start。当前未授权实施。
-- [ ] implement.jsonl / check.jsonl 已提供真实规范与基线，派发前按实际改动裁剪复核。
+- [x] 复核 PRD 与最新领域契约；前置任务：[V1-06](../archive/2026-10/10-20-v1-06-incremental-evidence/prd.md)
+- [x] 重新检查现有代码及测试，落实建议路径、具体 Schema 和必要技术决策。
+- [x] Owner 已明确授权按 V1-07、V1-08、V1-09 顺序执行；task.py start 已执行。
+- [x] implement.jsonl / check.jsonl 已提供真实规范与基线，并按实际改动复核。
 
 ## 执行顺序
 
-- [ ] 确定单 Owner 认证和访问边界，定义控制台响应 Schema。
-- [ ] 实现受保护查询、操作及原件响应。
-- [ ] 验证越权/凭据失效/重复操作和分页并同步 quickstart。
+- [x] 确定单 Owner 认证和访问边界，定义控制台响应 Schema。
+- [x] 实现受保护查询、操作及原件响应。
+- [x] 独立检查后修复 URL 投影、来源查询、披露时间、原件入口、CSRF 与列表示例。
+- [x] 验证越权/凭据失效/重复操作和分页并同步 quickstart。
 
 ## 最小必要验证
 
-- cd backend && python -m pytest -q tests/test_auth.py tests/test_console_api.py tests/test_report_api.py（前两者新增后）
-- 验证原件 URL 无认证不可读取，状态变更请求具备所选认证方案要求的防护。
+- 在测试服务器隔离环境运行 `tests/test_console_api.py`、`tests/test_report_api.py`、
+  Fact/Repository/Collection 的最小相关用例；采用当前实现实际存在的测试文件。
+- 验证原件路径无认证不可读取，所有状态变更请求（包括登出）执行 CSRF 检查。
+- 结构变更后从全新数据库运行 `alembic upgrade head` 与 `alembic check`。
 
 新增测试名为计划，文件存在后才执行；不得把本文件命令写成已通过。按风险验证关键行为，不默认全量测试，纯文档变更不新增代码测试。
 
 ## 收尾
 
-- [ ] 逐项记录 PRD AC 的实际结果、未完成和外部限制。
-- [ ] 契约变更只更新唯一归属文档，运行能力更新 quickstart。
-- [ ] 检查后续依赖与阶段验收；保留原始证据、输入快照及最后成功结果。
-- [ ] 完成实现/质量检查后按 Trellis 工作流交付，不在本轮提前归档或标完成。
+- [x] 逐项记录 PRD AC 的实际结果、未完成和外部限制。
+- [x] 契约变更只更新唯一归属文档，运行能力更新 quickstart。
+- [x] 检查后续依赖与阶段验收；保留原始证据、输入快照及最后成功结果。
+- [x] 完成实现/质量检查后按 Trellis 工作流交付并归档。
 
 ## 上下文读取注意
 

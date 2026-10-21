@@ -187,6 +187,16 @@ def test_latest_document_follows_most_recent_acquisition_not_version_order(
         versions = list_document_versions(session, "sec", "filing-1")
         assert [document.version for document in versions] == [1, 2]
         assert versions[0].title == "Filing"
+        assert [
+            document.version
+            for document in list_document_versions(
+                session,
+                "sec",
+                "filing-1",
+                after_version=1,
+                limit=1,
+            )
+        ] == [2]
         assert read_document_bytes(config, versions[0]) == b"first version"
         assert read_document_bytes(config, versions[1]) == b"second version"
     assert len(calls) == 2

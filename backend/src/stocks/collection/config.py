@@ -43,6 +43,11 @@ class SourceConfig(BaseModel):
     name: str = Field(min_length=1, max_length=255)
     connector: Literal["rss", "http_api"]
     enabled: bool = True
+    # Optional disclosure cadence for this Source. It is not a collection
+    # schedule: a 15-minute poll may legitimately return no new items.
+    expected_freshness: str | None = Field(
+        default=None, pattern=r"^[1-9][0-9]{0,5}[mhd]$"
+    )
     publisher: str = Field(min_length=1, max_length=255)
     trust_tier: Literal["T1", "T2", "T3", "T4"]
     feed_url: str | None = Field(default=None, min_length=1, max_length=2048)
@@ -87,6 +92,13 @@ class SourceConfig(BaseModel):
         return value
 
     def model_post_init(self, __context: object, /) -> None:
+        if self.expected_freshness is not None:
+            amount = int(self.expected_freshness[:-1])
+            unit = self.expected_freshness[-1]
+            if amount * {"m": 60, "h": 3600, "d": 86400}[unit] > 2_592_000:
+                raise ValueError(
+                    "expected_freshness must not exceed 30 days"
+                )
         if self.connector == "rss":
             if not self.feed_url:
                 raise ValueError("an rss source requires feed_url")

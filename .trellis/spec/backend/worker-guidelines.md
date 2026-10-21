@@ -130,7 +130,9 @@ cron/时区语义、漏触发策略、增量水位等产品契约的唯一来源
    `process_token`，`ck_task_runs_running_owner` 要求 `running` 必有 token；不要在代码里另加标记字段。
    Owner 结束固定写 `status='cancelled'` + `error.code='RUN_ENDED_BY_OWNER'` 并清空 token。
 10. **不引入租约、心跳或自动接管。** Worker 不检测死进程；`end` 的前提是 Owner 已确认旧进程停止，
-    CLI 强制 `--confirm-stopped`（缺失即 exit 2 + `OWNER_CONFIRMATION_REQUIRED`），不提供未认证写 API。
+    CLI 强制 `--confirm-stopped`（缺失即 exit 2 + `OWNER_CONFIRMATION_REQUIRED`）。
+    V1-07 的 HTTP API 可以调用同一结束服务，但必须经过 Owner 会话和 CSRF 校验，
+    请求体同样显式要求 `confirm_stopped=true`，不存在未认证写入口。
 
 ## Validation & Error Matrix
 

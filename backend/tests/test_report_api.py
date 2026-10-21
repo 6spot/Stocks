@@ -9,6 +9,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 
 from stocks.api import app
+from stocks.auth import SESSION_COOKIE
 from stocks.models import (
     Analysis,
     Base,
@@ -50,6 +51,8 @@ def make_config(**overrides) -> Settings:
         "s3_bucket": "evidence",
         "s3_access_key": "test-access",
         "s3_secret_key": "test-secret",
+        "owner_password": "test-owner-password",
+        "owner_session_secret": "test-owner-session-secret-32-characters",
     }
     values.update(overrides)
     return Settings(_env_file=None, **values)
@@ -93,7 +96,14 @@ def build_client(engine, snapshot_store, monkeypatch, config=None):
     monkeypatch.setattr("stocks.repository.read_snapshot", read)
     monkeypatch.setattr("stocks.api.session_factory", lambda: sessionmaker(bind=engine))
     monkeypatch.setattr("stocks.api.settings", lambda: config or make_config())
-    return TestClient(app)
+    client = TestClient(app)
+    login = client.post(
+        "/api/session/login",
+        json={"password": (config or make_config()).owner_password.get_secret_value()},
+    )
+    assert login.status_code == 200
+    assert SESSION_COOKIE in client.cookies
+    return client
 
 
 @pytest.fixture
@@ -403,6 +413,7 @@ def test_report_detail_reads_the_versions_it_cited_after_a_new_version(engine, c
     assert entry["is_current_collection_pointer"] is False
     assert entry["original"]["storage_key"] == f"sources/sec/{sha256(ARTICLE_V1).hexdigest()}"
     assert entry["original"]["endpoint"] == f"/api/documents/{first_id}/original"
+    assert entry["original"]["document_id"] == str(first_id)
     assert entry["embedding_state"]["status"] == "completed"
     assert str(first_id) in detail["report"]["content"]
     assert detail["run"]["status"] == "succeeded"
@@ -417,24 +428,36 @@ def test_report_detail_reads_the_versions_it_cited_after_a_new_version(engine, c
     ).json()
     assert single["evidence"]["text"] == CHUNK_V1
     assert single["evidence"]["document"]["version"] == 1
-    assert [item["version"] for item in single["document_versions"]] == [1, 2]
+    assert [item["version"] for item in single["document_versions"]["items"]] == [
+        1,
+        2,
+    ]
     assert single["latest_collection_state"]["latest_document_id"] == str(second_id)
 
     cite_original(client, first_id, ARTICLE_V1, "text/plain")
     cite_original(client, second_id, ARTICLE_V2, "text/plain")
 
     listed = client.get("/api/reports").json()
-    assert [item["report_id"] for item in listed] == [str(report["report_id"])]
-    assert listed[0]["run_status"] == "succeeded"
-    assert listed[0]["analysis_id"] == detail["report"]["analysis_id"]
+    assert [item["report_id"] for item in listed["items"]] == [
+        str(report["report_id"])
+    ]
+    assert listed["has_more"] is False
+    assert listed["next_cursor"] is None
+    assert listed["items"][0]["run_status"] == "succeeded"
+    assert listed["items"][0]["analysis_id"] == detail["report"]["analysis_id"]
 
     document_detail = client.get(f"/api/documents/{first_id}").json()
     assert document_detail["is_current_collection_pointer"] is False
-    assert [item["version"] for item in document_detail["versions"]] == [1, 2]
     assert [
-        item["is_current_collection_pointer"] for item in document_detail["versions"]
+        item["version"] for item in document_detail["versions"]["items"]
+    ] == [1, 2]
+    assert [
+        item["is_current_collection_pointer"]
+        for item in document_detail["versions"]["items"]
     ] == [False, True]
-    assert document_detail["current_chunks"][0]["text"] == CHUNK_V1
+    assert document_detail["current_chunks"]["count"] == 1
+    assert document_detail["current_chunks"]["items"][0]["text"] == CHUNK_V1
+    assert document_detail["current_chunks"]["next_cursor"] is None
     assert document_detail["original"]["stored"] is True
     assert document_detail["original"]["readable"] is True
     assert document_detail["embedding_state"]["indexed_count"] == 1
@@ -462,7 +485,9 @@ def test_failed_run_never_replaces_the_last_successful_report(engine, client, sn
     document_id = document["document_id"]
 
     listed = client.get("/api/reports").json()
-    assert [item["report_id"] for item in listed] == [str(report["report_id"])]
+    assert [item["report_id"] for item in listed["items"]] == [
+        str(report["report_id"])
+    ]
     detail = client.get(f"/api/reports/{report['report_id']}").json()
     assert detail["evidence"][0]["text"] == CHUNK_V1
     failed_detail = client.get(f"/api/documents/{document_id}").json()
@@ -629,8 +654,10 @@ def test_pending_index_and_unconfigured_storage_stay_visible(engine, snapshot_st
         assert "storage.example" not in unavailable.text
 
         listed = client.get("/api/documents").json()
-        assert listed[0]["embedding_state"]["status"] == "pending"
-        assert listed[0]["collection_state"]["latest_document_id"] == str(document_id)
+        assert listed["items"][0]["embedding_state"]["status"] == "pending"
+        assert listed["items"][0]["collection_state"]["latest_document_id"] == str(
+            document_id
+        )
 
 
 def test_documents_listing_keeps_its_existing_shape(engine, client, snapshot_store):
@@ -653,7 +680,7 @@ def test_documents_listing_keeps_its_existing_shape(engine, client, snapshot_sto
             CHUNK_V2,
         )
 
-    listed = client.get("/api/documents").json()
+    listed = client.get("/api/documents").json()["items"]
     # Newest collection first, and both immutable versions keep their own state.
     assert [row["version"] for row in listed] == [2, 1]
     row = listed[1]
@@ -686,7 +713,7 @@ def test_document_payload_exposes_the_current_classification(engine, client, sna
             session, config, store, make_item(ARTICLE_V1), CHUNK_V1
         )
 
-    row = client.get("/api/documents").json()[0]
+    row = client.get("/api/documents").json()["items"][0]
     assert row["id"] == str(first["document_id"])
     # No classification result yet is reported as absent, not as an empty tag set.
     assert row["classification"] is None
@@ -711,7 +738,7 @@ def test_document_payload_exposes_the_current_classification(engine, client, sna
         document.classification = stored
         session.commit()
 
-    row = client.get("/api/documents").json()[0]
+    row = client.get("/api/documents").json()["items"][0]
     assert row["classification"]["category"] == "macro"
     assert row["classification"]["related_industries"] == ["banking"]
     assert row["classification"]["companies"] == []

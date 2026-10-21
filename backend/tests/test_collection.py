@@ -133,6 +133,44 @@ def test_source_config_is_bounded_and_rejects_unknown_fields(tmp_path):
 
 
 @pytest.mark.parametrize(
+    ("value", "expected"),
+    [
+        ("15m", "15m"),
+        ("12h", "12h"),
+    ],
+)
+def test_source_expected_freshness_is_optional_and_bounded(
+    tmp_path, value, expected
+):
+    path = tmp_path / "freshness.yaml"
+    path.write_text(
+        SOURCE_YAML.replace(
+            "    trust_tier: T1\n",
+            f"    trust_tier: T1\n    expected_freshness: {value}\n",
+        ),
+        encoding="utf-8",
+    )
+    assert load_sources(path)[0].expected_freshness == expected
+
+
+@pytest.mark.parametrize(
+    "value",
+    ["''", "0m", "15s", "hour", "9999999d", "31d", "../1h"],
+)
+def test_source_rejects_invalid_expected_freshness(tmp_path, value):
+    path = tmp_path / "freshness.yaml"
+    path.write_text(
+        SOURCE_YAML.replace(
+            "    trust_tier: T1\n",
+            f"    trust_tier: T1\n    expected_freshness: {value}\n",
+        ),
+        encoding="utf-8",
+    )
+    with pytest.raises(ConfigurationError, match="invalid"):
+        load_sources(path)
+
+
+@pytest.mark.parametrize(
     "value",
     [
         "StocksIntelligence/0.1",

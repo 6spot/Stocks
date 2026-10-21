@@ -69,6 +69,16 @@ V0 Run 在创建时快照 Task 的 objective、strategy、scope、步骤/Agent �
 - 结束 Run、写入步骤结果与写入最终状态都核对 Run 状态与所有权；Owner 结束之后，旧执行不能再把 StepResult、Analysis/Report 或 Run 最终状态写成成功，这一步是确定性 fence。`select_evidence` 与 `collect_sources` 会在步骤内部提交自己的派生结果（Evidence Package、Document），因此在执行每一步前以及每个 Source 开始前再核对一次所有权，避免被结束的 Run 启动新的步骤或新的 Source；这层事前检查不持行锁，也不能回滚已经开始的步骤已在自身事务中提交的资料，采集到的原文仍按统一入库规则保留，只是该 Run 不会因此获得成功的步骤结果或报告。结束 Run 的前提始终是 Owner 已确认旧进程停止。
 - 解析、分类、抽取、索引和取材积压使用 Task/Run 或 Document 处理状态管理；有限自动重试后，可由 Owner 手动重试或继续处理，不另建积压管理服务。V1-02 已提供 `stocks.processing status|retry|reprocess` 的有界 CLI：`status` 按 Document、阶段与状态查询积压并显示本部署已注册/未接入的阶段，`retry` 只重开失败或未完成阶段，`reprocess` 可显式重跑已完成阶段，运行中阶段必须 `--confirm-stopped`。阶段状态机与重处理边界见[数据设计](data.md#后台解析片段与索引)；交互见[界面设计](interface.md)。
 
+**V1-07 Owner API 恢复入口：** 受保护 API 复用上述 Task/Run 服务，不复制调度或执行
+状态机。`POST /api/tasks/{task_id}/runs` 手动触发并返回活跃 Run 或新排队 Run；
+`POST /api/runs/{run_id}/retry` 复用失败/已结束 Run 的固定窗口和步骤进度；
+`POST /api/runs/{run_id}/continue` 为仍有未完成扫描检查点的研究 Run 创建正常后续 Run，
+请求中的 `resumed_from_run_id` 必须再次指明同一来源 Run；
+`POST /api/runs/{run_id}/end` 与 `POST /api/processing/retry` 在涉及运行中所有权时都要求
+显式确认旧执行已停止。阶段重试只重新排队，实际执行仍由 Worker 领取。
+所有变更请求都经过 Owner 会话和 CSRF 校验；API 不把 Run 快照、模型调用错误或
+Document 获取错误中的凭据、Provider 端点和响应正文返回给前端。
+
 #### 持久调度状态与漏触发策略
 
 调度配置及其 `next_due_at` 保存在与 Task 相邻的最小记录中（`task_schedules`），不使用纯内存 `last_run` 作为去重依据。并发 scheduler 对同一 Task 的到期判定、触发入队与 `next_due_at` 更新在同一个 Task 级 advisory lock 与事务内完成，越界写入无法只完成一半。

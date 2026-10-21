@@ -21,7 +21,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from uuid import UUID
 
-from sqlalchemy import delete, select
+from sqlalchemy import and_, delete, or_, select
 from sqlalchemy.orm import Session
 
 from stocks.models import FACT_ORIGIN_METHODS, Document, Fact
@@ -282,14 +282,34 @@ def search_facts(
     return list(session.scalars(statement).all())
 
 
-def list_document_facts(session: Session, document_id: UUID) -> list[Fact]:
-    return list(
-        session.scalars(
-            select(Fact)
-            .where(Fact.document_id == document_id)
-            .order_by(Fact.created_at, Fact.id)
-        ).all()
+def list_document_facts(
+    session: Session,
+    document_id: UUID,
+    *,
+    limit: int | None = None,
+    after: tuple[datetime, UUID] | None = None,
+) -> list[Fact]:
+    """Read one Document version's Facts with an optional stable page."""
+
+    # An API page may fetch one extra row to return exact has_more semantics.
+    max_fetch_limit = MAX_FACT_QUERY_LIMIT + 1
+    if limit is not None and not 1 <= limit <= max_fetch_limit:
+        raise ValueError(f"limit must be between 1 and {max_fetch_limit}")
+    statement = (
+        select(Fact)
+        .where(Fact.document_id == document_id)
+        .order_by(Fact.created_at, Fact.id)
     )
+    if after is not None:
+        statement = statement.where(
+            or_(
+                Fact.created_at > after[0],
+                and_(Fact.created_at == after[0], Fact.id > after[1]),
+            )
+        )
+    if limit is not None:
+        statement = statement.limit(limit)
+    return list(session.scalars(statement).all())
 
 
 def facts_for_documents(
