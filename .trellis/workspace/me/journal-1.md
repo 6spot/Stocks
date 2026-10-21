@@ -501,3 +501,25 @@ Removed Pi Trellis subprocess dispatch, routed Pi workflow through the main sess
 ### Status
 
 [OK] **Completed**
+
+
+## Session 17: V1-06 Document/Fact 统一增量取材与覆盖
+<!-- trellis-session: v=2 fp=8f93b65b4923d16e -->
+
+**Date**: 2026-10-21
+**Task**: V1-06 Document/Fact 统一增量取材与覆盖
+**Branch**: `main`
+
+### Summary
+
+实现并验证 V1-06：select_evidence 同时读取固定窗口内的增量 Document/Fact 与历史语义背景，按 Document 合并为一个 evidence_groups 证据链；同一 Chunk 不因增量与语义双路径重复计数，Fact 挂在来源 Chunk 上，Document 与 Fact 不再算两条独立支持。新增 evidence_groups JSONB、current_document_hits、facts_for_documents、EvidenceCollector 与冲突标记；覆盖统计区分 discovered/screened/selected/证据组/filtered-out/unexamined，触顶时未知保持 null。测试服务器全新库 alembic upgrade head 与 check 均 exit 0，全量 373 passed（含 7 个新增用例），无 skip。跨 Document 转载识别与高级跨源冲突解释留在后续；真实第三方 API 待 V1-09 验收。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `b21c0b5` | feat(research): unify incremental changes with historical evidence |
+
+### Status
+
+[OK] **Completed**
