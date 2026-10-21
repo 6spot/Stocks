@@ -20,7 +20,18 @@ from stocks.models import (
     DocumentEmbeddingState,
     DocumentParseBatch,
     DocumentParseState,
+    DocumentProcessingState,
     Source,
+)
+from stocks.processing.stages import (
+    STAGE_INDEX,
+    STAGE_PARSE,
+    ProcessingError,
+    StageClaim,
+    StageOutcome,
+    apply_stage_outcome,
+    assert_stage_owned,
+    create_stage_states,
 )
 from stocks.s3 import read_snapshot, store_snapshot
 from stocks.settings import Settings
@@ -205,6 +216,7 @@ def ingest_document(
     try:
         session.flush()
         _upsert_collection_state(session, item, document)
+        create_stage_states(session, document.id)
         session.commit()
     except IntegrityError:
         session.rollback()
@@ -341,6 +353,10 @@ def persist_embedding_result(
     embeddings: tuple[EmbeddingInput, ...],
     attempted_at: datetime,
     error: dict | None,
+    stage_claim: StageClaim | None = None,
+    stage_final_batch: bool = True,
+    stage_processor_version: str | None = None,
+    stage_config_fingerprint: str | None = None,
 ) -> DocumentEmbeddingState:
     if status not in {"completed", "failed"}:
         raise ValueError("invalid embedding status")
@@ -360,8 +376,32 @@ def persist_embedding_result(
     )
     if document is None:
         raise ValueError(f"Unknown document: {document_id}")
-    parse_state = session.get(DocumentParseState, document_id)
+    if stage_claim is not None:
+        # The ownership fence comes first: an attempt that was recovered and
+        # re-claimed by another executor must be refused under the row lock before
+        # it can write any vector or stage result.
+        assert_stage_owned(session, stage_claim)
+    # Sessions run with ``expire_on_commit=False``: the parse pointer read at index
+    # start may be stale, so re-read it here. Every parse-state write takes the
+    # Document row lock first, and a new current batch releases the dependent
+    # stages in that same transaction, so this read is authoritative for the rest
+    # of this transaction and a superseded batch is detectable before anything is
+    # written.
+    parse_state = session.scalar(
+        select(DocumentParseState)
+        .where(DocumentParseState.document_id == document_id)
+        .execution_options(populate_existing=True)
+    )
     if parse_state is None or parse_state.current_batch_id != parse_batch_id:
+        if stage_claim is not None:
+            # A committed new current batch always releases the stage, so this
+            # attempt no longer owns it. Report that instead of a batch mismatch,
+            # which would otherwise be recorded as a processor failure against
+            # input somebody else is now responsible for.
+            raise ProcessingError(
+                "STAGE_NOT_OWNED",
+                "Processing stage is not owned by this execution",
+            )
         raise ValueError("Embedding batch is not the current successful parse")
     parse_batch = session.get(DocumentParseBatch, parse_batch_id)
     if (
@@ -450,6 +490,28 @@ def persist_embedding_result(
         state.indexed_count = len(embedded_ids)
         state.error = deepcopy(error)
         state.attempted_at = attempted_at
+    if stage_claim is not None:
+        if stage_final_batch:
+            # The final coverage check and the stage completion commit together,
+            # so an interrupted multi-batch run keeps its vectors but never
+            # claims a completed stage. The status comes from the persisted
+            # coverage, not the caller.
+            apply_stage_outcome(
+                session,
+                _index_stage_outcome(
+                    stage_claim,
+                    status=status,
+                    error=error,
+                    batch_id=parse_batch_id,
+                    processor_version=stage_processor_version,
+                    config_fingerprint=stage_config_fingerprint,
+                ),
+                now=attempted_at,
+            )
+        # An intermediate batch only commits its vectors; the ownership check at
+        # the start of this transaction already fenced the writer, so an
+        # interrupted stage that was recovered and re-claimed by another
+        # executor cannot keep writing results under the old token.
     try:
         session.commit()
     except Exception:
@@ -828,6 +890,7 @@ def persist_parse_result(
     error: dict | None,
     chunks: tuple[ParseChunkInput, ...],
     attempted_at: datetime,
+    stage_claim: StageClaim | None = None,
 ) -> ParseBatchResult:
     if status not in {"completed", "failed", "unsupported"}:
         raise ValueError("invalid parse status")
@@ -879,7 +942,9 @@ def persist_parse_result(
                     locator=deepcopy(chunk.locator),
                 )
             )
-        state = session.get(DocumentParseState, document_id)
+        state = session.get(
+            DocumentParseState, document_id, populate_existing=True
+        )
         if state is None:
             state = DocumentParseState(
                 document_id=document_id,
@@ -903,6 +968,16 @@ def persist_parse_result(
             state.error = deepcopy(error)
             state.chunk_count = len(chunks)
             state.attempted_at = attempted_at
+        if stage_claim is not None:
+            # Same transaction as the batch and its chunks: a committed parse
+            # result never exists without its stage progress, and a stale owner
+            # cannot write either because the token is checked under the row lock.
+            # The status comes from the persisted batch, never from the caller.
+            apply_stage_outcome(
+                session,
+                _parse_stage_outcome(stage_claim, batch, attempted_at),
+                now=attempted_at,
+            )
         session.commit()
     except Exception:
         session.rollback()
@@ -911,3 +986,78 @@ def persist_parse_result(
     assert state is not None
     session.refresh(state)
     return ParseBatchResult(batch=batch, state=state)
+
+
+def _parse_stage_outcome(
+    claim: StageClaim,
+    batch: DocumentParseBatch,
+    attempted_at: datetime,
+) -> StageOutcome:
+    """Derive the parse stage outcome from the batch that was just persisted."""
+
+    if batch.status == "completed":
+        return StageOutcome(
+            document_id=claim.document_id,
+            stage=STAGE_PARSE,
+            owner_token=claim.owner_token,
+            status="completed",
+            processor_version=batch.processor_version,
+            config_fingerprint=batch.config_fingerprint,
+            input_batch_id=batch.id,
+            applicability={
+                "requires_embedding": True,
+                "requires_classification": True,
+            },
+            # A retried parse that finally succeeded produces a new current batch
+            # that downstream stages must pick up.
+            reopen_downstream=True,
+        )
+    return StageOutcome(
+        document_id=claim.document_id,
+        stage=STAGE_PARSE,
+        owner_token=claim.owner_token,
+        status="failed",
+        error=batch.error
+        or {
+            "code": "PARSE_FAILED",
+            "message": "Document could not be parsed",
+        },
+        processor_version=batch.processor_version,
+        config_fingerprint=batch.config_fingerprint,
+        input_batch_id=batch.id,
+    )
+
+
+def _index_stage_outcome(
+    claim: StageClaim,
+    *,
+    status: str,
+    error: dict | None,
+    batch_id: UUID,
+    processor_version: str | None = None,
+    config_fingerprint: str | None = None,
+) -> StageOutcome:
+    """Derive the index stage outcome from the persisted embedding coverage."""
+
+    if status == "completed":
+        return StageOutcome(
+            document_id=claim.document_id,
+            stage=STAGE_INDEX,
+            owner_token=claim.owner_token,
+            status="completed",
+            processor_version=processor_version,
+            config_fingerprint=config_fingerprint,
+            input_batch_id=batch_id,
+            applicability={"requires_embedding": True},
+        )
+    return StageOutcome(
+        document_id=claim.document_id,
+        stage=STAGE_INDEX,
+        owner_token=claim.owner_token,
+        status="failed",
+        error=error
+        or {"code": "INDEX_FAILED", "message": "Document could not be indexed"},
+        processor_version=processor_version,
+        config_fingerprint=config_fingerprint,
+        input_batch_id=batch_id,
+    )

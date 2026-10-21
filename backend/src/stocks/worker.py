@@ -24,7 +24,7 @@ import asyncio
 import json
 import logging
 import sys
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -48,6 +48,8 @@ from stocks.execution.service import (
     fail_claimed_run,
 )
 from stocks.models import TaskRun
+from stocks.processing.processors import build_stage_registry
+from stocks.processing.runner import run_next_document_stage
 from stocks.settings import Settings, settings
 
 logger = logging.getLogger(__name__)
@@ -56,6 +58,7 @@ MAX_POLL_SECONDS = 300.0
 MIN_POLL_SECONDS = 0.1
 DEFAULT_POLL_SECONDS = 5.0
 DEFAULT_MAX_CONCURRENT_RUNS = 2
+DEFAULT_MAX_CONCURRENT_DOCUMENTS = 1
 MAX_WORKER_CONCURRENCY = 16
 MAX_BACKOFF_EXTRA_SECONDS = 60.0
 
@@ -69,11 +72,18 @@ class WorkerContext:
     sources_config_path: str
     model_transport: object | None = None
     max_concurrent_runs: int = DEFAULT_MAX_CONCURRENT_RUNS
+    max_concurrent_documents: int = DEFAULT_MAX_CONCURRENT_DOCUMENTS
+    stage_registry: object | None = None
 
     def __post_init__(self) -> None:
         if not 1 <= self.max_concurrent_runs <= MAX_WORKER_CONCURRENCY:
             raise ValueError(
                 "max_concurrent_runs must be between 1 and "
+                f"{MAX_WORKER_CONCURRENCY}"
+            )
+        if not 1 <= self.max_concurrent_documents <= MAX_WORKER_CONCURRENCY:
+            raise ValueError(
+                "max_concurrent_documents must be between 1 and "
                 f"{MAX_WORKER_CONCURRENCY}"
             )
 
@@ -87,9 +97,26 @@ class WorkerContext:
             "model_config_path": "config/models.yaml",
             "sources_config_path": "config/sources.yaml",
             "max_concurrent_runs": config.worker_max_concurrent_runs,
+            "max_concurrent_documents": config.worker_max_concurrent_documents,
         }
         values.update(overrides)
         return cls(**values)
+
+    def processing_registry(self):
+        """The Document stage processors for this deployment.
+
+        The embedding route inside the registry is resolved lazily when an
+        eligible index stage runs, so this construction never reads model
+        credentials and a broken embedding configuration cannot stop parsing or
+        Run collection.
+        """
+
+        if self.stage_registry is not None:
+            return self.stage_registry
+        return build_stage_registry(
+            self.model_config_path,
+            model_transport=self.model_transport,
+        )
 
 
 def _now() -> datetime:
@@ -129,15 +156,59 @@ def run_once(
     process_token: str | None = None,
     now: datetime | None = None,
 ) -> dict:
-    """Run one scheduler round and execute at most one queued Run."""
+    """Run one scheduler round, at most one queued Run and one Document stage."""
     token = process_token or uuid4().hex
     scheduled = schedule_round(context, now=now)
     executed = execute_next_run(context, process_token=token, now=now)
+    processed = execute_next_document_stage(context, process_token=token, now=now)
     return {
         "process_token": token,
         "scheduler": [item.to_dict() for item in scheduled],
         "executed": executed,
+        "processing": processed,
     }
+
+
+def execute_next_document_stage(
+    context: WorkerContext,
+    *,
+    process_token: str,
+    now: datetime | None = None,
+) -> dict | None:
+    """Execute at most one ready Document processing stage.
+
+    A stage failure is already recorded on its own Document row by the runner, so
+    it never terminates the slot or the Worker round. ``None`` means no registered
+    stage had ready work, which is what lets a document slot wait. An unexpected
+    defect is reported as a safe one-off result instead of escaping, because
+    ``--once`` calls this outside any slot-level guard.
+    """
+
+    try:
+        registry = context.processing_registry()
+        execution = run_next_document_stage(
+            context.session_factory,
+            context.settings,
+            registry,
+            # Each slot claims independently under its own token: concurrent
+            # document slots must never share one, or the ownership fence cannot
+            # tell them apart and an Owner recovery could accept the wrong
+            # writer.
+            owner_token=f"{process_token}-doc-{uuid4().hex}",
+            now=now,
+        )
+    except Exception:  # noqa: BLE001 - one stage defect is not a Worker failure
+        logger.exception("Document processing stage failed unexpectedly")
+        return {
+            "status": "failed",
+            "error": {
+                "code": "DOCUMENT_STAGE_FAILED",
+                "message": "Document processing stage did not complete",
+            },
+        }
+    if execution is None:
+        return None
+    return execution.to_dict()
 
 
 def schedule_round(
@@ -270,6 +341,14 @@ def _claim_and_execute(
     return execute_next_run(context, process_token=process_token)
 
 
+def _claim_and_execute_document(
+    context: WorkerContext, process_token: str
+) -> dict | None:
+    """Claim and execute at most one Document stage in this thread's Session."""
+
+    return execute_next_document_stage(context, process_token=process_token)
+
+
 async def _call_in_executor(executor, func, /, *args):
     """Run one blocking Worker step in the Worker's own thread pool.
 
@@ -327,19 +406,20 @@ async def _run_slot(
     wakeup: asyncio.Event,
     poll_seconds: float,
     executor: ThreadPoolExecutor,
+    claim: Callable[[WorkerContext, str], dict | None] = _claim_and_execute,
 ) -> None:
     """One persistent execution slot.
 
-    A slot that executed a Run looks for the next one immediately, so a short
-    collection Run releases its slot without waiting for the slowest Run. A slot
-    that found nothing waits instead of re-polling: ``poll_seconds`` normally, a
-    bounded exponential backoff while unexpected failures keep repeating, and any
-    interval interrupted by the scheduler queueing work. Once the Worker starts
-    stopping, a slot takes at most one more claim, so the Run queued by the last
-    scheduler round of ``--rounds`` is picked up without a shutdown chasing an
-    unbounded backlog. Failures of a Run are recorded on that Run by
-    ``execute_next_run``; anything escaping it is logged so one slot cannot
-    terminate the Worker.
+    A slot that executed work looks for the next item immediately, so a short
+    collection Run or parse releases its slot without waiting for the slowest
+    item. A slot that found nothing waits instead of re-polling: ``poll_seconds``
+    normally, a bounded exponential backoff while unexpected failures keep
+    repeating, and any interval interrupted by the scheduler queueing work. Once
+    the Worker starts stopping, a slot takes at most one more claim, so the Run
+    queued by the last scheduler round of ``--rounds`` is picked up without a
+    shutdown chasing an unbounded backlog. Failures of one item are recorded on
+    that item by the claim function; anything escaping it is logged so one slot
+    cannot terminate the Worker.
     """
 
     failures = 0
@@ -347,7 +427,7 @@ async def _run_slot(
         draining = stop.is_set()
         try:
             executed = await _call_in_executor(
-                executor, _claim_and_execute, context, process_token
+                executor, claim, context, process_token
             )
         except Exception:  # noqa: BLE001 - a slot failure must not kill the Worker
             logger.exception("Worker execution slot failed")
@@ -378,15 +458,15 @@ async def run_forever(
 ) -> int:
     """Poll due schedules and execute queued Runs until stopped.
 
-    Scheduler rounds and execution slots are independent: the due schedules are
-    evaluated at most once per ``poll_seconds`` while the
-    ``max_concurrent_runs`` execution slots keep claiming work, so an in-flight Run
-    cannot delay a schedule round and an idle queue costs one claim per interval
-    instead of a busy loop. A round that queued a Run wakes the idle slots right
-    away, and a stopping Worker still takes one last claim per slot, which is what
-    makes ``--rounds`` execute the Run its own last round enqueued. Each slot opens
-    its own Session because a Session is not shared between concurrently executing
-    Runs.
+    Scheduler rounds, Run slots and Document processing slots are independent: the
+    due schedules are evaluated at most once per ``poll_seconds`` while the
+    ``max_concurrent_runs`` Run slots and ``max_concurrent_documents`` document
+    slots keep claiming their own work, so neither a long Run nor a parse backlog
+    can delay a schedule round, starve the other queue, or busy-loop an idle slot.
+    A round that queued a Run wakes the idle Run slots right away, and a stopping
+    Worker still takes one last claim per slot, which is what makes ``--rounds``
+    execute the Run its own last round enqueued. Each slot opens its own Session
+    because a Session is not shared between concurrently executing items.
     """
 
     if not MIN_POLL_SECONDS <= poll_seconds <= MAX_POLL_SECONDS:
@@ -396,10 +476,16 @@ async def run_forever(
         )
     process_token = uuid4().hex
     slots = min(max(1, context.max_concurrent_runs), MAX_WORKER_CONCURRENCY)
+    document_slots = min(
+        max(1, context.max_concurrent_documents), MAX_WORKER_CONCURRENCY
+    )
     stop = asyncio.Event()
     wakeup = asyncio.Event()
+    # One thread per Run slot, one per document slot, and one for the scheduler
+    # round, so a saturated queue of either kind still leaves scheduling and the
+    # other queue able to make progress.
     executor = ThreadPoolExecutor(
-        max_workers=slots + 1, thread_name_prefix="stocks-worker"
+        max_workers=slots + document_slots + 1, thread_name_prefix="stocks-worker"
     )
     in_flight = [
         asyncio.create_task(
@@ -408,6 +494,19 @@ async def run_forever(
             )
         )
         for _ in range(slots)
+    ] + [
+        asyncio.create_task(
+            _run_slot(
+                context,
+                process_token,
+                stop,
+                wakeup,
+                poll_seconds,
+                executor,
+                claim=_claim_and_execute_document,
+            )
+        )
+        for _ in range(document_slots)
     ]
     rounds = 0
     try:
@@ -459,7 +558,10 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument(
         "--once",
         action="store_true",
-        help="Run one scheduler round and execute at most one queued Run.",
+        help=(
+            "Run one scheduler round, at most one queued Run and at most one "
+            "Document processing stage."
+        ),
     )
     parser.add_argument(
         "--rounds",
@@ -480,6 +582,15 @@ def main(argv: Sequence[str] | None = None) -> int:
         help=(
             "Maximum Task Runs this Worker executes at the same time "
             f"(1-{MAX_WORKER_CONCURRENCY})."
+        ),
+    )
+    parser.add_argument(
+        "--max-concurrent-documents",
+        type=int,
+        default=None,
+        help=(
+            "Maximum Document processing stages this Worker executes at the "
+            f"same time (1-{MAX_WORKER_CONCURRENCY})."
         ),
     )
     args = parser.parse_args(argv)
@@ -513,6 +624,26 @@ def main(argv: Sequence[str] | None = None) -> int:
             file=sys.stderr,
         )
         return 2
+    document_concurrency = args.max_concurrent_documents
+    if (
+        document_concurrency is not None
+        and not 1 <= document_concurrency <= MAX_WORKER_CONCURRENCY
+    ):
+        print(
+            json.dumps(
+                {
+                    "error": {
+                        "code": "DOCUMENT_CONCURRENCY_INVALID",
+                        "message": (
+                            "max-concurrent-documents must be between 1 and "
+                            f"{MAX_WORKER_CONCURRENCY}"
+                        ),
+                    }
+                }
+            ),
+            file=sys.stderr,
+        )
+        return 2
     if not MIN_POLL_SECONDS <= args.poll_seconds <= MAX_POLL_SECONDS:
         print(
             json.dumps(
@@ -537,6 +668,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         }
         if concurrency is not None:
             overrides["max_concurrent_runs"] = concurrency
+        if document_concurrency is not None:
+            overrides["max_concurrent_documents"] = document_concurrency
         context = WorkerContext.from_settings(**overrides)
     except (ValueError, OSError) as exc:
         print(
@@ -556,12 +689,17 @@ def main(argv: Sequence[str] | None = None) -> int:
     if args.once:
         payload = run_once(context)
         print(json.dumps(payload, ensure_ascii=False, indent=2))
-        failed = any(
-            item.get("status") not in {None, "succeeded"}
-            for item in [payload.get("executed") or {}]
-        ) or any(
-            item.get("action") in {"failed", "configuration_failed"}
-            for item in payload.get("scheduler", [])
+        executed = payload.get("executed") or {}
+        processing = payload.get("processing") or {}
+        failed = (
+            executed.get("status") not in {None, "succeeded"}
+            # A Document stage failure is recorded on that Document and never
+            # stops the slot, but ``--once`` still has to make it observable.
+            or processing.get("status") == "failed"
+            or any(
+                item.get("action") in {"failed", "configuration_failed"}
+                for item in payload.get("scheduler", [])
+            )
         )
         return 1 if failed else 0
     try:

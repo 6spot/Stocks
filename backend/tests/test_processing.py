@@ -21,10 +21,7 @@ from stocks.processing.parser import (
     _ChunkPiece,
     parse_content,
 )
-from stocks.processing.service import (
-    process_document,
-    process_documents,
-)
+from stocks.processing.service import process_document
 from stocks.repository import (
     SearchFilters,
     list_parse_batches,
@@ -49,29 +46,6 @@ ARTICLE_HTML = b"""\
 </article>
 </body></html>
 """
-
-
-class StubSession:
-    def __init__(self, documents):
-        self.documents = documents
-
-    def scalars(self, statement):
-        statement_text = str(statement)
-        rows = list(self.documents)
-        if "documents.collected_at DESC" in statement_text:
-            rows.sort(key=lambda item: item.collected_at, reverse=True)
-        if "LIMIT" in statement_text.upper():
-            limit = int(statement_text.upper().split("LIMIT", 1)[1].split()[0])
-            rows = rows[:limit]
-        return _ScalarRows(rows)
-
-
-class _ScalarRows:
-    def __init__(self, rows):
-        self.rows = rows
-
-    def all(self):
-        return self.rows
 
 
 def make_config(**overrides) -> Settings:
@@ -642,44 +616,35 @@ def test_invalid_or_unsupported_content_is_explicit(
     assert captured.value.status == status
 
 
-def test_processing_rejects_nonpositive_limit_before_reading():
-    first = make_document(
-        b"first",
-        collected_at=datetime(2026, 10, 20, 1, tzinfo=UTC),
+def test_processing_does_not_read_storage_for_a_reused_completed_batch(
+    monkeypatch,
+):
+    document = make_document(b"content")
+    calls: list[object] = []
+
+    class ExistingBatch:
+        id = uuid4()
+        status = "completed"
+        chunk_count = 3
+        error = None
+        processor_version = "semantic-text-v1"
+        config_fingerprint = "f" * 64
+
+    monkeypatch.setattr(
+        "stocks.processing.service.find_parse_batch",
+        lambda *args, **kwargs: ExistingBatch(),
     )
-    second = make_document(
-        b"second",
-        collected_at=datetime(2026, 10, 20, 2, tzinfo=UTC),
+
+    summary = process_document(
+        object(),
+        make_config(),
+        document,
+        read_bytes=lambda config, item: calls.append(item) or b"content",
     )
-    session = StubSession([first, second])
-    seen = []
 
-    def read_bytes(config, document):
-        seen.append(document.id)
-        return document.content_hash.encode()
-
-    with pytest.raises(ValueError, match="limit"):
-        process_documents(
-            session,
-            make_config(),
-            limit=0,
-            read_bytes=read_bytes,
-        )
-
-    assert seen == []
-
-
-def test_processing_rejects_unknown_explicit_document_ids():
-    document = make_document(b"known")
-    missing = uuid4()
-    session = StubSession([document])
-
-    with pytest.raises(ValueError, match=str(missing)):
-        process_documents(
-            session,
-            make_config(),
-            document_ids=[document.id, missing],
-        )
+    assert summary.reused is True
+    assert summary.status == "completed"
+    assert calls == []
 
 
 def test_processing_routes_content_hash_failure_to_failed_batch(monkeypatch):

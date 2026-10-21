@@ -12,7 +12,7 @@ Requires Docker Compose. An S3-compatible endpoint is needed to collect and pers
 
 `api` and `worker` are separate processes from the same image and configuration. The API only reads and never executes a Task Run; the Worker polls PostgreSQL for `queued` Runs and evaluates due schedules, so a restart of either one does not lose queued work. The Worker has no published port.
 
-The current implementation provides Source/Document/Chunk models, fresh-database initialization, a versioned Document repository, configured RSS/Atom discovery, safe HTTP article acquisition, a manual collection CLI, a manual HTML/text parsing CLI, manual pgvector indexing and semantic/exact search CLI, a document-list API, a generic S3 snapshot helper, an HTTP model client, a configured Task runner, a persistent Task scheduler, and an independent Worker. The runner persists an Evidence Package with actual Chunk/Document versions, validates structured findings against that snapshot, and saves an Analysis plus a readable Report. The repository checks `(source_id, dedupe_key)` and SHA-256 before writing storage, reuses an immutable Document version and updates a separate collection state for identical bytes, and creates the next immutable Document version for changed bytes. The read-only report and evidence API is implemented; see the next section. Classification, Fact extraction, reliable change watermarks, and the Web console remain to be implemented.
+The current implementation provides Source/Document/Chunk models, fresh-database initialization, a versioned Document repository, configured RSS/Atom discovery, safe HTTP article acquisition, a manual collection CLI, a unified Document processing backlog with manual parse/index commands, pgvector indexing and semantic/exact search CLI, a document-list API, a generic S3 snapshot helper, an HTTP model client, a configured Task runner, a persistent Task scheduler, and an independent Worker with separate Run and document processing slots. The runner persists an Evidence Package with actual Chunk/Document versions, validates structured findings against that snapshot, and saves an Analysis plus a readable Report. The repository checks `(source_id, dedupe_key)` and SHA-256 before writing storage, reuses an immutable Document version and updates a separate collection state for identical bytes, and creates the next immutable Document version for changed bytes. The read-only report and evidence API is implemented; see the next section. Classification, Fact extraction, reliable change watermarks, and the Web console remain to be implemented.
 
 The snapshot helper stores the exact bytes supplied by its caller, computes their SHA-256 hash, and uses the supplied content type; it does not assume XML or a particular collection channel. `stocks.repository.ingest_document()` remains the only Document write entry point.
 
@@ -28,16 +28,68 @@ The command prints one JSON summary with discovered, ingested, reused, skipped, 
 
 The standalone `stocks.collection` CLI is still available for a one-off manual collection. It does not create Task/Run records, a collection cursor, chunks, embeddings, classifications, or Facts; a scheduled collection Task does create a Run record. Neither includes a browser renderer for JavaScript-only article pages. A real SEC run still requires configured PostgreSQL and S3 services; the unit tests use fixed HTTP responses and injected storage and do not contact SEC or S3.
 
-## Manual document parsing
+## Document processing backlog, manual parsing and indexing
 
-After collection, parse up to 20 latest Documents or select specific IDs. The default
-chunk budget is 1,200 decoded characters with 150 characters of overlap; configure
-`PARSE_CHUNK_SIZE` and `PARSE_CHUNK_OVERLAP`, where overlap must be smaller than size:
+Documents enter a unified background-processing backlog automatically: the
+`document_processing_states` rows for `parse`, `classify`, `facts` and `index` are
+created in the same transaction as the Document content version, and the Worker's
+independent document slots claim them. `WORKER_MAX_CONCURRENT_DOCUMENTS` (default `1`,
+bounded to 1..16) caps how many stages run at once; it is separate from
+`WORKER_MAX_CONCURRENT_RUNS`, so a parse/index backlog never starves collection or
+research and a long research Run never blocks processing.
+
+Query the backlog and this deployment's capability:
 
 ```bash
-docker compose run --rm api python -m stocks.processing --limit 20
-docker compose run --rm api python -m stocks.processing \
+docker compose run --rm api python -m stocks.processing status --limit 20
+docker compose run --rm api python -m stocks.processing status \
+  --stage index --status failed
+docker compose run --rm api python -m stocks.processing status \
+  --document-id <document-uuid>
+```
+
+`status` prints one JSON object with the stage rows (document, stage, status, attempts,
+wait/skip reason, safe error, processor version, input batch) plus counts, the
+`available_stages` this deployment can run, and the `unavailable_stages`. A stage whose
+processor is not registered is reported as `pending` with
+`wait_reason: PROCESSOR_NOT_AVAILABLE` and `processor_available: false`; it is never
+claimed, never consumes an attempt and is never reported as completed or skipped. This
+release registers `parse` and `index`; `classify` and `facts` wait for their own
+implementations.
+
+Recover or explicitly reprocess work:
+
+```bash
+# Reopen failed/unfinished stages for the Worker (does not execute them here).
+docker compose run --rm api python -m stocks.processing retry \
+  --document-id <document-uuid> --stage parse --stage index
+
+# Release a stage whose owning process was killed, then run it now.
+docker compose run --rm api python -m stocks.processing retry \
+  --document-id <document-uuid> --stage index --confirm-stopped --execute
+
+# Explicitly run a completed stage again (for example a new embedding model).
+docker compose run --rm api python -m stocks.processing reprocess \
+  --document-id <document-uuid> --stage index --execute
+```
+
+`retry` refuses a `completed` stage and requires `--confirm-stopped` to release a
+`running` one; the Worker never takes over a stage another process may still own.
+`reprocess` reopens a completed stage. Both reopen through the same claim path, so a
+manual command cannot bypass stage ownership or write a result outside the stage
+transaction.
+
+A manual parse of up to 20 actionable Documents (or explicit IDs) is still available and
+now runs through the same parse stage. The default chunk budget is 1,200 decoded
+characters with 150 characters of overlap; configure `PARSE_CHUNK_SIZE` and
+`PARSE_CHUNK_OVERLAP`, where overlap must be smaller than size:
+
+```bash
+docker compose run --rm api python -m stocks.processing parse --limit 20
+docker compose run --rm api python -m stocks.processing parse \
   --document-id <document-uuid> --include-text
+docker compose run --rm api python -m stocks.processing parse \
+  --document-id <document-uuid> --reprocess
 ```
 
 Supported inputs are HTML, XHTML, and plain text with a declared or UTF-8 compatible
@@ -51,14 +103,15 @@ parse batch; the document parse state distinguishes the latest attempt from the 
 successful batch.
 
 An ordinary repeated run reuses the result for the same Document, processor version and
-configuration. `--reprocess` creates a new batch. If that attempt fails, the current
+configuration; a previous failed or `unsupported` attempt is retried for real instead of
+being returned again. `--reprocess` creates a new batch. If that attempt fails, the current
 successful batch and its Chunks remain readable and unchanged; a later success becomes
 the current batch without deleting history. Unsupported formats and documents with no
 extractable evidence text are recorded as `unsupported` or `failed`; they are never
-stored as empty successful chunks. PDF/JSON/XML parsing, OCR, classification, Facts,
-unified background backlog handling, and the Web console remain future work.
-The separate Task trigger, scheduler and Worker are implemented; see
-[Tasks, scheduling and the Worker](#tasks-scheduling-and-the-worker).
+stored as empty successful chunks. PDF/JSON/XML parsing, OCR, classification and Facts
+remain future work, and the Web console for reading the backlog is not implemented yet.
+The separate Task trigger, scheduler, Worker and unified processing backlog are
+implemented; see [Tasks, scheduling and the Worker](#tasks-scheduling-and-the-worker).
 
 ## Manual embedding indexing and search
 
@@ -68,17 +121,22 @@ vector space is fixed at 1,536 dimensions, matching the HNSW cosine index in the
 database schema. Any configured embedding fallback must use the same model name and
 dimensions.
 
-After parsing, index up to 20 latest Documents or select explicit IDs:
+After parsing, index up to 20 actionable Documents or select explicit IDs:
 
 ```bash
 docker compose run --rm api python -m stocks.indexing --limit 20
 docker compose run --rm api python -m stocks.indexing \
   --document-id <document-uuid>
+docker compose run --rm api python -m stocks.indexing \
+  --document-id <document-uuid> --reindex
 ```
 
-An unchanged current batch reuses its vectors. `--reindex` regenerates them without
-reading the original S3 snapshot or parsing it again. Displays the index state in
-`/api/documents`, including indexed and missing Chunk counts.
+Both commands call the unified stage service. An unchanged current batch reuses its
+vectors, and `--reindex` regenerates them without reading the original S3 snapshot or
+parsing again. Only an eligible index stage reads `config/models.yaml`; a missing or
+broken embedding route fails that one attempt and leaves the original Document and its
+Chunks intact, and it never stops parsing or a collection Run. `/api/documents` shows the
+index state, including indexed and missing Chunk counts.
 
 Semantic search generates one query vector and reads the existing pgvector index.
 Exact search accepts short stock-code or metric identifiers and does not call a model:
@@ -210,6 +268,15 @@ Run in the queue, and idle scheduling costs one claim per interval. Set the limi
 to keep collection and research strictly serialized. Each Run uses its own database
 Session, and a failure in one Task is recorded on that Run without stopping the round.
 
+The same Worker also keeps `WORKER_MAX_CONCURRENT_DOCUMENTS` (default `1`, bounded to
+1..16) document processing slots. Each slot claims at most one ready Document stage at a
+time and immediately looks for the next one, using the same bounded wait and backoff as a
+Run slot. Run slots, document slots and the scheduler round each get their own thread in
+the Worker's thread pool, so a saturated Run queue or a parse backlog cannot starve the
+other, and an idle queue is not polled in a hot loop. A failed stage is recorded on that
+Document and never terminates the slot. Only registered stages are claimed, so
+`classify`/`facts` staying unregistered costs no queries beyond the capability check.
+
 For a single cycle (tests, smoke checks):
 
 ```bash
@@ -217,12 +284,21 @@ docker compose run --rm worker python -m stocks.worker --once
 docker compose run --rm worker python -m stocks.worker --rounds 1 --poll-seconds 1
 ```
 
-`--once` prints the scheduler outcomes plus the executed Run summary. A continuously
-running Worker evaluates the due schedules once per `--poll-seconds` independently of its
-execution slots, and a stopping slot still takes one last claim, so `--rounds N` also
-executes the Run its final round queued. A Worker that is killed mid-Run leaves the Run
-`running` with its last persisted steps and errors; there is no automatic crash
-detection. Confirm the process stopped, then `end` and `retry` it.
+`--once` prints the scheduler outcomes, the executed Run summary and a `processing`
+summary for at most one Document stage. `--max-concurrent-documents` overrides
+`WORKER_MAX_CONCURRENT_DOCUMENTS` for one invocation. The exit code is `1` when that
+cycle failed: a Run ended unsuccessfully, a scheduling outcome failed, or the Document
+stage it attempted ended `failed`. A failed Document stage is still recorded on its own
+Document and never stops the slot, but the exit code has to make it observable so a
+deployment or acceptance check can tell an empty backlog from a real failure. A
+continuously running Worker evaluates the due schedules once per `--poll-seconds`
+independently of its execution slots, and a stopping slot still takes one last claim,
+so `--rounds N` also executes the Run its final round queued. A Worker that is killed
+mid-Run leaves the Run `running` with its last persisted steps and errors, and a killed
+document stage stays `running` with its already committed parse batches or vector
+batches; there is no automatic crash detection or takeover.
+Confirm the process stopped, then `end`/`retry` the Run and
+`stocks.processing retry --confirm-stopped` the stage.
 
 Each `select_evidence` step may set up to eight `queries`, a `limit_per_query`, a
 `max_tokens` budget, and up to 20 unique `source_ids`. With no explicit `queries`, the

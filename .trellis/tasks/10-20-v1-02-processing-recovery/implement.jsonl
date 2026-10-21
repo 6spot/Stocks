@@ -8,4 +8,8 @@
 {"file": ".trellis/spec/backend/database-guidelines.md", "reason": "后端实现/数据库/错误与必要验证约定"}
 {"file": ".trellis/spec/backend/error-handling.md", "reason": "后端实现/数据库/错误与必要验证约定"}
 {"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "后端实现/数据库/错误与必要验证约定"}
-{"file": ".trellis/tasks/10-20-stocks-roadmap/research/baseline.md", "reason": "本轮代码现状与分期依据，后续开工需复核"}
+{"file": ".trellis/spec/backend/testing-guidelines.md", "reason": "唯一测试服务器、密码经会话临时传递、任务隔离及持久 editable 环境重新指向"}
+{"file": ".trellis/spec/backend/worker-guidelines.md", "reason": "独立 Session、领取/token fence、常驻槽位、有界等待与线程池容量"}
+{"file": "docs/quickstart.md", "reason": "实际已落地的 Worker/CLI 入口及待更新运行说明"}
+{"file": ".trellis/tasks/10-20-v1-02-processing-recovery/research/kickoff-review.md", "reason": "基于 V1-01 交付后的当前实现、失败复用问题及后续任务边界"}
+{"file": ".trellis/tasks/archive/2026-10/10-20-v1-01-worker-scheduling/acceptance.md", "reason": "前置交付验证与 PA-1/部署等未完成边界"}

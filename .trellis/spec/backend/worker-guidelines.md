@@ -13,6 +13,8 @@ cron/时区语义、漏触发策略、增量水位等产品契约的唯一来源
 
 - 改动 `backend/src/stocks/worker.py`、`backend/src/stocks/execution/scheduler.py`、
   `backend/src/stocks/execution/service.py` 的触发、领取、步骤落库、结束或重试路径时适用。
+- 改动 `backend/src/stocks/processing/` 的阶段服务、`indexing/` 或 Repository 的阶段结果事务时同样适用；
+  文档待办与 TaskRun 各用自己的状态和 token，不以进程内标记代替持久所有权。
 - API 与 Worker 是共享同一后端代码的**两个进程**，只通过 PostgreSQL 协调（`compose.yaml` 的 `worker` 服务）。
   任何"另一个进程可能在跑"的假设都必须用数据库条件写操作表达，不能用内存状态。
 
@@ -20,15 +22,24 @@ cron/时区语义、漏触发策略、增量水位等产品契约的唯一来源
 
 - `worker.WorkerContext.from_settings(**overrides)`：唯一构造入口，持有 `session_factory`、`settings`
   与三个配置路径（tasks/models/sources），以及可选 `model_transport`（测试注入 `httpx.MockTransport`）。
-- `worker.run_once(context, *, process_token=None, now=None) -> dict`：一个调度轮 + 至多一份 Run，返回
-  `{"process_token", "scheduler", "executed"}`；`--once` 与测试都用它。
+- `worker.run_once(context, *, process_token=None, now=None) -> dict`：一个调度轮 + 至多一份 Run + 至多一个文档阶段，返回
+  `{"process_token", "scheduler", "executed", "processing"}`；空项为 `null`，`--once` 与测试都用它。
 - `worker.run_forever(context, *, poll_seconds, max_rounds=None)`：常驻轮询；`--rounds N` 用于有界执行。
+- `worker.execute_next_document_stage(context, *, process_token, now=None)`：至多一个 Document 阶段；`run_once` 返回 `{"process_token", "scheduler", "executed", "processing"}`。
+- `runner.run_next_document_stage` / `runner.run_stages_for_documents` / `runner.describe_stages`：文档阶段的领取、显式重试/重处理与积压查询。
 - `worker.claim_next_run(session, *, process_token, now=None)`：`FOR UPDATE SKIP LOCKED` 领取最旧 `queued` Run。
 - `scheduler.run_scheduler_round(session, tasks, agents_by_id, *, now, model_config_path) -> list[ScheduleOutcome]`。
 - `service.create_or_get_run` / `end_run` / `retry_run` / `claim_run` / `execute_claimed_run` /
   `fail_claimed_run`：manual、schedule、retry 共用同一入队路径（内部 `_enqueue_run`）。
 - CLI：`python -m stocks.execution {trigger,runs,show,end,retry}`、`python -m stocks.worker [--once|--rounds N]`。
+  文档入口：`python -m stocks.processing status|retry|reprocess|parse|index`；retry/reprocess 指定
+  `--document-id <uuid> --stage <stage>`，默认入队、`--execute` 才当次执行，解除 running 必须 `--confirm-stopped`。
   已删除的旧入口（`create_claimed_and_execute` 一类"同进程创建+领取+执行"）不得复活。
+- `document_processing_states`：主键 `(document_id, stage)`，用 `owner_token`、`attempts/max_attempts`、
+  `next_attempt_at`、`reprocess_requested`、处理器/配置身份和 `input_batch_id` 表达当前执行；
+  running 必有 token，其他状态不得带 token，failed 必有 error，skipped 必有 skip_reason。
+- `WORKER_MAX_CONCURRENT_RUNS` 默认 2、`WORKER_MAX_CONCURRENT_DOCUMENTS` 默认 1，两者均为 1–16；
+  CLI 分别用 `--max-concurrent-runs` / `--max-concurrent-documents` 覆盖。
 
 ## Contracts
 
@@ -55,9 +66,38 @@ cron/时区语义、漏触发策略、增量水位等产品契约的唯一来源
    调度循环独立于槽位，长 Run 不得推迟到期判定。`stop` 置位后每槽最多再领取一次，`finally` 仍 `gather` 全部槽位并
    `executor.shutdown(wait=True)`：Worker 永不抛下自己已拥有的 Run。
 7. **阻塞调用用 Worker 自有线程池。** `_call_in_executor(executor, fn, ...)` +
-   `ThreadPoolExecutor(max_workers=slots + 1)`。`asyncio.to_thread` 走事件循环默认执行器
+   `ThreadPoolExecutor(max_workers=run_slots + document_slots + 1)`。`asyncio.to_thread` 走事件循环默认执行器
    （`ThreadPoolExecutor`，Python 3.12 默认大小约 `min(32, cpu_count() + 4)`），当配置并发大于该默认值时长 Run
-   会占满线程并饿死调度轮，因此不使用。
+   会占满线程并饿死调度轮，因此不使用。文档槽位必须与 Run 槽位分别占线程：共用池会让解析积压占满线程，
+   反过来饿死采集/研究，也让调度轮没有线程可用。
+7a. **文档槽位独立于 Run 槽位。** `_run_slot(..., claim=...)` 用同一个常驻循环，Run 槽位传
+   `_claim_and_execute`，文档槽位传 `_claim_and_execute_document`。两者共享同一有界等待、退避与
+   “停止后每槽最多再领取一次”语义；`max_concurrent_documents` 默认 1、可配 1–16。只对
+   `registry.available_stages()` 中的阶段调用 `claim_stage`，因此未接入的 classify/facts 不会被轮询。
+   每个文档槽位用**自己的** owner token（`{process_token}-doc-{uuid4}`）：并发槽位共用 token 会让
+   所有权 fence 无法区分写入者，Owner 恢复时可能接受错的执行者。
+7b. **Embedding 路由惰性解析。** `StageRegistry.index_factory` 只在真正执行一个已领取的 index 阶段时调用
+   `load_embedding_client`；构建 registry、解析 Document 和执行采集 Run 不读文档处理的 embedding 路由，
+   路由损坏只让该次 index 尝试失败（`EMBEDDING_ROUTING_UNAVAILABLE`，不自动重试）。研究 Run 的取材仍
+   读取并核对自己的 Embedding 路由快照，不能把文档槽位的惰性初始化误写成研究不依赖该配置。
+   缺处理器用 `pending` + `PROCESSOR_NOT_AVAILABLE`（不消耗尝试），能力/配置错误才写 `failed`。
+7c. **分批结果每批都校验所有权，且以数据库最新行为准。** `persist_embedding_result` 在 Document 行锁下
+   先 `assert_stage_owned`，再重读权威的 `document_parse_states.current_batch_id`（`populate_existing=True`）；
+   旧批次或旧 token 都报 `STAGE_NOT_OWNED`，既不写向量也不写阶段结果。中间批（`stage_final_batch=False`）
+   只写向量，只有最后覆盖批把“覆盖核对 + 阶段完成”放在同一事务。
+   **`expire_on_commit=False` 下缓存实体不是授权。** `_lock_owned_state`、`claim_stage`、`retry_stage`、
+   `request_reprocess`、`recover_stage` 的 `select(...).with_for_update()` 必须带 `execution_options(populate_existing=True)`，
+   否则 Session 会校验旧状态/旧 token 而不是锁住的行；读 `document_parse_states` / `document_embedding_states`
+   做复用或结果判断时同样要重读，否则另一 Session 已提交的新当前批次会被旧缓存掩盖。
+7d. **新当前批次使旧输入的运行中阶段作废并可重新领取。** 解析成功切换当前批次时，
+   `_apply_downstream` 对仍在 `running` 且 `input_batch_id` 不是新批次的 index/classify 阶段，在同一事务内
+   释放所有权并回到 `pending`、`attempts=0`、指向新批次；旧执行者的写入被 7c 的 token 校验拒绝。
+   不能只 `continue` 跳过运行中的行：那会让旧执行者完成阶段，新批次永远无人索引。
+7e. **`--once` 的退出码要暴露阶段失败。** 文档阶段失败会被记录在对应 Document 上且不会终止槽位，
+   但 `--once` 仍需以退出码 1 反映出来（`processing.status == "failed"`），否则部署/验收脚本无法
+   区分“空积压”和“处理真的失败”。
+7f. **`execute_next_document_stage` 不向调用方抛异常。** 它自身隔离阶段缺陷并返回安全失败摘要，
+   因为 `--once` 在槽位守卫之外直接调用它；槽位路径本来就是每项自己捕获并继续。
 8. **重试复制快照与已完成工作，不新建历史表。** `retry_run` 只接受 `failed|cancelled`；复制**被结束 Run 自己的**
    `config_snapshot`/`model_snapshot`/`prompt_snapshot`（`config_path=None`、`upsert_definition=False`），
    只复制**连续成功**且非 `research_agent` 的步骤；Evidence Package 为新 Run 重新建一份，并把
@@ -80,19 +120,36 @@ cron/时区语义、漏触发策略、增量水位等产品契约的唯一来源
 | 领取到 Run 但已被 Owner 结束 | `claim_run`/`execute_claimed_run` 返回 `RUN_NOT_CLAIMED`/`RUN_NOT_OWNED`，`execute_next_run` 汇总 `status="not_owned"`，不改写该 Run |
 | 步骤抛出未分类异常 | 只写该 Run 的 `failed` StepResult 与 error，Worker 存活；意外逃逸异常由 `_fail_run` 落一条安全错误 |
 | `--once` 中 Run 失败或调度 `failed` | CLI 退出码 `1`（可观测），空队列正常返回 `0` |
-| `poll_seconds`/并发越界 | CLI exit 2 + `POLL_SECONDS_INVALID`/`CONCURRENCY_INVALID`/`ROUNDS_INVALID`，不静默夹取 |
+| `poll_seconds`/并发越界 | CLI exit 2 + `POLL_SECONDS_INVALID`/`CONCURRENCY_INVALID`/`DOCUMENT_CONCURRENCY_INVALID`/`ROUNDS_INVALID`，不静默夹取 |
+| 未注册文档处理器 | status 显示 `pending` + `PROCESSOR_NOT_AVAILABLE`、`processor_available=false`；不自动领取、不消耗尝试 |
+| 文档旧 token 或已被新解析批次作废的输入 | `STAGE_NOT_OWNED`，结果事务回滚，不能覆盖新所有者/新输入 |
+| 文档 running 未确认旧进程停止 | `OWNER_CONFIRMATION_REQUIRED`；不解除所有权 |
+| retry 已完成文档阶段 | `STAGE_ALREADY_COMPLETED`；只有 reprocess 可以显式重开 |
+| 文档阶段实际失败且未耗尽预算 | 按持久 `next_attempt_at` 退避；预算耗尽后不自动领取 |
+| 显式重建失败或中断 | 保留 `reprocess_requested`，不得把旧可用结果当作这次请求已完成 |
 
 ## Good / Base / Bad Cases
 
 - Good：两个槽位（`WORKER_MAX_CONCURRENT_RUNS=2`），15 分钟采集与 8 分钟研究同时存在；采集槽位执行完立即领取下一份，
   调度轮仍每 `poll_seconds` 判定一次，研究长 Run 不推迟到期。
-- Base：`worker --once` 在空队列 → `scheduler: []`、`executed: null`、退出码 0；不产生任何数据库写入负载之外的循环。
+- Base：`worker --once` 在两侧均空时 → `scheduler: []`、`executed: null`、`processing: null`、退出码 0；
+  未注册分类器不会被忙轮询。
 - Bad：每轮重建 `create_task` 并 `asyncio.wait(..., timeout=poll_seconds)`（默认 `ALL_COMPLETED`）补齐槽位——空闲槽
   立刻返回会造成每间隔热循环，且一个空槽要等本轮最慢 Run；用 `asyncio.to_thread` 承担全部阻塞调用；
   为"防止结束后写资料"去回滚已入库的原文；用内存 `last_run` 做调度去重。
 
 ## Tests Required
 
+- `tests/test_worker_processing.py`：文档槽位空闲不热轮询、长 Run 不饿死文档阶段、`--once` 至多一个阶段、
+  未注册阶段不被领取且 status 显示等待原因、惰性 index factory、CLI status/retry/reprocess/parse/index 边界。
+- `tests/test_processing_retry.py`：阶段状态机、领取原子性、重试预算、恢复 token fence、
+  分批向量写入的每批所有权校验、失败的显式重处理保留请求、中断的显式重建不被误判为完成、
+  适用性跳过的传播与重新打开、重处理不重开 Fact。
+  **并发用例必须用两个独立 Session 真的切换所有权**：旧 Session 要强引用其已领取的阶段实体
+  （以及解析指针），第二 Session 完成 Owner 恢复/重新领取或提交新的当前解析批次；只在全新 Session
+  里伪造一个过期 claim 不能覆盖 `expire_on_commit=False` 下的缓存实体路径。参考
+  `test_stale_index_owner_cannot_write_after_owner_recovery`、
+  `test_new_current_batch_supersedes_a_running_index_attempt`（在 `embed()` 回调中让另一 Session 提交新批次）。
 - `tests/test_scheduler.py`：cron 时区、DST 跳时/重叠（**按真实 tzdata 推导：2026-11-01 纽约重复的是 01:30，
   01:30 EDT = 05:30 UTC、01:30 EST = 06:30 UTC；秋季当天 02:30 只存在一次**）、`every` 固定锚点与合并、
   首次注册不触发、指纹变更重锚定、disabled 退役、并发调度轮只入队一份、跨 Task 失败隔离。
@@ -110,6 +167,18 @@ cron/时区语义、漏触发策略、增量水位等产品契约的唯一来源
   且该 Task 仍有活跃 Run 时直接拒绝，不得改回整表删除。
 
 ## Wrong vs Correct
+
+```python
+# Wrong：有行锁却仍用 Session identity map 中的旧 token 判断授权
+state = session.scalar(select(DocumentProcessingState).where(...).with_for_update())
+
+# Correct：在锁内刷新实体，再用数据库当前 token 判断；结果与状态同事务提交
+state = session.scalar(
+    select(DocumentProcessingState).where(...).with_for_update()
+    .execution_options(populate_existing=True)
+)
+# validate status/owner_token, persist derived result and stage outcome, commit
+```
 
 ```python
 # Wrong：空闲槽位立即返回 → 每轮重建任务并重新读配置、重新领取

@@ -1,19 +1,32 @@
+"""Manual embedding indexing entry point.
+
+Indexing runs through the unified Document stage path: this command only reopens and
+executes the ``index`` stage, so it takes the same claim, ownership and result
+transaction as the Worker. It never parses, re-reads the original snapshot or
+re-extracts Facts; an already completed index is reported as unchanged unless
+``--reindex`` explicitly asks for a reprocess.
+"""
 from __future__ import annotations
 
 import argparse
 import json
 import sys
 from collections.abc import Sequence
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from stocks.db import session_factory
-from stocks.indexing.service import index_documents, load_embedding_client
+from stocks.processing.processors import build_stage_registry
+from stocks.processing.runner import run_stages_for_documents
+from stocks.processing.stages import STAGE_INDEX, list_stage_states
 from stocks.settings import settings
 
 
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
-        description="Create pgvector embeddings for current Document chunks."
+        description=(
+            "Create pgvector embeddings for current Document chunks through the "
+            "unified Document processing stage path."
+        )
     )
     parser.add_argument(
         "--config",
@@ -30,7 +43,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         "--limit",
         type=int,
         default=20,
-        help="Maximum latest Documents to process when no IDs are supplied (1-200).",
+        help="Maximum Documents to process when no IDs are supplied (1-200).",
     )
     parser.add_argument(
         "--reindex",
@@ -50,16 +63,24 @@ def main(argv: Sequence[str] | None = None) -> int:
         parser.error("--document-id must be a valid UUID")
 
     try:
-        targets, client = load_embedding_client(args.config)
         with session_factory()() as session:
-            summaries = index_documents(
-                session,
-                settings(),
-                targets,
-                client,
-                document_ids=document_ids,
-                limit=args.limit,
-                force_reindex=args.reindex,
+            targets = (
+                list(document_ids)
+                if document_ids
+                else [
+                    state.document_id
+                    for state in list_stage_states(
+                        session,
+                        stages=[STAGE_INDEX],
+                        statuses=["pending", "failed"],
+                        limit=args.limit,
+                        # An index stage is only actionable once its parse
+                        # dependency completed; without this filter a backlog of
+                        # freshly ingested but unparsed Documents would fill the
+                        # whole bounded result and report them all unclaimable.
+                        dependencies_completed=True,
+                    )
+                ]
             )
     except Exception:  # noqa: BLE001 - CLI must return only safe diagnostics
         print(
@@ -75,16 +96,28 @@ def main(argv: Sequence[str] | None = None) -> int:
         )
         return 2
 
-    items = [item.to_dict() for item in summaries]
+    executions, errors = run_stages_for_documents(
+        session_factory(),
+        settings(),
+        build_stage_registry(args.config),
+        targets,
+        [STAGE_INDEX],
+        reprocess=args.reindex,
+        owner_token=f"index-cli-{uuid4().hex}",
+        completed_is_error=False,
+    )
+    items = [item.to_dict() for item in executions]
     output = {
-        "processed": len(summaries),
-        "completed": sum(item.status == "completed" for item in summaries),
-        "failed": sum(item.status == "failed" for item in summaries),
-        "reused": sum(item.reused for item in summaries),
+        "processed": len(items),
+        "completed": sum(item["status"] == "completed" for item in items),
+        "failed": sum(item["status"] == "failed" for item in items),
+        "skipped": sum(item["status"] == "skipped" for item in items),
         "items": items,
     }
+    if errors:
+        output["errors"] = errors
     print(json.dumps(output, ensure_ascii=False, indent=2))
-    return 1 if output["failed"] else 0
+    return 1 if output["failed"] or errors else 0
 
 
 if __name__ == "__main__":

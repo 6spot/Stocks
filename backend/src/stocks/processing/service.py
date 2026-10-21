@@ -6,7 +6,6 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from uuid import UUID
 
-from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from stocks.models import Document, DocumentParseBatch
@@ -14,6 +13,11 @@ from stocks.processing.parser import (
     PROCESSOR_VERSION,
     ParseFailure,
     parse_content,
+)
+from stocks.processing.stages import (
+    StageClaim,
+    StageOutcome,
+    apply_stage_outcome,
 )
 from stocks.repository import (
     ParseChunkInput,
@@ -69,6 +73,7 @@ def process_document(
     force_reprocess: bool = False,
     read_bytes: Callable[[Settings, Document], bytes] = read_document_bytes,
     clock: Callable[[], datetime] | None = None,
+    stage_claim: StageClaim | None = None,
 ) -> ParseSummary:
     fingerprint = parse_config_fingerprint(config)
     if not force_reprocess:
@@ -78,7 +83,19 @@ def process_document(
             processor_version=PROCESSOR_VERSION,
             config_fingerprint=fingerprint,
         )
-        if existing is not None:
+        # A failed or unsupported attempt is not a reusable result: retrying it
+        # must really re-read the original and record a new attempt.
+        if existing is not None and existing.status == "completed":
+            if stage_claim is not None:
+                persist_parse_reuse(
+                    session,
+                    document.id,
+                    batch_id=existing.id,
+                    stage_claim=stage_claim,
+                    processor_version=existing.processor_version,
+                    config_fingerprint=existing.config_fingerprint,
+                    attempted_at=(clock or (lambda: datetime.now(UTC)))(),
+                )
             return _summarize(document, existing, reused=True)
 
     attempted_at = (clock or (lambda: datetime.now(UTC)))()
@@ -117,58 +134,44 @@ def process_document(
         error=error,
         chunks=chunk_inputs,
         attempted_at=attempted_at,
+        # The repository derives the stage status from the persisted batch, so a
+        # failed parse never completes the stage.
+        stage_claim=stage_claim,
     )
     return _summarize(document, result.batch, reused=result.reused)
 
 
-def process_documents(
+def persist_parse_reuse(
     session: Session,
-    config: Settings,
+    document_id: UUID,
     *,
-    document_ids: list[UUID] | None = None,
-    limit: int = 20,
-    force_reprocess: bool = False,
-    read_bytes: Callable[[Settings, Document], bytes] = read_document_bytes,
-    clock: Callable[[], datetime] | None = None,
-) -> list[ParseSummary]:
-    if limit < 1:
-        raise ValueError("limit must be positive")
-    if document_ids:
-        documents = list(
-            session.scalars(
-                select(Document).where(Document.id.in_(document_ids))
-            ).all()
-        )
-        by_id = {document.id: document for document in documents}
-        missing = [document_id for document_id in document_ids if document_id not in by_id]
-        if missing:
-            raise ValueError(
-                "Unknown document IDs: "
-                + ", ".join(str(document_id) for document_id in missing)
-            )
-        ordered = [
-            by_id[document_id]
-            for document_id in document_ids
-        ]
-    else:
-        ordered = list(
-            session.scalars(
-                select(Document)
-                .order_by(Document.collected_at.desc())
-                .limit(limit)
-            ).all()
-        )
-    return [
-        process_document(
-            session,
-            config,
-            document,
-            force_reprocess=force_reprocess,
-            read_bytes=read_bytes,
-            clock=clock,
-        )
-        for document in ordered
-    ]
+    batch_id: UUID,
+    stage_claim: StageClaim,
+    processor_version: str,
+    config_fingerprint: str,
+    attempted_at: datetime,
+) -> None:
+    """Complete a claimed parse stage from an already stored successful batch."""
+
+    state = apply_stage_outcome(
+        session,
+        StageOutcome(
+            document_id=stage_claim.document_id,
+            stage=stage_claim.stage,
+            owner_token=stage_claim.owner_token,
+            status="completed",
+            processor_version=processor_version,
+            config_fingerprint=config_fingerprint,
+            input_batch_id=batch_id,
+        ),
+        now=attempted_at,
+    )
+    try:
+        session.commit()
+    except Exception:
+        session.rollback()
+        raise
+    session.refresh(state)
 
 
 def _summarize(

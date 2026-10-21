@@ -16,6 +16,7 @@ class Settings(BaseSettings):
     embedding_batch_size: int = Field(default=32, ge=1, le=256)
     embedding_max_query_characters: int = Field(default=4000, ge=1, le=20000)
     worker_max_concurrent_runs: int = Field(default=2, ge=1, le=16)
+    worker_max_concurrent_documents: int = Field(default=1, ge=1, le=16)
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
     def model_post_init(self, __context: object, /) -> None:

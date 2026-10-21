@@ -22,6 +22,17 @@ from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 from stocks.embedding_space import VECTOR_DIMENSIONS
 
+# Ordered background processing stages for one Document content version. The
+# vocabulary lives here because it is a persisted contract, not a policy.
+PROCESSING_STAGES = ("parse", "classify", "facts", "index")
+PROCESSING_STAGE_STATUSES = (
+    "pending",
+    "running",
+    "completed",
+    "failed",
+    "skipped",
+)
+
 
 class Base(DeclarativeBase):
     pass
@@ -572,6 +583,89 @@ class DocumentEmbeddingState(Base):
     indexed_count: Mapped[int] = mapped_column(Integer)
     error: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     attempted_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
+class DocumentProcessingState(Base):
+    """Current background-processing record for one Document stage.
+
+    One row per ``(document_id, stage)`` holds the queue/attempt/ownership state
+    only. Immutable parse batches, parse state pointers and embedding coverage
+    stay in their own tables, so a stage completion never rewrites a stored
+    result and a failed reprocess never revokes a usable one.
+    """
+
+    __tablename__ = "document_processing_states"
+    __table_args__ = (
+        CheckConstraint(
+            "stage IN ('parse', 'classify', 'facts', 'index')",
+            name="ck_document_processing_states_stage",
+        ),
+        CheckConstraint(
+            "status IN ('pending', 'running', 'completed', 'failed', 'skipped')",
+            name="ck_document_processing_states_status",
+        ),
+        CheckConstraint(
+            "status != 'running' OR owner_token IS NOT NULL",
+            name="ck_document_processing_states_running_owner",
+        ),
+        CheckConstraint(
+            "status = 'running' OR owner_token IS NULL",
+            name="ck_document_processing_states_closed_owner",
+        ),
+        CheckConstraint(
+            "attempts >= 0 AND max_attempts >= 1",
+            name="ck_document_processing_states_attempts",
+        ),
+        CheckConstraint(
+            "status != 'failed' OR error IS NOT NULL",
+            name="ck_document_processing_states_failed_error",
+        ),
+        CheckConstraint(
+            "status != 'skipped' OR skip_reason IS NOT NULL",
+            name="ck_document_processing_states_skipped_reason",
+        ),
+        Index(
+            "ix_document_processing_states_ready",
+            "stage",
+            "status",
+            "next_attempt_at",
+        ),
+    )
+    document_id: Mapped[UUID] = mapped_column(
+        ForeignKey("documents.id", ondelete="CASCADE"), primary_key=True
+    )
+    stage: Mapped[str] = mapped_column(String(16), primary_key=True)
+    status: Mapped[str] = mapped_column(String(16), default="pending")
+    attempts: Mapped[int] = mapped_column(Integer, default=0)
+    max_attempts: Mapped[int] = mapped_column(Integer, default=3)
+    auto_retry: Mapped[bool] = mapped_column(Boolean, default=True)
+    reprocess_requested: Mapped[bool] = mapped_column(Boolean, default=False)
+    next_attempt_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    owner_token: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    started_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    finished_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    error: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    wait_reason: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    skip_reason: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    processor_version: Mapped[str | None] = mapped_column(
+        String(80), nullable=True
+    )
+    config_fingerprint: Mapped[str | None] = mapped_column(
+        String(64), nullable=True
+    )
+    input_batch_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("document_parse_batches.id"), nullable=True
+    )
+    applicability: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )

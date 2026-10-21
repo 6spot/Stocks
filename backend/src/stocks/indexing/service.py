@@ -10,6 +10,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from stocks.models import Document, DocumentEmbeddingState, DocumentParseState
+from stocks.processing.stages import StageClaim, StageOutcome, apply_stage_outcome
 from stocks.providers import (
     EmbeddingError,
     EmbeddingResponse,
@@ -19,7 +20,6 @@ from stocks.providers import (
 )
 from stocks.repository import (
     EmbeddingInput,
-    get_embedding_state,
     list_chunk_embeddings,
     list_parse_chunks,
     persist_embedding_result,
@@ -92,14 +92,27 @@ def index_document(
     embed: Callable[[ModelClient, EmbeddingTargets, list[str]], EmbeddingResponse] = (
         embed_texts
     ),
+    stage_claim: StageClaim | None = None,
+    stage_processor_version: str | None = None,
+    stage_config_fingerprint: str | None = None,
 ) -> IndexSummary:
     attempted_at = (clock or (lambda: datetime.now(UTC)))()
-    parse_state = session.get(DocumentParseState, document.id)
+    # Re-read the authoritative parse pointer: this Session keeps entities alive
+    # across commits (``expire_on_commit=False``), and an explicit parse reprocess
+    # can commit a new current batch while this index attempt is running.
+    parse_state = session.scalar(
+        select(DocumentParseState)
+        .where(DocumentParseState.document_id == document.id)
+        .execution_options(populate_existing=True)
+    )
     if parse_state is None or parse_state.current_batch_id is None:
         error = {
             "code": "PARSED_CHUNKS_UNAVAILABLE",
             "message": "Document has no current successful parse batch",
         }
+        _apply_stage_failure(
+            session, stage_claim, error=error, attempted_at=attempted_at
+        )
         return IndexSummary(
             document_id=document.id,
             version=document.version,
@@ -120,7 +133,11 @@ def index_document(
         model_name=targets.model_name,
         dimensions=targets.dimensions,
     )
-    state = get_embedding_state(session, document.id)
+    state = session.scalar(
+        select(DocumentEmbeddingState)
+        .where(DocumentEmbeddingState.document_id == document.id)
+        .execution_options(populate_existing=True)
+    )
     if (
         not force_reindex
         and state is not None
@@ -130,6 +147,14 @@ def index_document(
         and state.dimensions == targets.dimensions
         and len(existing_vectors) == len(chunks)
     ):
+        _apply_stage_reuse(
+            session,
+            stage_claim,
+            parse_batch_id=state.parse_batch_id,
+            attempted_at=attempted_at,
+            processor_version=stage_processor_version,
+            config_fingerprint=stage_config_fingerprint,
+        )
         return _summarize(
             document,
             status=state.status,
@@ -187,6 +212,13 @@ def index_document(
                         "message": "Embedding indexing has not finished",
                     }
                 ),
+                # Every batch commits vectors under the same owner token; only
+                # the final covering batch also commits the stage completion in
+                # the same transaction.
+                stage_claim=stage_claim,
+                stage_final_batch=is_last_batch,
+                stage_processor_version=stage_processor_version,
+                stage_config_fingerprint=stage_config_fingerprint,
             )
         if state is None:
             state = persist_embedding_result(
@@ -200,6 +232,9 @@ def index_document(
                 embeddings=(),
                 attempted_at=attempted_at,
                 error=None,
+                stage_claim=stage_claim,
+                stage_processor_version=stage_processor_version,
+                stage_config_fingerprint=stage_config_fingerprint,
             )
     except EmbeddingError as exc:
         error = exc.to_dict()
@@ -214,6 +249,9 @@ def index_document(
             embeddings=(),
             attempted_at=attempted_at,
             error=error,
+            stage_claim=stage_claim,
+            stage_processor_version=stage_processor_version,
+            stage_config_fingerprint=stage_config_fingerprint,
         )
     else:
         error = None
@@ -229,63 +267,6 @@ def index_document(
         reused=False,
         error=error,
     )
-
-
-def index_documents(
-    session: Session,
-    config: Settings,
-    targets: EmbeddingTargets,
-    client: ModelClient,
-    *,
-    document_ids: list[UUID] | None = None,
-    limit: int = 20,
-    force_reindex: bool = False,
-    clock: Callable[[], datetime] | None = None,
-    embed: Callable[[ModelClient, EmbeddingTargets, list[str]], EmbeddingResponse] = (
-        embed_texts
-    ),
-) -> list[IndexSummary]:
-    if limit < 1:
-        raise ValueError("limit must be positive")
-    if document_ids:
-        documents = list(
-            session.scalars(
-                select(Document).where(Document.id.in_(document_ids))
-            ).all()
-        )
-        by_id = {document.id: document for document in documents}
-        missing = [
-            document_id
-            for document_id in document_ids
-            if document_id not in by_id
-        ]
-        if missing:
-            raise ValueError(
-                "Unknown document IDs: "
-                + ", ".join(str(document_id) for document_id in missing)
-            )
-        ordered = [by_id[document_id] for document_id in document_ids]
-    else:
-        ordered = list(
-            session.scalars(
-                select(Document)
-                .order_by(Document.collected_at.desc())
-                .limit(limit)
-            ).all()
-        )
-    return [
-        index_document(
-            session,
-            config,
-            document,
-            targets,
-            client,
-            force_reindex=force_reindex,
-            clock=clock,
-            embed=embed,
-        )
-        for document in ordered
-    ]
 
 
 def _summarize(
@@ -312,3 +293,68 @@ def _summarize(
         reused=reused,
         error=error,
     )
+
+
+def _apply_stage_reuse(
+    session: Session,
+    stage_claim: StageClaim | None,
+    *,
+    parse_batch_id: UUID,
+    attempted_at: datetime,
+    processor_version: str | None = None,
+    config_fingerprint: str | None = None,
+) -> None:
+    """Complete a claimed index stage from already committed vectors."""
+
+    if stage_claim is None:
+        return
+    state = apply_stage_outcome(
+        session,
+        StageOutcome(
+            document_id=stage_claim.document_id,
+            stage=stage_claim.stage,
+            owner_token=stage_claim.owner_token,
+            status="completed",
+            input_batch_id=parse_batch_id,
+            processor_version=processor_version,
+            config_fingerprint=config_fingerprint,
+            applicability={"requires_embedding": True},
+        ),
+        now=attempted_at,
+    )
+    try:
+        session.commit()
+    except Exception:
+        session.rollback()
+        raise
+    session.refresh(state)
+
+
+def _apply_stage_failure(
+    session: Session,
+    stage_claim: StageClaim | None,
+    *,
+    error: dict,
+    attempted_at: datetime,
+) -> None:
+    """Record a claimed index stage failure when no result could be persisted."""
+
+    if stage_claim is None:
+        return
+    state = apply_stage_outcome(
+        session,
+        StageOutcome(
+            document_id=stage_claim.document_id,
+            stage=stage_claim.stage,
+            owner_token=stage_claim.owner_token,
+            status="failed",
+            error=error,
+        ),
+        now=attempted_at,
+    )
+    try:
+        session.commit()
+    except Exception:
+        session.rollback()
+        raise
+    session.refresh(state)

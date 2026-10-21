@@ -435,7 +435,12 @@ def test_partial_content_without_source_time_is_retried_on_next_run(
 ):
     """Unknown published/updated signals must not suppress the retry of partial content."""
     from stocks.collection.http import FetchedResponse
-    from stocks.models import Document, DocumentCollectionState, Source
+    from stocks.models import (
+        Document,
+        DocumentCollectionState,
+        DocumentProcessingState,
+        Source,
+    )
     from stocks.settings import Settings
 
     source = make_source(tmp_path)
@@ -487,8 +492,15 @@ def test_partial_content_without_source_time_is_retried_on_next_run(
                 self.source = value
             elif isinstance(value, DocumentCollectionState):
                 self.states[(value.source_id, value.dedupe_key)] = value
-            else:
+            elif not isinstance(value, DocumentProcessingState):
+                # Stage todo rows are registered by ``ingest_document``; this stub
+                # only models Documents, so they are ignored rather than becoming
+                # fake Document rows.
                 self.documents.append(value)
+
+        def add_all(self, values):
+            for value in values:
+                self.add(value)
 
         def flush(self):
             from uuid import uuid4
@@ -647,7 +659,12 @@ def test_declared_charset_survives_fetch_and_allow_list():
 
 def test_collection_stores_declared_charset_for_decoder(tmp_path, monkeypatch):
     from stocks.collection.http import FetchedResponse
-    from stocks.models import Document, DocumentCollectionState, Source
+    from stocks.models import (
+        Document,
+        DocumentCollectionState,
+        DocumentProcessingState,
+        Source,
+    )
     from stocks.processing.parser import parse_content
     from stocks.settings import Settings
 
@@ -701,8 +718,15 @@ def test_collection_stores_declared_charset_for_decoder(tmp_path, monkeypatch):
                 self.source = value
             elif isinstance(value, DocumentCollectionState):
                 self.states[(value.source_id, value.dedupe_key)] = value
-            else:
+            elif not isinstance(value, DocumentProcessingState):
+                # Stage todo rows are registered by ``ingest_document``; this stub
+                # only models Documents, so they are ignored rather than becoming
+                # fake Document rows.
                 self.documents.append(value)
+
+        def add_all(self, values):
+            for value in values:
+                self.add(value)
 
         def flush(self):
             from uuid import uuid4
@@ -773,7 +797,12 @@ def test_collection_ingests_full_article_and_skips_unchanged_item(
     tmp_path, monkeypatch
 ):
     from stocks.collection.http import FetchedResponse
-    from stocks.models import Document, DocumentCollectionState, Source
+    from stocks.models import (
+        Document,
+        DocumentCollectionState,
+        DocumentProcessingState,
+        Source,
+    )
     from stocks.settings import Settings
 
     source = make_source(tmp_path)
@@ -823,8 +852,15 @@ def test_collection_ingests_full_article_and_skips_unchanged_item(
                 self.source = value
             elif isinstance(value, DocumentCollectionState):
                 self.states[(value.source_id, value.dedupe_key)] = value
-            else:
+            elif not isinstance(value, DocumentProcessingState):
+                # Stage todo rows are registered by ``ingest_document``; this stub
+                # only models Documents, so they are ignored rather than becoming
+                # fake Document rows.
                 self.documents.append(value)
+
+        def add_all(self, values):
+            for value in values:
+                self.add(value)
 
         def flush(self):
             for document in self.documents:
@@ -910,7 +946,12 @@ def test_collection_failure_saves_partial_content_and_retries(
     tmp_path, monkeypatch
 ):
     from stocks.collection.http import FetchedResponse
-    from stocks.models import Document, DocumentCollectionState, Source
+    from stocks.models import (
+        Document,
+        DocumentCollectionState,
+        DocumentProcessingState,
+        Source,
+    )
     from stocks.settings import Settings
 
     source = make_source(tmp_path)
@@ -962,8 +1003,15 @@ def test_collection_failure_saves_partial_content_and_retries(
                 self.source = value
             elif isinstance(value, DocumentCollectionState):
                 self.states[(value.source_id, value.dedupe_key)] = value
-            else:
+            elif not isinstance(value, DocumentProcessingState):
+                # Stage todo rows are registered by ``ingest_document``; this stub
+                # only models Documents, so they are ignored rather than becoming
+                # fake Document rows.
                 self.documents.append(value)
+
+        def add_all(self, values):
+            for value in values:
+                self.add(value)
 
         def flush(self):
             from uuid import uuid4
@@ -1065,7 +1113,12 @@ def test_collection_failure_saves_partial_content_and_retries(
 
 def test_empty_article_response_is_saved_as_partial(tmp_path, monkeypatch):
     from stocks.collection.http import FetchedResponse
-    from stocks.models import Document, DocumentCollectionState, Source
+    from stocks.models import (
+        Document,
+        DocumentCollectionState,
+        DocumentProcessingState,
+        Source,
+    )
     from stocks.settings import Settings
 
     source = make_source(tmp_path)
@@ -1106,8 +1159,15 @@ def test_empty_article_response_is_saved_as_partial(tmp_path, monkeypatch):
                 self.source = value
             elif isinstance(value, DocumentCollectionState):
                 self.states[(value.source_id, value.dedupe_key)] = value
-            else:
+            elif not isinstance(value, DocumentProcessingState):
+                # Stage todo rows are registered by ``ingest_document``; this stub
+                # only models Documents, so they are ignored rather than becoming
+                # fake Document rows.
                 self.documents.append(value)
+
+        def add_all(self, values):
+            for value in values:
+                self.add(value)
 
         def flush(self):
             from uuid import uuid4
@@ -1171,7 +1231,12 @@ def test_collection_limits_items_without_filtering_relevance(
     tmp_path, monkeypatch
 ):
     from stocks.collection.http import FetchedResponse
-    from stocks.models import Document, DocumentCollectionState, Source
+    from stocks.models import (
+        Document,
+        DocumentCollectionState,
+        DocumentProcessingState,
+        Source,
+    )
     from stocks.settings import Settings
 
     source = make_source(tmp_path, max_items=1)
@@ -1224,8 +1289,15 @@ def test_collection_limits_items_without_filtering_relevance(
                 self.source = value
             elif isinstance(value, DocumentCollectionState):
                 self.states[(value.source_id, value.dedupe_key)] = value
-            else:
+            elif not isinstance(value, DocumentProcessingState):
+                # Stage todo rows are registered by ``ingest_document``; this stub
+                # only models Documents, so they are ignored rather than becoming
+                # fake Document rows.
                 self.documents.append(value)
+
+        def add_all(self, values):
+            for value in values:
+                self.add(value)
 
         def flush(self):
             from uuid import uuid4
@@ -1289,7 +1361,12 @@ def test_collection_limits_items_without_filtering_relevance(
 
 def test_pubdate_change_triggers_recheck(tmp_path, monkeypatch):
     from stocks.collection.http import FetchedResponse
-    from stocks.models import Document, DocumentCollectionState, Source
+    from stocks.models import (
+        Document,
+        DocumentCollectionState,
+        DocumentProcessingState,
+        Source,
+    )
     from stocks.settings import Settings
 
     source = make_source(tmp_path)
@@ -1361,8 +1438,12 @@ def test_pubdate_change_triggers_recheck(tmp_path, monkeypatch):
         def add(self, value):
             if isinstance(value, DocumentCollectionState):
                 self.states[(value.source_id, value.dedupe_key)] = value
-            elif not isinstance(value, Source):
+            elif not isinstance(value, (Source, DocumentProcessingState)):
                 self.documents.append(value)
+
+        def add_all(self, values):
+            for value in values:
+                self.add(value)
 
         def flush(self):
             from uuid import uuid4

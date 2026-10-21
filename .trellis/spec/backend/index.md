@@ -6,7 +6,7 @@
 | --- | --- |
 | [目录与模块](directory-structure.md) | 放置新代码、拆分职责 |
 | [数据库](database-guidelines.md) | 模型、查询、事务、初始化结构 |
-| [Worker 与调度](worker-guidelines.md) | Worker/调度/领取代码组织、Session、所有权 fence、空闲等待与重试复制 |
+| [Worker 与调度](worker-guidelines.md) | Worker/调度/文档阶段领取、事务与 Session 新鲜度、所有权 fence、空闲等待与重试 |
 | [错误处理](error-handling.md) | 配置、外部请求、API 失败路径 |
 | [HTTP 读取接口](api-guidelines.md) | 报告/证据/原件只读路由、按引用版本读取、安全响应头与状态码 |
 | [日志](logging-guidelines.md) | 运行诊断与敏感信息处理 |

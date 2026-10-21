@@ -61,12 +61,13 @@ V0 Run 在创建时快照 Task 的 objective、strategy、scope、步骤/Agent �
 - **同一个 Task 同时只允许一个待执行或正在运行的 Run。** 手动触发、定时触发与重试共用同一入口，由数据库原子检查并占用；任务已占用时不再创建新 Run，手动请求返回现有运行信息，定时触发跳过本次。不同 Task 可以独立运行。
 - 数据库对 `status IN ('queued', 'running')` 建立每个 Task 唯一的条件索引。手动触发只创建 `queued` Run 并立即输出其 JSON 摘要，不等待执行、不抢占其他进程；重复触发若已有活跃 Run，直接返回该 Run 并以成功退出码结束，不读取 Task 配置、不查询模型凭据。
 - 执行由独立 Worker 完成：它在一个事务内用 `FOR UPDATE SKIP LOCKED` 原子领取最旧的 `queued` Run，并写入所有权令牌；多个 Worker 不会重复执行同一 Run，也不会接管其他进程已领取的 `running` Run。Worker 支持单轮执行与带界轮询：到期调度按 `poll_seconds` 独立评估，`max_concurrent_runs` 个执行槽位常驻——刚执行完一份 Run 的槽位立即领取下一份，空队列的槽位按 `poll_seconds` 等待（可被“本轮已入队 Run”提前唤醒）而不是忙轮询，连续意外失败按指数退避（上限为 `poll_seconds` + 60 秒）；开始停止后每个槽位最多再领取一次，因此 `--rounds` 最后一轮入队的 Run 不会被丢下，也不会把停机变成无限追赶。这使得一次长研究调用既不阻塞采集，也不推迟到期调度。单 Worker 并发上限默认 2（可配 1–16）。
+- 同一个 Worker 另持有 `max_concurrent_documents` 个独立文档处理槽位（默认 1，可配 1–16）：每个槽位一次领取并执行至多一个已入库 Document 的可领取阶段，完成即尝试下一项，无可执行待办时按同一有界等待/退避规则等待，停止时最多再领取一次。线程池容量覆盖 Run 槽位、文档槽位与调度轮，因此文档积压不会饿死采集/研究，长 Run 也不会阻止已入库资料被解析或索引；未注册处理器的阶段不会被领取，也不会被轮询空转。
 - 每个执行上下文使用独立数据库 Session；某一 Task 的配置、模型初始化或执行失败只记录为该 Run 的结构化错误，不终止 Worker 轮次，也不影响其他 Task 的执行。
 - 采集 Run 只加载 `config/sources.yaml` 与现有 `collect_source`，不解析 chat/embedding 路由；研究模型配置损坏不影响采集入队与执行，采集故障也不阻止研究读取存量资料。
 - Run 未正常结束、Worker 中断或步骤失败时，保留已保存的步骤结果、Evidence Package、原始错误与 ModelCall 记录。Worker 自身不检测死进程、不做自动接管。Owner 必须先确认旧进程已停止，再通过受控 CLI 显式结束该 Run；结束后清除运行占用并保留全部进度与错误。
 - 重试创建新的 Run 记录，复用被结束 Run 的配置/模型/提示词快照、失败点之前已成功的 StepResult，并复制其 Evidence Package（新包的 `run_id` 属于新 Run，`select_evidence` 输出中的 `evidence_package_id` 同步改指新包），把 `retry_of_run_id` 指向原 Run。`research_agent` 步骤不复制，Analysis/Report 由重试重新生成，不借用旧 Run 名下的结果。原 Run、其失败步骤、ModelCall、Analysis/Report 与错误继续保留为失败历史，不删除失败证据、不伪装为首次执行。`skipped` 步骤不复制而是重新判断条件，避免把旧判断带入新一次尝试。重试只允许针对 `failed` 或 `cancelled` 的 Run，且仍受同一 Task 单个活跃 Run 约束。
 - 结束 Run、写入步骤结果与写入最终状态都核对 Run 状态与所有权；Owner 结束之后，旧执行不能再把 StepResult、Analysis/Report 或 Run 最终状态写成成功，这一步是确定性 fence。`select_evidence` 与 `collect_sources` 会在步骤内部提交自己的派生结果（Evidence Package、Document），因此在执行每一步前以及每个 Source 开始前再核对一次所有权，避免被结束的 Run 启动新的步骤或新的 Source；这层事前检查不持行锁，也不能回滚已经开始的步骤已在自身事务中提交的资料，采集到的原文仍按统一入库规则保留，只是该 Run 不会因此获得成功的步骤结果或报告。结束 Run 的前提始终是 Owner 已确认旧进程停止。
-- 解析、分类、抽取、索引和取材积压使用 Task/Run 或 Document 处理状态管理；有限自动重试后，可由 Owner 在控制台手动重试或继续处理，不另建积压管理服务。交互见[界面设计](interface.md)。
+- 解析、分类、抽取、索引和取材积压使用 Task/Run 或 Document 处理状态管理；有限自动重试后，可由 Owner 手动重试或继续处理，不另建积压管理服务。V1-02 已提供 `stocks.processing status|retry|reprocess` 的有界 CLI：`status` 按 Document、阶段与状态查询积压并显示本部署已注册/未接入的阶段，`retry` 只重开失败或未完成阶段，`reprocess` 可显式重跑已完成阶段，运行中阶段必须 `--confirm-stopped`。阶段状态机与重处理边界见[数据设计](data.md#后台解析片段与索引)；交互见[界面设计](interface.md)。
 
 #### 持久调度状态与漏触发策略
 

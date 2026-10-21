@@ -3,7 +3,7 @@
   "name": "v1-02-processing-recovery",
   "title": "V1-02 统一后台处理状态与积压重试",
   "description": "已入库资料可由 Worker 从未完成阶段继续处理，阶段失败不相互掩盖。",
-  "status": "planning",
+  "status": "in_progress",
   "dev_type": "backend",
   "scope": null,
   "package": null,
@@ -12,7 +12,7 @@
   "assignee": "me",
   "createdAt": "2026-10-20",
   "completedAt": null,
-  "branch": null,
+  "branch": "feat/v0-07-evidence-api-acceptance",
   "base_branch": "main",
   "worktree_path": null,
   "commit": null,
@@ -26,15 +26,18 @@
     "docs/execution.md",
     "docs/validation.md"
   ],
-  "notes": "本轮仅规划；依赖写入 meta.depends_on 及规划文档，Trellis 父子关系不会自动调度。开工前复核现状和技术细节并取得该子任务的实施确认。",
+  "notes": "Owner 回复“开始”批准最终规划并已实施。AC-1–4 通过；最终相关五文件 106 passed、真实子进程 smoke 34/34、新库 upgrade/check 通过。并发与缓存实体问题已修复并定向复审，spec 已更新，远程本任务资源已清理。精确 commit-plan.md 已准备，等待本任务提交授权；无关 Pi/OpenCode/Trellis 工作排除。分类/Fact 算法留给 V1-03/V1-04，PA-1/PA-2 未关闭。",
   "meta": {
     "milestone": "V1",
     "kind": "delivery",
     "depends_on": [
-      ".trellis/tasks/10-20-v1-01-worker-scheduling"
+      ".trellis/tasks/archive/2026-10/10-20-v1-01-worker-scheduling"
     ],
-    "planning_review": "pending",
-    "planning_depth": "delivery-plan",
-    "implementation_authorized": false
+    "planning_review": "approved",
+    "planning_depth": "implementation-plan",
+    "implementation_authorized": true,
+    "quality_check": "passed",
+    "spec_sync": "completed",
+    "remote_cleanup": "completed"
   }
 }

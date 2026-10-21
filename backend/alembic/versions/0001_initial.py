@@ -535,9 +535,83 @@ def upgrade():
             name="ck_document_embedding_states_dimensions",
         ),
     )
+    op.create_table(
+        "document_processing_states",
+        sa.Column(
+            "document_id",
+            UUID(as_uuid=True),
+            sa.ForeignKey("documents.id", ondelete="CASCADE"),
+            primary_key=True,
+        ),
+        sa.Column("stage", sa.String(16), primary_key=True),
+        sa.Column("status", sa.String(16), nullable=False),
+        sa.Column("attempts", sa.Integer(), nullable=False),
+        sa.Column("max_attempts", sa.Integer(), nullable=False),
+        sa.Column("auto_retry", sa.Boolean(), nullable=False),
+        sa.Column("reprocess_requested", sa.Boolean(), nullable=False),
+        sa.Column("next_attempt_at", sa.DateTime(timezone=True)),
+        sa.Column("owner_token", sa.String(200)),
+        sa.Column("started_at", sa.DateTime(timezone=True)),
+        sa.Column("finished_at", sa.DateTime(timezone=True)),
+        sa.Column("error", JSONB()),
+        sa.Column("wait_reason", sa.String(120)),
+        sa.Column("skip_reason", sa.String(120)),
+        sa.Column("processor_version", sa.String(80)),
+        sa.Column("config_fingerprint", sa.String(64)),
+        sa.Column(
+            "input_batch_id",
+            UUID(as_uuid=True),
+            sa.ForeignKey("document_parse_batches.id"),
+        ),
+        sa.Column("applicability", JSONB()),
+        sa.Column(
+            "updated_at",
+            sa.DateTime(timezone=True),
+            nullable=False,
+            server_default=sa.text("now()"),
+        ),
+        sa.CheckConstraint(
+            "stage IN ('parse', 'classify', 'facts', 'index')",
+            name="ck_document_processing_states_stage",
+        ),
+        sa.CheckConstraint(
+            "status IN ('pending', 'running', 'completed', 'failed', 'skipped')",
+            name="ck_document_processing_states_status",
+        ),
+        sa.CheckConstraint(
+            "status != 'running' OR owner_token IS NOT NULL",
+            name="ck_document_processing_states_running_owner",
+        ),
+        sa.CheckConstraint(
+            "status = 'running' OR owner_token IS NULL",
+            name="ck_document_processing_states_closed_owner",
+        ),
+        sa.CheckConstraint(
+            "attempts >= 0 AND max_attempts >= 1",
+            name="ck_document_processing_states_attempts",
+        ),
+        sa.CheckConstraint(
+            "status != 'failed' OR error IS NOT NULL",
+            name="ck_document_processing_states_failed_error",
+        ),
+        sa.CheckConstraint(
+            "status != 'skipped' OR skip_reason IS NOT NULL",
+            name="ck_document_processing_states_skipped_reason",
+        ),
+    )
+    op.create_index(
+        "ix_document_processing_states_ready",
+        "document_processing_states",
+        ["stage", "status", "next_attempt_at"],
+    )
 
 
 def downgrade():
+    op.drop_index(
+        "ix_document_processing_states_ready",
+        table_name="document_processing_states",
+    )
+    op.drop_table("document_processing_states")
     op.drop_table("document_embedding_states")
     op.drop_index("ix_document_chunk_embeddings_hnsw", table_name="document_chunk_embeddings")
     op.drop_index("ix_document_chunk_embeddings_space", table_name="document_chunk_embeddings")
