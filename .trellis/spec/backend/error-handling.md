@@ -13,3 +13,18 @@
 `stocks.collection.errors.CollectionError` 是采集边界的稳定错误载体，包含 `code`、固定 `message`、可选脱敏 `url` 和结构化 `details`。配置、Feed 和 HTTP 失败使用不同错误码；外部异常可保留为 Python `__cause__` 供诊断，但 CLI/API 输出只调用 `to_dict()`，不得返回异常原文、完整响应或请求头。
 
 配置在发出网络请求前完成全部校验。单个 Feed 条目或文章失败不得中断同批其他条目；文章正文失败或为空时，可以用实际取得的 Feed 标题与摘要生成 `completeness = partial`，同时保存脱敏 `fetch_error`，不能把 Feed 响应当成文章正文。
+
+## 外部 Tool 与 MCP
+
+`stocks.tools.errors.ToolError` 是 Tool 边界的稳定错误载体（`code` + 固定 `message` + 结构化 `details`），子类按配置、授权、协议、传输和预算分类；`stocks.tools.client` 在请求前后强制校验
+HTTPS 公网解析、禁重定向、响应字节/JSON 深度/SSE 事件数、凭据格式与预算，任何失败都
+转成上述错误码，不把远端原文放进异常、日志或快照。凭据只在准备请求头时从环境变量读取，
+缺失即失败（`TOOL_CREDENTIAL_MISSING`），不写入配置、Run 快照或 ModelCall。
+
+两个 `httpx` 细节容易踩坑：0.28 的 `Client.send()` 不接受 `timeout=` 参数，每请求超时
+必须通过 `build_request(..., timeout=...)` 或 `stream()`/`send(stream=True)` 的请求扩展
+传递；`httpx` logger 默认在 INFO 记录每个请求 URL，工具客户端在构造时必须把
+`logging.getLogger("httpx")` 降到 WARNING，否则 endpoint 会绕过脱敏约定进入日志。
+
+远端的 `notifications/initialized` 只保证 2xx，不保证 202 或空响应体；只有非 2xx 或显式
+rejected 状态才算失败。

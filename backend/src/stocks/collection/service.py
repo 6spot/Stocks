@@ -116,7 +116,7 @@ def collect_source(
         )
     clock = clock or (lambda: datetime.now(timezone.utc))
     summary = CollectionSummary(source_id=source.source_id)
-    _sync_source(session, source)
+    sync_source(session, source)
 
     feed_response = fetcher.fetch(
         source.feed_url,
@@ -284,7 +284,7 @@ def collect_source(
     return summary
 
 
-def _sync_source(session: Session, source: SourceConfig) -> None:
+def sync_source(session: Session, source: SourceConfig) -> None:
     record = session.get(Source, source.source_id)
     if record is None:
         record = Source(
@@ -350,7 +350,7 @@ def _collect_structured_source(
 
     clock = clock or (lambda: datetime.now(timezone.utc))
     summary = CollectionSummary(source_id=source.source_id)
-    _sync_source(session, source)
+    sync_source(session, source)
     url = _with_query(source.api_url or "", source.query)
     dedupe_key = source.source_id
     try:

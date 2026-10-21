@@ -59,6 +59,15 @@ fact_key = hashlib.sha256(json.dumps(payload, sort_keys=True).encode()).hexdiges
 - 只有显式重处理（`reprocess_requested`）才在同一版本内先删除再重写；普通重试依赖唯一
   约束复用，不删除已有结果。
 
+## 追加型台账
+
+“只追加、不改写”的输入台账用所属实体的单行 JSONB 数组表达，并加
+`jsonb_typeof(<列>) = 'array'` 检查约束（见 `task_runs.research_inputs` 与
+`analyses.research_inputs`）。写入方在 `SELECT ... FOR UPDATE` 下重新读取当前数组、
+校验边界条目后整体写回，读取方通过统一合并函数解释它；不要为台账另建表，也不要让
+读取路径各自解析 JSONB。需要冻结“某次保存时实际用了什么”时，把同一数组深拷贝到
+下游实体（如 Analysis），而不是让下游继续读可变的来源行。
+
 ## pgvector 查询
 
 向量召回从 `document_chunk_embeddings` 出发，按 `chunk_id`、`document_id` 和当前

@@ -131,6 +131,7 @@ def run_scheduler_round(
     *,
     now: datetime,
     model_config_path: str,
+    tools_config_path: str | None = None,
 ) -> list[ScheduleOutcome]:
     """Register, fire and retire schedules for the current configuration.
 
@@ -158,6 +159,7 @@ def run_scheduler_round(
                 agents_by_id,
                 now=now,
                 model_config_path=model_config_path,
+                tools_config_path=tools_config_path,
             )
         )
     return outcomes
@@ -223,6 +225,7 @@ def _run_task_schedule(
     *,
     now: datetime,
     model_config_path: str,
+    tools_config_path: str | None = None,
 ) -> ScheduleOutcome:
     trigger = task.trigger
     agents: list[AgentConfig] = []
@@ -290,6 +293,7 @@ def _run_task_schedule(
             task,
             agents,
             config_path=model_config_path if agents else None,
+            tools_config_path=tools_config_path,
             now=now,
             process_token=None,
             triggered_by=TRIGGER_SCHEDULE,

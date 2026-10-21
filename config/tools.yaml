@@ -1,0 +1,58 @@
+# External Tools are opt-in and deny-by-default. A Tool becomes reachable only
+# when a trusted Task/Agent configuration also grants its id (`agents[].tools`),
+# and the Run's authorization snapshot is checked again before every execution.
+#
+# Every entry is a remote MCP Streamable HTTP endpoint (protocol 2025-11-25, no
+# stdio). Fields:
+#   id                  stable Tool id granted by `agents[].tools`
+#   enabled             false by default; a granted but disabled Tool fails the Run
+#   endpoint            public HTTPS URL, no query/fragment, port 443
+#   remote_name         name the official MCP `tools/list` reports (default: id)
+#   source_id           configured Source the retrieved original is registered
+#                     under, so evidence keeps a real Publisher and trust tier
+#   bearer_token_env    environment variable holding the credential; the value
+#                     never appears in configuration, snapshots, logs or records
+#   input_schema        bounded JSON Schema for the arguments the model may send
+#   output_schema       optional JSON Schema the mapped result must satisfy
+#   result_mapping      how to project the CallToolResult: `output_path` for one
+#                     value or `fields` for a bounded object
+#   budgets             max_calls / max_tokens / max_request_bytes / max_result_bytes
+#   timeout_seconds     total per-request timeout; redirects are never followed
+#
+# The mapped result must expose `title`, `url` and, for citable evidence, the
+# full `content` (optionally `content_type`, `publisher`, `published_at`,
+# `source_updated_at`, `summary`). A result with no original content is recorded
+# as a coverage gap and cannot be cited.
+#
+# Example (disabled):
+#
+# tools:
+#   - id: research_search
+#     enabled: false
+#     endpoint: https://mcp.example.com/mcp
+#     remote_name: search_documents
+#     source_id: tool_research_search
+#     bearer_token_env: STOCKS_RESEARCH_SEARCH_TOKEN
+#     timeout_seconds: 30
+#     input_schema:
+#       type: object
+#       additionalProperties: false
+#       required: [query]
+#       properties:
+#         query:
+#           type: string
+#           minLength: 1
+#           maxLength: 500
+#     result_mapping:
+#       fields:
+#         title: [result, title]
+#         url: [result, url]
+#         content: [result, text]
+#         published_at: [result, published_at]
+#     budgets:
+#       max_calls: 2
+#       max_tokens: 16000
+#       max_request_bytes: 100000
+#       max_result_bytes: 1000000
+
+tools: []

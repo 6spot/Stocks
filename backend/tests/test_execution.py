@@ -36,6 +36,7 @@ from stocks.providers import (
     ModelError,
     ModelTarget,
 )
+from stocks.processing.processors import StageRegistry
 from stocks.repository import SearchHit
 from stocks.models import (
     Analysis,
@@ -104,6 +105,7 @@ def write_config(
     queries: list[str] | None = None,
     source_ids: list[str] | None = None,
     change_page_limit: int | None = None,
+    tools: list[str] | None = None,
 ) -> str:
     condition_yaml = ""
     if condition is not None:
@@ -138,6 +140,9 @@ def write_config(
         queries if queries is not None else ["inflation", "macro policy"],
         ensure_ascii=False,
     )
+    tools_yaml = ""
+    if tools:
+        tools_yaml = f"\n    tools: {json.dumps(tools, ensure_ascii=False)}"
     path = tmp_path / "tasks.yaml"
     path.write_text(
         f"""
@@ -166,6 +171,7 @@ agents:
     role: Researcher
     prompt: Use only supplied evidence.
     model_ref: research
+{tools_yaml}
     input_schema:
       type: object
       additionalProperties: false
@@ -285,6 +291,96 @@ agents:
         encoding="utf-8",
     )
     return str(path)
+
+
+def write_tools_config(tmp_path, *, enabled: bool = True) -> str:
+    path = tmp_path / "tools.yaml"
+    path.write_text(
+        f"""
+tools:
+  - id: research_search
+    enabled: {str(enabled).lower()}
+    endpoint: https://mcp.example.test/rpc
+    source_id: tool_search_source
+    timeout_seconds: 5
+    input_schema:
+      type: object
+      additionalProperties: false
+      required: [query]
+      properties:
+        query: {{type: string, minLength: 1, maxLength: 200}}
+    budgets:
+      max_calls: 2
+      max_tokens: 16000
+      max_request_bytes: 4096
+      max_result_bytes: 32768
+""",
+        encoding="utf-8",
+    )
+    return str(path)
+
+
+class _CountingToolClient:
+    """A Tool client that records calls instead of reaching the network."""
+
+    def __init__(self, configuration, tool_ids) -> None:
+        self.tool_ids = tuple(tool_ids)
+        self.calls: list[tuple[str, dict]] = []
+
+    def call_tool(self, tool_id: str, arguments):
+        self.calls.append((tool_id, dict(arguments)))
+        raise AssertionError("No Tool call was expected in this test")
+
+    def close(self) -> None:
+        pass
+
+
+class _ToolClientFactory:
+    def __init__(self) -> None:
+        self.instances: list[_CountingToolClient] = []
+
+    def __call__(self, configuration, tool_ids) -> _CountingToolClient:
+        client = _CountingToolClient(configuration, tool_ids)
+        self.instances.append(client)
+        return client
+
+    @property
+    def calls(self) -> list[tuple[str, dict]]:
+        return [call for client in self.instances for call in client.calls]
+
+
+def _plan_transport(
+    plan: dict, output_content: str | None = None, statuses=None
+):
+    """Answer the Tool-planning call with a plan, everything else as research."""
+
+    base = _mock_transport(output_content, statuses=statuses)
+
+    def handler(request):
+        body = json.loads(request.content)
+        name = (
+            body.get("response_format", {})
+            .get("json_schema", {})
+            .get("name")
+        )
+        if name == "research_tool_plan":
+            return httpx.Response(
+                200,
+                json={
+                    "model": "research-model",
+                    "choices": [
+                        {"message": {"content": json.dumps(plan)}}
+                    ],
+                    "usage": {
+                        "prompt_tokens": 10,
+                        "completion_tokens": 5,
+                        "total_tokens": 15,
+                    },
+                },
+            )
+        return base.handler(request)
+
+    return httpx.MockTransport(handler)
 
 
 def test_config_accepts_whitelisted_condition(tmp_path):
@@ -1182,15 +1278,16 @@ def test_successful_run_persists_snapshot_steps_and_never_overwrites_success(
         assert "Authorization" not in serialized
 
 
-def test_empty_evidence_fails_without_overwriting_success(engine, tmp_path):
+def test_empty_evidence_run_succeeds_with_explicit_gaps(engine, tmp_path):
     config = _make_task_config(tmp_path)
     task = config.tasks[0]
+    models_path = write_models_config(tmp_path)
     with Session(engine) as session:
         first = create_or_get_run(
             session,
             task,
             list(config.agents),
-            config_path=write_models_config(tmp_path),
+            config_path=models_path,
         )
         first.run.status = "succeeded"
         first.run.output = {"summary": "last success"}
@@ -1202,7 +1299,7 @@ def test_empty_evidence_fails_without_overwriting_success(engine, tmp_path):
             session,
             task,
             list(config.agents),
-            config_path=write_models_config(tmp_path),
+            config_path=models_path,
         )
         assert claim_run(
             session,
@@ -1225,7 +1322,19 @@ def test_empty_evidence_fails_without_overwriting_success(engine, tmp_path):
                 ExecutionContext(
                     session=session,
                     settings=make_config(),
-                    config_path="unused",
+                    config_path=models_path,
+                    model_transport=_mock_transport(
+                        json.dumps(
+                            {
+                                "summary": "No citable evidence was saved.",
+                                "findings": [],
+                                "open_questions": [
+                                    "Was any primary release collected?"
+                                ],
+                                "evidence_refs": [],
+                            }
+                        )
+                    ),
                 ),
                 second.run.id,
                 process_token=PROCESS_A,
@@ -1233,8 +1342,17 @@ def test_empty_evidence_fails_without_overwriting_success(engine, tmp_path):
         finally:
             execution_service._run_evidence_selection = original_search
 
-        assert completed.status == "failed"
-        assert completed.output is None
+        # V2-01: an explicit empty-evidence report succeeds with gaps and open
+        # questions instead of failing the Run.
+        assert completed.status == "succeeded", [
+            (item.step_id, item.status, item.error)
+            for item in session.scalars(
+                select(TaskStepResult).where(
+                    TaskStepResult.run_id == completed.id
+                )
+            )
+        ]
+        assert completed.output is not None
         assert session.get(TaskRun, first_id).output == {"summary": "last success"}
         step = session.scalar(
             select(TaskStepResult).where(
@@ -1243,11 +1361,362 @@ def test_empty_evidence_fails_without_overwriting_success(engine, tmp_path):
             )
         )
         assert step is not None
-        assert step.status == "failed"
-        assert step.error["code"] == "EVIDENCE_UNAVAILABLE"
+        assert step.status == "succeeded"
+        analysis = session.scalar(
+            select(Analysis).where(Analysis.run_id == completed.id)
+        )
+        assert analysis is not None
+        assert analysis.findings == []
+        assert analysis.open_questions == ["Was any primary release collected?"]
+        assert "no_selected_evidence" in analysis.coverage["gaps"]
         from stocks.changes import get_cursor
 
-        assert get_cursor(session, task.id, task.run_scope) is None
+        cursor = get_cursor(session, task.id, task.run_scope)
+        assert cursor is not None
+        assert cursor.watermark == completed.change_watermark_end
+
+
+def test_repository_sufficient_run_does_not_call_a_tool(engine, tmp_path):
+    """A configured Tool is only reachable through the model's own request."""
+
+    config = _make_task_config(tmp_path, tools=["research_search"])
+    task = config.tasks[0]
+    models_path = write_models_config(tmp_path)
+    tools_path = write_tools_config(tmp_path)
+    selected = _selected_evidence_chunk()
+    factory = _ToolClientFactory()
+
+    def forbidden_snapshot_store(*args, **kwargs):
+        raise AssertionError("No Tool ingestion was expected")
+
+    with Session(engine) as session:
+        claimed = create_or_get_run(
+            session,
+            task,
+            list(config.agents),
+            config_path=models_path,
+            tools_config_path=tools_path,
+        )
+        run_id = claimed.run.id
+        assert claim_run(session, run_id, process_token=PROCESS_A)
+        _add_saved_evidence(session)
+        assert claimed.run.model_snapshot["tools"]["researcher"][0]["tool_id"] == (
+            "research_search"
+        )
+
+        def fake_search(session, settings, config_path, step, *, run, **kwargs):
+            return _evidence_selection_result(
+                session,
+                run,
+                selected_chunks=[selected],
+                gaps=[],
+            )
+
+        original_search = execution_service._run_evidence_selection
+        execution_service._run_evidence_selection = fake_search
+        try:
+            completed = execute_claimed_run(
+                ExecutionContext(
+                    session=session,
+                    settings=make_config(),
+                    config_path=str(models_path),
+                    model_transport=_plan_transport(
+                        {
+                            "assessment": "Saved evidence answers the question.",
+                            "requests": [],
+                        }
+                    ),
+                    session_factory=lambda: Session(engine),
+                    tools_config_path=tools_path,
+                    tool_client_factory=factory,
+                    stage_registry=StageRegistry(),
+                    snapshot_store=forbidden_snapshot_store,
+                ),
+                run_id,
+                process_token=PROCESS_A,
+            )
+        finally:
+            execution_service._run_evidence_selection = original_search
+
+        assert completed.status == "succeeded"
+        # The planning call ran, found the Repository sufficient and made no
+        # external request at all.
+        assert factory.calls == []
+        assert len(factory.instances) == 1
+        session.expire_all()
+        assert completed.research_inputs == []
+        analysis = session.scalar(
+            select(Analysis).where(Analysis.run_id == run_id)
+        )
+        assert analysis is not None
+        assert analysis.research_inputs == []
+        purposes = session.scalars(
+            select(ModelCall.call_purpose).where(ModelCall.run_id == run_id)
+        ).all()
+        assert "tool_plan" in purposes
+        assert "research" in purposes
+
+
+def test_retry_keeps_the_ledger_and_appended_evidence_stays_citable(
+    engine, tmp_path
+):
+    """A retry copies the source Run's ledger; its appended input stays citable."""
+
+    from stocks.research.service import (
+        LEDGER_KIND_INPUT,
+        LEDGER_KIND_SELECTION,
+        SUPPLEMENT_ROLE,
+    )
+    from stocks.research.supplement import append_research_entries
+
+    config = _make_task_config(tmp_path, tools=["research_search"])
+    task = config.tasks[0]
+    models_path = write_models_config(tmp_path)
+    tools_path = write_tools_config(tmp_path)
+    selected = _selected_evidence_chunk()
+    appended_chunk_id = "00000000-0000-0000-0000-000000000004"
+    with Session(engine) as session:
+        claimed = create_or_get_run(
+            session,
+            task,
+            list(config.agents),
+            config_path=models_path,
+            tools_config_path=tools_path,
+        )
+        run_id = claimed.run.id
+        assert claim_run(session, run_id, process_token=PROCESS_A)
+        _add_saved_evidence(session)
+        session.add(
+            DocumentChunk(
+                id=UUID(appended_chunk_id),
+                document_id=UUID(EVIDENCE_DOCUMENT_ID),
+                parse_batch_id=UUID(EVIDENCE_BATCH_ID),
+                position=1,
+                text="Supplemental evidence registered by an authorized Tool.",
+                locator={},
+            )
+        )
+        session.commit()
+
+        def fake_search(session, settings, config_path, step, *, run, **kwargs):
+            output, refs = _evidence_selection_result(
+                session,
+                run,
+                selected_chunks=[selected],
+                gaps=[],
+            )
+            package = session.scalar(
+                select(EvidencePackage).where(EvidencePackage.run_id == run.id)
+            )
+            append_research_entries(
+                session,
+                run,
+                package,
+                [
+                    {
+                        "kind": LEDGER_KIND_INPUT,
+                        "input_id": "input-1",
+                        "tool_id": "research_search",
+                        "purpose": "Fetch the missing release.",
+                        "role": SUPPLEMENT_ROLE,
+                        "document_id": EVIDENCE_DOCUMENT_ID,
+                        "source_id": "sec",
+                        "document_version": 1,
+                        "parse_batch_id": EVIDENCE_BATCH_ID,
+                        "title": "Supplemental release",
+                        "url": "https://www.example.gov/releases/one",
+                        "chunks": [
+                            {
+                                "chunk_id": appended_chunk_id,
+                                "position": 1,
+                                "chunk_ids": [appended_chunk_id],
+                                "fact_ids": [],
+                            }
+                        ],
+                        "timing": ["collected_after_as_of"],
+                        "recorded_at": datetime.now(UTC).isoformat(),
+                    }
+                ],
+                process_token=PROCESS_A,
+                now=datetime.now(UTC),
+            )
+            return output, refs
+
+        original_search = execution_service._run_evidence_selection
+        execution_service._run_evidence_selection = fake_search
+        empty_plan = {
+            "assessment": "Saved evidence needs no lookup.",
+            "requests": [],
+        }
+        try:
+            failed = execute_claimed_run(
+                ExecutionContext(
+                    session=session,
+                    settings=make_config(),
+                    config_path=str(models_path),
+                    model_transport=_plan_transport(
+                        empty_plan,
+                        output_content="not a research result",
+                        statuses=[200, 200, 200],
+                    ),
+                    session_factory=lambda: Session(engine),
+                    tools_config_path=tools_path,
+                ),
+                run_id,
+                process_token=PROCESS_A,
+            )
+        finally:
+            execution_service._run_evidence_selection = original_search
+        assert failed.status == "failed"
+        package = session.scalar(
+            select(EvidencePackage).where(EvidencePackage.run_id == run_id)
+        )
+        assert package is not None
+        source_package_id = package.id
+        session.expire_all()
+        source_ledger = deepcopy(failed.research_inputs)
+        assert [entry["kind"] for entry in source_ledger] == [
+            LEDGER_KIND_SELECTION,
+            LEDGER_KIND_INPUT,
+        ]
+
+        retried = execution_service.retry_run(session, run_id)
+        retry_run_id = retried.run.id
+        retried_ledger = deepcopy(retried.run.research_inputs)
+        session.expire_all()
+        # The source Run keeps its own record and both copies pin their own
+        # Evidence Package; every adopted input is preserved verbatim.
+        assert failed.research_inputs == source_ledger
+        assert len(retried_ledger) == 2
+        assert retried_ledger[1] == source_ledger[1]
+        assert retried_ledger[0]["evidence_package_hash"] == (
+            source_ledger[0]["evidence_package_hash"]
+        )
+        retry_package = session.scalar(
+            select(EvidencePackage).where(
+                EvidencePackage.run_id == retry_run_id
+            )
+        )
+        assert retry_package is not None
+        assert retry_package.id != source_package_id
+        assert retried_ledger[0]["evidence_package_id"] == str(retry_package.id)
+        assert (
+            retry_package.selected_chunks == [selected]
+        )
+
+        # The copied input is real citable evidence for the retry: the Agent
+        # returns a finding citing it and the report keeps that reference.
+        assert claim_run(session, retry_run_id, process_token=PROCESS_B)
+        output_content = json.dumps(
+            {
+                "summary": "supplemental",
+                "findings": [
+                    {
+                        "kind": "fact",
+                        "statement": "supplemental finding",
+                        "rationale": "appended evidence supports it",
+                        "uncertainty": "low",
+                        "evidence_refs": [
+                            {
+                                "chunk_id": appended_chunk_id,
+                                "document_id": EVIDENCE_DOCUMENT_ID,
+                            }
+                        ],
+                    }
+                ],
+                "open_questions": [],
+                "evidence_refs": [
+                    {
+                        "chunk_id": appended_chunk_id,
+                        "document_id": EVIDENCE_DOCUMENT_ID,
+                    }
+                ],
+            }
+        )
+        completed = execute_claimed_run(
+            ExecutionContext(
+                session=session,
+                settings=make_config(),
+                config_path=str(models_path),
+                model_transport=_plan_transport(
+                    empty_plan, output_content=output_content
+                ),
+                session_factory=lambda: Session(engine),
+                tools_config_path=tools_path,
+            ),
+            retry_run_id,
+            process_token=PROCESS_B,
+        )
+        assert completed.status == "succeeded"
+        session.expire_all()
+        retry_analysis = session.scalar(
+            select(Analysis).where(Analysis.run_id == retry_run_id)
+        )
+        assert retry_analysis is not None
+        assert [entry["kind"] for entry in retry_analysis.research_inputs] == [
+            LEDGER_KIND_SELECTION,
+            LEDGER_KIND_INPUT,
+        ]
+        assert (
+            retry_analysis.research_inputs[1]["input_id"] == "input-1"
+        )
+        report = session.scalar(
+            select(Report).where(Report.run_id == retry_run_id)
+        )
+        assert report is not None
+        assert appended_chunk_id in report.content
+
+
+def test_second_planning_round_continues_the_attempt_sequence(engine, tmp_path):
+    """A later planning round adds cost rows instead of hiding round one."""
+
+    from stocks.providers import load_chat_routing
+
+    config = _make_task_config(tmp_path)
+    task = config.tasks[0]
+    models_path = write_models_config(tmp_path)
+    routing, targets = load_chat_routing(models_path, "research")
+    attempts = [
+        ModelAttempt(
+            attempt_number=1,
+            attempt_alias=routing.primary,
+            attempt_model_name=targets[routing.primary].name,
+            reported_model_name=targets[routing.primary].name,
+            status="succeeded",
+            duration_ms=5,
+            prompt_tokens=10,
+            completion_tokens=5,
+            total_tokens=15,
+        )
+    ]
+    with Session(engine) as session:
+        claimed = create_or_get_run(
+            session,
+            task,
+            list(config.agents),
+            config_path=models_path,
+        )
+        step = task.steps[0]
+        for _ in range(2):
+            execution_service._persist_model_attempts(
+                session,
+                claimed.run,
+                step,
+                routing,
+                targets,
+                attempts,
+                purpose="tool_plan",
+            )
+        rows = session.scalars(
+            select(ModelCall)
+            .where(
+                ModelCall.run_id == claimed.run.id,
+                ModelCall.call_purpose == "tool_plan",
+            )
+            .order_by(ModelCall.attempt_number)
+        ).all()
+        assert [row.attempt_number for row in rows] == [1, 2]
+        assert [row.total_tokens for row in rows] == [15, 15]
 
 
 def test_skipped_step_is_persisted(engine, tmp_path):

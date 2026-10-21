@@ -53,6 +53,7 @@ Document Fact 和 Document 版本各自按创建标识或版本号推进，不�
 | `as_of`、`generated_at`；V1 增加 `changes_window` | 研究参考时间、生成时间，以及 V1 起的例行增量窗口；时间语义见[执行设计](execution.md#研究增量窗口与共享资料引用) |
 | `summary`、`sections[]` | 摘要、章节及可选表格/图表 |
 | `evidence_refs[]`、`coverage` | 实际 Chunk 引用及其 Document 版本；V1 起还可引用 Fact，附已知缺失、过期与冲突 |
+| `research_inputs`（V2-01） | 本次研究的最终输入台账：初始边界条目、补充采用的 Document 版本、Tool 身份与时间关系；晚于 `as_of` 发布或采集的资料在证据区明确标注 |
 | `previous_report_ref?`（V2） | 可选历史报告引用 |
 
 基本交互：

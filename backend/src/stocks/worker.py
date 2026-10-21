@@ -241,6 +241,7 @@ def schedule_round(
             configuration.agent_map,
             now=instant,
             model_config_path=context.model_config_path,
+            tools_config_path=context.settings.tools_config_path,
         )
 
 
@@ -265,6 +266,9 @@ def execute_next_run(
                     config_path=context.model_config_path,
                     sources_config_path=context.sources_config_path,
                     model_transport=context.model_transport,
+                    session_factory=context.session_factory,
+                    tools_config_path=context.settings.tools_config_path,
+                    stage_registry=context.processing_registry(),
                 ),
                 run_id,
                 process_token=process_token,

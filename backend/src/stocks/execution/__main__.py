@@ -163,6 +163,7 @@ def _trigger(args: argparse.Namespace) -> int:
             task,
             agents,
             config_path=args.models_config if agents else None,
+            tools_config_path=args.tools_config,
             triggered_by="manual",
         )
         print(
@@ -319,6 +320,11 @@ def _build_parser() -> argparse.ArgumentParser:
         "--models-config",
         default="config/models.yaml",
         help="Path to the Provider/model configuration YAML.",
+    )
+    parser.add_argument(
+        "--tools-config",
+        default="config/tools.yaml",
+        help="Path to the authorized Tool configuration YAML.",
     )
     commands = parser.add_subparsers(dest="command", required=True)
 

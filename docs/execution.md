@@ -25,7 +25,9 @@ Task 属性：
 
 研究的取材、游标、分析与报告共用 `run.scope`，步骤不再另定义一份研究范围；补充查询可带具体检索条件以查找直接资料或相关背景，但不能修改 Run 的研究范围。采集轮询由采集 Task 的 `trigger` 唯一调度，Source 只保存获取参数和可选更新预期，不另设第二个调度入口。
 
-**V1 已实现的 Task 子集：** 研究 Task 接受恰好一个 `select_evidence` 与一个最终 `research_agent` 步骤；采集 Task 只接受一个 `collect_sources` 步骤，由 `sources` 指定 Source，不加载任何研究模型路由。`trigger` 接受 `manual` 或 `schedule`。`select_evidence` 从已保存的当前 Chunk 中生成 Evidence Package，并读取固定变化窗口的一张有界原始变化页；可配置最多 8 条 `queries`、每条候选上限 `limit_per_query`、总估算 Token 预算 `max_tokens`、最多 20 个去重的 `source_ids` 以及 `change_page_limit`（默认 100，范围 1–1000）。未配置 `queries` 时按 `run.scope` 生成直接研究和背景查询。当前实现尚未把增量 Document/Fact 与历史背景 Chunk 统一合并去重，该能力属于 V1-06。`research_agent` 只接收该 Run 已保存的 Evidence Package；每个研究 Run 正常只取得一张原始变化页，若未耗尽窗口则保留检查点并由后续 Run 继续。最终 Research Agent Step、Analysis、Report、成功游标与 Run `succeeded` 在一个事务内提交；`tools` 必须为空，不执行外部 Tool/MCP。`when` 只允许引用更早的 `select_evidence` 结果，并仅支持以下白名单判断：
+**V1 已实现的 Task 子集：** 研究 Task 接受恰好一个 `select_evidence` 与一个最终 `research_agent` 步骤；采集 Task 只接受一个 `collect_sources` 步骤，由 `sources` 指定 Source，不加载任何研究模型路由。`trigger` 接受 `manual` 或 `schedule`。`select_evidence` 从已保存的当前 Chunk 中生成 Evidence Package，并读取固定变化窗口的一张有界原始变化页；可配置最多 8 条 `queries`、每条候选上限 `limit_per_query`、总估算 Token 预算 `max_tokens`、最多 20 个去重的 `source_ids` 以及 `change_page_limit`（默认 100，范围 1–1000）。未配置 `queries` 时按 `run.scope` 生成直接研究和背景查询。自 V1-06 起，增量 Document/Fact 与历史背景 Chunk 在同一 `select_evidence` 中统一合并去重。`research_agent` 只接收该 Run 已保存的 Evidence Package；每个研究 Run 正常只取得一张原始变化页，若未耗尽窗口则保留检查点并由后续 Run 继续。
+
+最终 Research Agent Step、Analysis、Report、成功游标与 Run `succeeded` 在一个事务内提交。**V2-01 起**研究 Agent 可声明 `tools`：列表中的每个 ID 必须是 `config/tools.yaml` 中已启用工具的显式子集，并同时被 Task/Agent 白名单授权；未配置、已停用、越权或未通过参数校验的请求在发出网络请求前拒绝。`tools` 为空时行为与 V1 相同：不读取工具目录，也不执行任何外部 Tool/MCP 调用。`when` 只允许引用更早的 `select_evidence` 结果，并仅支持以下白名单判断：
 
 | `op` | 允许的 `field` | 语义 |
 | --- | --- | --- |
@@ -33,7 +35,7 @@ Task 属性：
 | `nonempty` | `output`、`output.items`、`output.coverage`、`evidence_refs` | 对应结构化结果为非空 |
 | `equals` / `not_equals` | `output.truncated` | 与显式布尔值比较 |
 
-条件不满足时保存 `skipped` 的 StepResult。最终 `research_agent` 被跳过时 Run 以 `FINAL_RESEARCH_STEP_NOT_SUCCEEDED` 失败，不得推进成功游标。配置拒绝未知字段、未知步骤/类型、未知 Agent、重复步骤 ID、向前引用、未声明 Schema 关键字以及未实现的 Tool。公开示例位于 `config/tasks.yaml`，分别覆盖成功执行、条件跳过和无证据失败。
+条件不满足时保存 `skipped` 的 StepResult。最终 `research_agent` 被跳过时 Run 以 `FINAL_RESEARCH_STEP_NOT_SUCCEEDED` 失败，不得推进成功游标。配置拒绝未知字段、未知步骤/类型、未知 Agent、重复步骤 ID、向前引用、未声明 Schema 关键字、越界或重复的 Agent `tools` 授权，以及无法解析为已启用工具的授权 ID。公开示例位于 `config/tasks.yaml`，分别覆盖成功执行、条件跳过和无可引用证据仍成功并报告缺口。
 
 统一执行结果：
 
@@ -52,9 +54,11 @@ StepResult、Analysis 与 finding 保存的证据引用只保留可回查的身�
 
 `Analysis` 按 Run 保存 summary、结构化 findings、open questions、实际证据引用与覆盖缺口；每个 finding 的 `kind` 为 `fact | source_opinion | model_inference`，并至少包含一个所选 Chunk 引用、理由与不确定性。`Report` 由已保存 Analysis 确定性生成可阅读 Markdown。引用在保存 Analysis 前再次匹配持久 Document 版本、Chunk 和 parse batch；非法引用按模型响应错误有限重试，最终失败不写入或替换 Analysis/Report。同一 Run 已有 Evidence Package 时重试沿用该快照。
 
+**可引用性的统一底线：** 初始选择与 V2-01 授权补证的证据都只有在统一入库并成为持久 Chunk 后才能支撑 finding；只有 Fact 或只有搜索摘要、没有可定位 Chunk 的补充内容不能作为证据，只能进入 open questions 与覆盖说明。Fact 的适用范围与补充检索边界见[研究设计](research.md#agent-补充检索与故障边界)。
+
 按任务记录配置/策略/模型/提示词快照，便于解释历史研究结果。Task 使用独立运行记录，Worker 与 Web API 分进程；待执行记录及任务运行占用保存在 PostgreSQL。外部调用需有超时、有限重试和幂等键。原始资料及处理状态成功持久化后，Worker 才处理相应待办步骤；这不触发逐篇研究，综合研究仍由自身的 manual/schedule 触发。
 
-V0 Run 在创建时快照 Task 的 objective、strategy、scope、步骤/Agent 配置、research prompt 和 Research Agent 模型路由，也快照 Repository 搜索使用的 Embedding 路由（别名、模型、维度、能力、超时及可用于核对配置是否有变化的端点哈希）。排队与执行解耦后，执行只使用 Run 自己的快照，不静默用新任务定义替换；Evidence Selection 的 `as_of` 取 Run 实际开始执行时间（`started_at`），而非队列创建时间。执行时重新取得环境凭据，并核对当前路由与快照；发生不兼容变化时步骤失败，不静默换成另一模型或向量空间。Task 和 Run 不保存 endpoint 明文、API key 或 Authorization。每个 StepResult 保存结构化 output、持久证据引用、usage 和结构化 error；ModelCall 保存请求/实际 alias 与模型名、供应商返回模型名、耗时、Token、回退原因和安全错误，不保存请求或响应正文。
+V0 Run 在创建时快照 Task 的 objective、strategy、scope、步骤/Agent 配置、research prompt 和 Research Agent 模型路由，也快照 Repository 搜索使用的 Embedding 路由（别名、模型、维度、能力、超时及可用于核对配置是否有变化的端点哈希）。排队与执行解耦后，执行只使用 Run 自己的快照，不静默用新任务定义替换；Evidence Selection 的 `as_of` 取 Run 实际开始执行时间（`started_at`），而非队列创建时间。执行时重新取得环境凭据，并核对当前路由与快照；发生不兼容变化时步骤失败，不静默换成另一模型或向量空间。Task 和 Run 不保存 endpoint 明文、API key 或 Authorization；Agent 的 Tool 授权快照只保存工具 ID 与配置身份哈希，不含 endpoint、凭据或目录原文。每个 StepResult 保存结构化 output、持久证据引用、usage 和结构化 error；ModelCall 保存请求/实际 alias 与模型名、供应商返回模型名、耗时、Token、回退原因和安全错误，不保存请求或响应正文。
 
 ### 同一任务运行与异常处理
 
@@ -125,12 +129,17 @@ Document 获取错误中的凭据、Provider 端点和响应正文返回给前�
 | 时间或引用 | 所属记录 | 作用 |
 | --- | --- | --- |
 | `published_at` / `source_updated_at` / `collected_at` | Document | 来源首次发布、来源最后更新（可缺失）及 Stocks 采集时间 |
+| `available_at` | Fact | 该数值/结论成为公开可知的时间；不是 Stocks 入库或抽取时间 |
+| `period_start` / `period_end` | Fact | 数值或结论的观测期，可为空 |
 | 解析/分类/Fact/索引处理时间 | Document/Fact/Chunk 及处理记录 | 标明各项结果何时可供研究使用；报告引用当时的输入快照 |
 | `change_watermark_start` / `change_watermark_end` | Task Run | 本次新增/变更情报的可靠扫描边界，采用 `(start,end]`；只由已提交变化推进 |
 | `window_start` / `window_end` | Task Run | 与本次变化水位关联的展示时间，不单独决定候选是否进入窗口 |
 | `as_of` | Task Run | 本次研究的参考时间，默认取 Run 启动时间；不限制运行中按需补证，也不表示严格的历史知识截止 |
 | 成功增量游标 | Task + Research Scope | 为本任务的下一次运行确定增量起点；不同研究任务/范围互不影响 |
-| `research_inputs` | Task Run / Analysis | 记录实际使用的 Document 内容版本、Chunk/Fact 引用、分类输入快照和历史 Analysis 引用 |
+| `generated_at` | Analysis / Report | 本次分析与报告生成时间（当前实现为各自的 `created_at`）；后续资料更新不改写旧报告 |
+| `research_inputs` | Task Run / Analysis | 追加型输入台账：初始 Evidence Package 边界条目 + 每个补充取得并采用的 Document 内容版本、Chunk/Fact 引用、Tool 调用身份、选择角色/原因、查询条件与时间关系；Analysis 保存采用时的冻结副本 |
+
+各字段不可互相替代；报告保存其使用快照的真实来源时间与生成时间。
 
 **时间语义：** `change_watermark_end` 固定本次例行增量扫描的终点，`window_end` 仅记录展示时间，`as_of` 标明研究参考时间。这些字段不禁止 V2 研究过程中通过授权工具获取补充资料。运行中取得的资料保存真实来源时间、采集时间和版本，按[研究设计](research.md#agent-补充检索与故障边界)追加到本次实际输入；晚于参考时间发布或更新的资料如被采用，应在报告中明确说明。报告保存当次实际取材和生成时间，后续资料更新不改写旧报告。当前产品不承担严格还原过去某一时刻全部已知信息的历史回放能力。
 
@@ -142,7 +151,7 @@ Document 获取错误中的凭据、Provider 端点和响应正文返回给前�
 3. 对 Document 入库、解析/分类/索引完成、Fact 抽取/解析及内容修订保留可追溯的系统可研究变化。增量窗口以**已提交变化的稳定水位**界定；水位必须按提交可见顺序推进，不能直接把事务开始时的 `collected_at`、自增序列分配时刻或原文发布时间当作游标。Run 取得终点水位时，应保证此前水位的写入已经提交；之后提交的写入即使更早开始，也进入后续窗口。窗口同时保留相应时间用于报告展示。实现可使用同一 PostgreSQL 内按事务串行提交的变化计数，不引入额外服务。
 4. `TaskRun.change_scan_progress` 保存版本化扫描状态、原始 `after_watermark`/`after_change_id`、窗口与展示时间、冻结查询条件、页/原始变化/候选 Document/选中计数及已扫描 Document 身份。只有原始窗口耗尽、最终 `research_agent` Step 成功且匹配的 Analysis、Report、Evidence Package 关系完整时，才在最终事务中把 `change_scan_completed=true` 并推进该 Task + Scope 的研究游标；任一写入失败则最终 Step、Analysis、Report、游标和 Run 成功状态一起回滚。扫描未完成时 Run 仍可在报告成功后关闭，但保留可续扫 progress、`change_scan_completed=false` 且不推进游标；最终 Step skipped、报告缺失、关系损坏或所有权失效时 Run 失败。已完成筛选但未选入模型输入的候选不阻塞推进。失败、取消或中断不推进；下次正常 Run 或 retry 覆盖未成功区间。已提交的扫描 Checkpoint 与 Evidence Package 在后续 Agent/report 失败时保留。即使周末无定时运行，周一仍包含周末新增信息。上述进度沿用现有记录，不新增独立扫描服务。
    “完成扫描”针对本次记录的增量查询范围与候选，不表示已穷尽全部背景资料或互联网信息；索引积压和来源缺失仍按实际情况说明。
-5. Agent 可以根据明确的 Research Scope、`as_of` 与检索条件访问**增量窗口之外的历史背景资料和以前的 Analysis**，并对比既有结论；这些背景不应错误计作本次新增情报。每个研究 Run 将最终采用的输入 ID、版本、选择原因或查询条件留在独立 `research_inputs` 中，以便复现。
+5. Agent 可以根据明确的 Research Scope、`as_of` 与检索条件访问**增量窗口之外的历史背景资料和以前的 Analysis**，并对比既有结论；这些背景不应错误计作本次新增情报。每个研究 Run 把实际采用的输入留在独立 `research_inputs` 中，以便复现：初始 Evidence Package 是一条边界条目（包 ID + 初始选择快照哈希），之后按发生顺序追加每个补充输入（Document 内容版本、Chunk/Fact 引用、Tool 调用身份、选择角色与原因、查询条件，以及 `published_at`/`source_updated_at`/`collected_at`/`available_at`/观测期等时间关系与晚于 `as_of` 的标注）。该台账只追加、不改写：初始包不被重写，retry 沿用来源 Run 的初始包并只追加真正新取得的输入，已保存的旧 Analysis/Report 永不因后续变化被改写。
 6. 同一份资料可参与多个不同的 Task、时间窗口与策略研究，不在 Document 上设置全局 `analyzed`、`last_used_by_task`、`research_window` 或 `consumed_at`。重复性由各自 Run 和输入引用的幂等约束处理。
 
 ~~~text
@@ -289,3 +298,12 @@ Tool 与 Connector 处于不同边界：
 - MCP 搜索供应商属于“发现/查询渠道”，其返回网页的真正 Publisher 是原网站，不因搜索服务本身而提升可信等级。
 - 研究通过外部搜索、MCP/Tool 找到资料时，按研究目标选择实际获取的结果；取得原始正文/响应后，通过统一 Source/Repository 持久化并分类、按需提取 Fact、生成 Embedding。Analysis 引用已保存证据，不能把一次性搜索摘要当作全文；已有 Repository 资料满足需要则直接复用。
 - 工具调用由 Stocks 授权后执行，模型只能提出结构化请求。
+
+**V2-01 执行契约：**
+
+- **有效权限 = 交集。** `config/tools.yaml` 中 `enabled` 的目录条目 ∩ Task/Agent 的 `tools` 白名单 ∩ 通过 `input_schema` 校验的请求。模型只能提出结构化请求（`tool`、`arguments`、`purpose` 与要解决的缺口/问题），不能扩大工具集合，也不能修改 scope、`as_of`、增量窗口、预算、凭据、endpoint 或授权；不需要 Provider 原生 function calling，任何能输出受约束 JSON 的模型都可参与。
+- **执行边界。** Stocks 校验后执行：先读 Repository，只有资料缺失、过期、存在冲突或需要交叉核实时才发出外部请求；外部只支持远程 Streamable HTTP（`2025-11-25` 握手 + `Mcp-Session-Id`），不实现 stdio。Tool 目录条目的 `source_id` 指向已配置 Source，取回的原件通过统一入库入口登记，Publisher 仍是原网站。
+- **有界与终止。** 每 Tool 的调用数/Token/请求与响应字节由 `ToolBudgets` 约束，单 Run 另有轮次与每轮请求上限；预算耗尽、重复查询或无进展即终止，最多再做一次补充计划。补证循环位于既有最终 Research Agent 步骤内，不新增编排层或隐式子 Agent；终止后仍用已有证据完成报告。
+- **拒绝与失败。** 未授权、未知、已停用或参数非法的请求在发出网络请求前拒绝；瞬时传输失败只做有限重试；预算耗尽、超时、映射失败与“只有摘要、没有可引用原文”都记录为本次 Run 的显式缺口（`tool_*` / `supplement_*` 代码），不伪装成“资料不存在”，也不丢弃已保存证据。
+- **凭据与输出卫生。** 凭据仅通过环境变量提供（`bearer_token_env` 只保存变量名），执行时才读取；endpoint、Authorization、请求与响应正文不进入日志、Run 快照、ModelCall、StepResult 或报告。Tool 返回一律视为数据：原始响应不直接粘贴进报告，只有经统一入库并成为持久 Chunk 的内容才能被引用；持久化只保留 Tool 调用身份与安全元数据。
+- **授权快照。** Run 创建时把每个 Agent 的工具授权解析为不含凭据的身份列表写入 `model_snapshot`；执行前重新加载当前目录并比对，授权集合或工具身份发生变化时步骤以 `TOOL_AUTHORIZATION_SNAPSHOT_INVALID` 失败，不静默换用新配置。

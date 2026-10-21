@@ -2,21 +2,41 @@
 
 ## 开工条件
 
-- [ ] 复核 PRD 与最新领域契约；前置任务：[V1-09](../10-20-v1-09-arm-deployment-acceptance/prd.md)
-- [ ] 重新检查现有代码及测试，落实建议路径、具体 Schema 和必要技术决策。
-- [ ] 用户确认本子任务的最终实施范围；之后才运行 task.py start。当前未授权实施。
-- [ ] implement.jsonl / check.jsonl 已提供真实规范与基线，派发前按实际改动裁剪复核。
+- [x] 复核 PRD 与最新领域契约；前置任务 [V1-09](../10-20-v1-09-arm-deployment-acceptance/prd.md) 已归档完成。
+- [x] 重新检查现有代码及测试，落实路径、Schema 和必要技术决策（见 design.md）。
+- [x] 用户授权按任务列表逐个实施；实施范围见 PRD“范围与要求”。
+- [x] implement.jsonl / check.jsonl 已提供真实规范与基线。
 
 ## 执行顺序
 
-- [ ] 定义可信 Tool 配置、调用请求/结果和运行授权校验。
-- [ ] 实现远程 MCP 与 Repository 优先的有界补证循环。
-- [ ] 接入统一入库、输入追加及时间标示，验证权限/预算/失败。
+- [x] 定义可信 Tool 配置（`config/tools.yaml` + `stocks.tools.config`）、稳定错误码（`stocks.tools.errors`）与远程 MCP Streamable HTTP 客户端（`stocks.tools.client`）。
+- [x] `AgentConfig.tools` 改为有界去重授权列表；`Settings.tools_config_path`；Run 快照写入授权与配置身份。
+- [x] 台账落在 `task_runs.research_inputs`（追加型 JSONB 数组 + `jsonb_typeof` 检查），执行时冻结到 `analyses.research_inputs`；`model_calls` 增加 `call_purpose` 并收紧唯一约束；同步修改 `0001_initial.py`（最终设计见 design.md，不再给 Evidence Package 增加列）。
+- [x] `stocks.research.supplement`：结构化补证计划、调用边界、入库与处理、追加与缺口、无进展终止。
+- [x] `_run_agent` 接入合并视图与补证循环；重试拷贝台账并重映射边界包 ID。
+- [x] 报告详情、单条证据接口与缺口渲染改用合并视图。
+- [x] 更新归属文档与 `config/tasks.yaml` 空证据语义。
+
+## 决策记录
+
+- 远程 MCP 固定 `2025-11-25`（initialize 握手 + `Mcp-Session-Id`）；不实现 stdio，不支持无状态新时代路由头。
+- 单次 Run 的补证轮次上限 2，每次计划最多 4 个请求；单 Tool 预算由 `ToolBudgets` 决定，token 预算按 `estimate_tokens()` 的 4 字符≈1 token 估算。
+- 补证输入落在 Evidence Package 的追加 JSONB 中，不新建独立表：Run 与包一一对应，重试按包深拷贝即可保留初始包与追加输入。
+- 执行注入点统一为 `ExecutionContext.tool_client_factory` / `stage_registry` / `snapshot_store`，测试与部署共用同一条执行路径。
 
 ## 最小必要验证
 
-- cd backend && python -m pytest -q tests/test_tools.py tests/test_research_supplement.py（新增后）
-- 用实际配置的远程服务验证协议和原件链路；无凭据明确标记实际接入未验收。
+- 测试服务器 `100.120.14.84` 隔离目录：`python -m pytest -q tests/test_tools.py tests/test_research_supplement.py` + 受影响的 `test_execution.py` / `test_report_api.py` 用例。
+- 全新开发库：`alembic upgrade head` 与 `alembic check`，确认当前模型与初始化结构一致。
+- 用实际配置的远程 MCP 服务验证协议与原件链路；无凭据时明确标记实际接入未验收。
+
+## 实际验证结果（2026-10-22，测试服务器隔离目录 `/tmp/stocks-v2-01-tools-mcp`）
+
+- `pytest -q tests/test_tools.py tests/test_research_supplement.py tests/test_execution.py tests/test_report_api.py tests/test_research.py tests/test_console_api.py tests/test_api.py tests/test_scheduler.py tests/test_worker_processing.py tests/test_collection.py` → **229 passed**（唯一 warning 为第三方 Starlette `TestClient` 弃用提示）。
+- 全新空库 `alembic upgrade head`（0001，exit 0）+ `alembic check`（No new upgrade operations detected，exit 0）。
+- `python -m stocks.execution --help` 显示新增 `--tools-config`。
+- 修复过程中额外覆盖：`_persist_model_attempts` 多轮 `tool_plan` 序号续排（`test_second_planning_round_continues_the_attempt_sequence`）、空证据 Run 成功路径、Repository 充分时不调用任何 Tool、重试保留台账并可引用追加证据。
+- 未验证：真实远程 MCP 服务与凭据、真实原件字节链路、第三方限流行为。
 
 新增测试名为计划，文件存在后才执行；不得把本文件命令写成已通过。按风险验证关键行为，不默认全量测试，纯文档变更不新增代码测试。
 

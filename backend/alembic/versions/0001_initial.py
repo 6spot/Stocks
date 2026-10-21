@@ -108,6 +108,12 @@ def upgrade():
         sa.Column("scope_fingerprint", sa.String(64)),
         sa.Column("change_scan_progress", JSONB()),
         sa.Column("change_scan_completed", sa.Boolean()),
+        sa.Column(
+            "research_inputs",
+            JSONB(),
+            nullable=False,
+            server_default=sa.text("'[]'::jsonb"),
+        ),
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
         sa.Column("started_at", sa.DateTime(timezone=True)),
         sa.Column("finished_at", sa.DateTime(timezone=True)),
@@ -166,6 +172,10 @@ def upgrade():
             "change_scan_progress IS NOT NULL AND "
             "change_scan_progress ->> 'status' = 'scanned')",
             name="ck_task_runs_scan_completed_requires_scan",
+        ),
+        sa.CheckConstraint(
+            "jsonb_typeof(research_inputs) = 'array'",
+            name="ck_task_runs_research_inputs_array",
         ),
     )
     op.create_index(
@@ -265,6 +275,12 @@ def upgrade():
         sa.Column("findings", JSONB(), nullable=False),
         sa.Column("open_questions", JSONB(), nullable=False),
         sa.Column("evidence_refs", JSONB(), nullable=False),
+        sa.Column(
+            "research_inputs",
+            JSONB(),
+            nullable=False,
+            server_default=sa.text("'[]'::jsonb"),
+        ),
         sa.Column("coverage", JSONB(), nullable=False),
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
         sa.CheckConstraint(
@@ -274,6 +290,10 @@ def upgrade():
         sa.CheckConstraint(
             "jsonb_typeof(open_questions) = 'array'",
             name="ck_analyses_open_questions_array",
+        ),
+        sa.CheckConstraint(
+            "jsonb_typeof(research_inputs) = 'array'",
+            name="ck_analyses_research_inputs_array",
         ),
     )
     op.create_table(
@@ -351,6 +371,12 @@ def upgrade():
             nullable=False,
         ),
         sa.Column("step_id", sa.String(120), nullable=False),
+        sa.Column(
+            "call_purpose",
+            sa.String(16),
+            nullable=False,
+            server_default=sa.text("'research'"),
+        ),
         sa.Column("attempt_number", sa.Integer(), nullable=False),
         sa.Column("requested_alias", sa.String(120), nullable=False),
         sa.Column("attempt_alias", sa.String(120), nullable=False),
@@ -374,6 +400,10 @@ def upgrade():
             name="ck_model_calls_duration",
         ),
         sa.CheckConstraint(
+            "call_purpose IN ('research', 'tool_plan')",
+            name="ck_model_calls_purpose",
+        ),
+        sa.CheckConstraint(
             "prompt_tokens IS NULL OR prompt_tokens >= 0",
             name="ck_model_calls_prompt_tokens",
         ),
@@ -388,8 +418,9 @@ def upgrade():
         sa.UniqueConstraint(
             "run_id",
             "step_id",
+            "call_purpose",
             "attempt_number",
-            name="uq_model_calls_run_step_attempt",
+            name="uq_model_calls_run_step_purpose_attempt",
         ),
     )
     op.create_index("ix_model_calls_run_created", "model_calls", ["run_id", "created_at"])

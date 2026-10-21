@@ -76,7 +76,7 @@ report, evidence, or original content in browser storage. Run IDs, report and do
 selection, collection/search filters, and the active Runs tab are held in the URL so a
 refresh preserves the current reading context.
 
-The current implementation provides Source/Document/Chunk models, fresh-database initialization, a versioned Document repository, configured RSS/Atom discovery, safe HTTP article acquisition, a manual collection CLI, a unified Document processing backlog with manual parse/index commands, pgvector indexing and semantic/exact search CLI, a document-list API, a generic S3 snapshot helper, an HTTP model client, a configured Task runner, a persistent Task scheduler, and an independent Worker with separate Run and document processing slots. The runner persists an Evidence Package with actual Chunk/Document versions, validates structured findings against that snapshot, and saves an Analysis plus a readable Report. The repository checks `(source_id, dedupe_key)` and SHA-256 before writing storage, reuses an immutable Document version and updates a separate collection state for identical bytes, and creates the next immutable Document version for changed bytes. The read-only report and evidence API is implemented; see the next section. Lightweight classification through a configurable Decision Model, generic Fact storage with on-demand extraction, and structured API field mapping are implemented; reliable change watermarks and the responsive, protected Web console are also implemented.
+The current implementation provides Source/Document/Chunk models, fresh-database initialization, a versioned Document repository, configured RSS/Atom discovery, safe HTTP article acquisition, a manual collection CLI, a unified Document processing backlog with manual parse/index commands, pgvector indexing and semantic/exact search CLI, a document-list API, a generic S3 snapshot helper, an HTTP model client, a configured Task runner, a persistent Task scheduler, and an independent Worker with separate Run and document processing slots. The runner persists an Evidence Package with actual Chunk/Document versions, validates structured findings against that snapshot, and saves an Analysis plus a readable Report; when an Agent is granted tools, the same step performs a bounded, Repository-first supplemental research round before its final call. A deny-by-default Tool catalog (`config/tools.yaml`), a remote MCP Streamable HTTP client with budgets and safe error codes, and the append-only `research_inputs` ledger are implemented. The repository checks `(source_id, dedupe_key)` and SHA-256 before writing storage, reuses an immutable Document version and updates a separate collection state for identical bytes, and creates the next immutable Document version for changed bytes. The read-only report and evidence API is implemented; see the next section. Lightweight classification through a configurable Decision Model, generic Fact storage with on-demand extraction, and structured API field mapping are implemented; reliable change watermarks and the responsive, protected Web console are also implemented.
 
 The snapshot helper stores the exact bytes supplied by its caller, computes their SHA-256 hash, and uses the supplied content type; it does not assume XML or a particular collection channel. `stocks.repository.ingest_document()` remains the only Document write entry point.
 
@@ -383,8 +383,12 @@ routing, and `config/sources.yaml` defines Sources. A Task is either:
   (Chunks), `evidence_group_count` (chains), `filtered_out_count` (screened but not
   chosen) and `unexamined_count` (not scanned; `null` when the bounded pool is unknown).
   Cross-Document reprint detection is not implemented. It does not collect, parse,
-  index, or call external Tools; the Agent input is untrusted JSON data and the
-  configured `tools` list must be empty.
+  or index Documents, and it does not call external Tools unless its Agent declares an
+  authorized `tools` list. The Agent input is untrusted JSON data. A research Agent may
+  name only ids that are `enabled` in `config/tools.yaml`; an unconfigured, disabled,
+  duplicate or out-of-range id rejects the Task configuration before the Run is created,
+  and an empty list (the default) keeps the V1 behavior with no Tool configuration read
+  and no external call.
 * `type: collection` — a single `collect_sources` step plus `sources: [id, ...]`. It
   reuses `stocks.collection.service.collect_source`, `config/sources.yaml` and the
   existing Repository idempotency, and never resolves a chat or embedding route, so a
@@ -518,13 +522,17 @@ the runner derives direct company/symbol and separate background topic queries f
 committed per-Task/Scope watermark without changing it.
 `candidates_discovered` and `unexamined_count` stay `null` when bounded queries cannot
 determine them. Every finding is marked `fact`, `source_opinion`, or
-`model_inference`, and must cite at least one selected Chunk. Invalid citations retry
-through the configured model route and are never saved silently.
+`model_inference`, and must cite at least one persisted Chunk that is either selected by
+this Run's Evidence Package or appended to its `research_inputs` by an authorized
+supplement. A supplemental result with only Facts or only a search summary cannot support
+a finding; it stays a gap or an open question. Invalid citations retry through the
+configured model route and are never saved silently.
 
 `empty_evidence_skip` filters on a deliberately absent source, so its configured
 condition remains unmet and the Agent step is persisted as `skipped`.
-`unavailable_evidence_failure` uses the same absent source and demonstrates a persisted
-failed Run when the Agent has no usable saved evidence. A failed Run keeps its Evidence
+`empty_evidence_report` uses the same absent source and demonstrates that a Run with no
+usable saved evidence still succeeds: the Agent may not invent findings, so the Analysis
+carries `open_questions` and the coverage gaps instead. A failed Run keeps its Evidence
 Package, never overwrites an earlier successful Run, and never replaces an earlier
 Analysis or Report.
 
@@ -537,6 +545,56 @@ configured request timeout. Authentication, invalid requests, and missing model
 capabilities stop before another target is called.
 Run snapshots and ModelCall rows omit API keys, Authorization headers, endpoint
 plaintext, and model response bodies.
+
+### Authorized Tools and remote MCP
+
+`config/tools.yaml` is a second, independent catalog: Tasks and Agents grant tool ids,
+and this file decides which of those ids actually exist and are enabled. It ships
+deny-by-default with `tools: []`, so an Agent that grants an id nobody configured is
+rejected by the Task configuration loader instead of running without the tool. Every
+entry is a remote MCP Streamable HTTP endpoint (protocol `2025-11-25`); stdio is not
+implemented. Configured fields:
+
+```yaml
+tools:
+  - id: research_search
+    enabled: false              # deny-by-default; a granted but disabled tool fails the Run
+    endpoint: https://mcp.example.com/mcp   # public HTTPS, no query/fragment
+    remote_name: search_documents           # name the MCP tools/list reports (default: id)
+    source_id: tool_research_search         # configured Source the retrieved original is registered under
+    bearer_token_env: STOCKS_RESEARCH_SEARCH_TOKEN   # environment variable name only
+    timeout_seconds: 30
+    input_schema: {type: object, additionalProperties: false, required: [query],
+                   properties: {query: {type: string, minLength: 1, maxLength: 500}}}
+    budgets: {max_calls: 2, max_tokens: 16000, max_request_bytes: 100000, max_result_bytes: 1000000}
+    result_mapping: {fields: {title: [result, title], url: [result, url], content: [result, text]}}
+```
+
+The Agent grants ids through its own `tools` list in `config/tasks.yaml` (at most 20
+unique ids). Resolution is the intersection of the enabled catalog, the Agent grant and
+the schema-validated request; the model never sees or chooses endpoints or credentials.
+Credentials are read from the environment variable named by `bearer_token_env` only at
+call time, so a missing variable fails the call with `TOOL_CREDENTIAL_MISSING` before any
+request is sent, and endpoint plaintext, headers and bodies never enter Run snapshots,
+logs, ModelCall rows or report output. The Run snapshots the credential-free tool
+identity at creation; if the live catalog or an Agent grant changes before execution, the
+step fails with `TOOL_AUTHORIZATION_SNAPSHOT_INVALID` instead of silently using the new
+configuration.
+
+When an Agent has tools, the research step first makes one bounded Tool-planning call
+(≤2 rounds, ≤4 requests per round). A plan only ever performs Repository-first lookups:
+the model requests a tool by id with schema-validated arguments, Stocks saves the
+returned original through `stocks.repository.ingest_document()`, runs only the
+parse/classify/facts stages that source needs, and appends what it adopted to the Run's
+append-only `research_inputs`. Duplicate queries, exhausted budgets, timeouts, transport
+failures, invalid results and results without citable original content stop or skip the
+round and are recorded as explicit `tool_*` / `supplement_*` gaps; the Run still finishes
+with the evidence it has. There is no CLI or API to list tool calls today; inspect the
+catalog as a config file and use `tests/test_tools.py` (unit tests for authorization,
+wire sequence, budgets, SSE, redirect/DNS safety, redaction) and
+`tests/test_research_supplement.py` (bounded supplement loop and ledger) as the
+verification entry points. Both must run on the test server; a real provider integration
+is unverified until a real endpoint and credentials are configured.
 
 ## Read a report and its evidence
 
@@ -561,7 +619,19 @@ curl -sOJ -b stocks-cookie.txt "http://127.0.0.1:8080/api/documents/<document-id
 scope, model routing, safe error), the saved Analysis (summary, findings, open questions,
 evidence refs), the Evidence Package (recorded queries, budget, selection policy version,
 coverage counters and its recorded `coverage`), each selected Chunk with its text and
-locator, the ids the findings actually cite, and the known gaps. There is no redirect or
+locator, the ids the findings actually cite, the Run's `research_inputs`
+(`{count, entries, gaps}`: how many inputs the Run adopted, one entry per adopted
+supplemental Document version with its Tool identity and time relations, and the
+recorded `tool_*` / `supplement_*` gap codes; the stored ledger also begins with the
+`selection_snapshot` boundary entry that pins the Evidence Package hash), and the known
+gaps. Supplemental entries carry the time labels
+(`published_at` / `source_updated_at` / `collected_at` / `available_at` / observation
+period) and are flagged when the material was published or collected after `as_of`; the
+original bytes of a supplemental Document are read through the same
+`/api/documents/{document_id}/original` endpoint as any other version. The known gaps
+combine the codes Evidence Selection recorded, the `tool_*` / `supplement_*` codes the
+Run recorded while supplementing, and what reading the evidence shows now, so "material
+was missing" is never rewritten as "the fact does not exist". There is no redirect or
 aliasing to "the current version": every entry names the Document and Chunk version that
 report used. An unknown report, unknown document, or a chunk outside that package returns
 `404`; a broken Analysis/Report/Evidence Package chain returns `409`. A saved reference

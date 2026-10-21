@@ -58,13 +58,39 @@ from stocks.providers import (
     model_route_snapshot,
 )
 from stocks.research.service import (
+    LEDGER_KIND_SELECTION,
     durable_evidence_ref,
+    merged_research_refs,
     parse_agent_output,
     render_report,
+    research_ledger_gaps,
     select_evidence,
     validate_analysis_content,
     validate_selected_versions,
 )
+from stocks.research.supplement import (
+    GAP_TOOL_PLAN_INVALID,
+    GAP_TOOL_PLAN_UNAVAILABLE,
+    MAX_SUPPLEMENT_ROUNDS,
+    ToolRuntime,
+    SupplementBudget,
+    SupplementError,
+    TOOL_PLAN_SCHEMA,
+    build_plan_messages,
+    execute_plan,
+    parse_plan,
+    record_supplement_gap,
+    tool_descriptions,
+)
+from stocks.tools.config import (
+    DEFAULT_TOOLS_CONFIG_PATH,
+    ToolConfig,
+    ToolConfiguration,
+    authorize_tools,
+    load_tool_configuration,
+    tool_authorization_snapshot,
+)
+from stocks.tools.errors import ToolError
 from stocks.settings import Settings
 
 
@@ -95,11 +121,23 @@ class ExecutionContext:
     config_path: str
     sources_config_path: str = "config/sources.yaml"
     model_transport: Any = None
+    # Independent Sessions for Tool ingestion and Document stages: the Run's own
+    # Session must never be shared with work that commits on its own.
+    session_factory: Any = None
+    # Authorized Tool catalog and the client that may execute it. A test or a
+    # deployment injects one seam; both use the same bounded executor.
+    tools_config_path: str = DEFAULT_TOOLS_CONFIG_PATH
+    tool_client_factory: Any = None
+    stage_registry: Any = None
+    snapshot_store: Any = None
 
 
 TRIGGER_MANUAL = "manual"
 TRIGGER_SCHEDULE = "schedule"
 TRIGGER_RETRY = "retry"
+MODEL_CALL_RESEARCH = "research"
+MODEL_CALL_TOOL_PLAN = "tool_plan"
+MODEL_CALL_PURPOSES = frozenset({MODEL_CALL_RESEARCH, MODEL_CALL_TOOL_PLAN})
 MAX_UNFINISHED_SCAN_CANDIDATES = 100
 ENDED_BY_OWNER = {
     "code": "RUN_ENDED_BY_OWNER",
@@ -113,6 +151,7 @@ def create_or_get_run(
     agents: list[AgentConfig],
     *,
     config_path: str | None = None,
+    tools_config_path: str | None = None,
     now: datetime | None = None,
     process_token: str | None = None,
     triggered_by: str = TRIGGER_MANUAL,
@@ -142,6 +181,7 @@ def create_or_get_run(
             task,
             agents,
             config_path=config_path,
+            tools_config_path=tools_config_path,
             now=created_at,
             process_token=process_token,
             triggered_by=triggered_by,
@@ -181,6 +221,7 @@ def _enqueue_run(
     agents: list[AgentConfig],
     *,
     config_path: str | None,
+    tools_config_path: str | None = None,
     now: datetime,
     process_token: str | None,
     triggered_by: str,
@@ -196,7 +237,10 @@ def _enqueue_run(
         digest = snapshot_hash(snapshot)
     if model_snapshot is None:
         model_snapshot = _model_snapshot(
-            task, agents, config_path=config_path
+            task,
+            agents,
+            config_path=config_path,
+            tools_config_path=tools_config_path,
         )
     if upsert_definition:
         _upsert_task_definition(session, task, snapshot, digest, now)
@@ -229,8 +273,23 @@ def _model_snapshot(
     agents: list[AgentConfig],
     *,
     config_path: str | None,
+    tools_config_path: str | None = None,
 ) -> dict:
     model_snapshot: dict = {"agents": {}, "embedding": None}
+    resolved_tools_path = tools_config_path or DEFAULT_TOOLS_CONFIG_PATH
+    authorized = [agent for agent in agents if agent.tools]
+    if authorized:
+        try:
+            configuration = load_tool_configuration(resolved_tools_path)
+        except ToolError as exc:
+            raise ExecutionError(
+                "TOOL_CONFIGURATION_UNAVAILABLE",
+                "Authorized Tools require a readable Tool configuration",
+            ) from exc
+        model_snapshot["tools"] = {
+            agent.id: _authorization_snapshot(configuration, agent)
+            for agent in authorized
+        }
     if config_path is None:
         return model_snapshot
     for agent in agents:
@@ -245,6 +304,22 @@ def _model_snapshot(
             load_embedding_targets(config_path)
         )
     return model_snapshot
+
+
+def _authorization_snapshot(
+    configuration: ToolConfiguration,
+    agent: AgentConfig,
+) -> list[dict]:
+    """Resolve one Agent's Tool grants to a credential-free identity list."""
+
+    try:
+        selected = authorize_tools(configuration, agent.tools)
+    except ToolError as exc:
+        raise ExecutionError(
+            exc.code,
+            "An Agent Tool grant does not resolve to an enabled Tool",
+        ) from exc
+    return tool_authorization_snapshot(selected)
 
 
 def _upsert_task_definition(
@@ -481,6 +556,14 @@ def _copy_completed_work(
     new_package = _copy_evidence_package(
         session, source_run_id, target_run_id
     )
+    # The retry keeps the material the source Run actually registered, so a
+    # failed final Agent does not silently drop adopted Tool evidence or repeat
+    # the lookups it already answered. Only Run/package ownership moves: every
+    # Document version, provenance and timing label stays as recorded.
+    target_run.research_inputs = _copy_research_inputs(
+        source_run.research_inputs,
+        package_id=new_package.id if new_package is not None else None,
+    )
     if (
         new_package is not None
         and target_run.change_scan_progress is not None
@@ -530,6 +613,30 @@ def _copy_completed_work(
             )
         )
     session.flush()
+
+
+def _copy_research_inputs(
+    ledger: list | None,
+    *,
+    package_id: UUID | None,
+) -> list:
+    """Deep-copy a Run's research-input ledger onto its retry.
+
+    Appended entries keep the Document version, provenance and timing they were
+    recorded with; only the selection boundary follows the retry's own Evidence
+    Package, whose immutable selection fields hash to the same value.
+    """
+
+    copied = deepcopy(ledger or [])
+    if package_id is None:
+        return copied
+    for entry in copied:
+        if (
+            isinstance(entry, dict)
+            and entry.get("kind") == LEDGER_KIND_SELECTION
+        ):
+            entry["evidence_package_id"] = str(package_id)
+    return copied
 
 
 def _copy_evidence_package(
@@ -788,8 +895,9 @@ def execute_claimed_run(
                         agent,
                         task,
                         source_result,
-                        context.config_path,
+                        context,
                         model_snapshot=run.model_snapshot,
+                        process_token=process_token,
                         model_transport=context.model_transport,
                     )
                     saved_results = _analysis_and_report(
@@ -1884,6 +1992,277 @@ def _snapshot_routing(
     return result
 
 
+def _agent_evidence(
+    session: Session,
+    run: TaskRun,
+    package: EvidencePackage,
+) -> tuple[dict[tuple[str, str], dict], list[dict]]:
+    """Validate the initial selection plus this Run's adopted Tool inputs.
+
+    A report may only cite what the Run's Evidence Package selected and what the
+    Run itself registered afterwards; both are read through one merged view so
+    the Agent's allowlist, the saved Analysis and the report API agree.
+    """
+
+    try:
+        refs = merged_research_refs(package, run.research_inputs)
+        allowed_refs = validate_selected_versions(session, refs)
+    except ValueError as exc:
+        raise _StepFailure(
+            "EVIDENCE_PACKAGE_INVALID",
+            "Evidence Package does not match saved Document and Chunk versions",
+        ) from exc
+    merged_by_key = {
+        (str(item["chunk_id"]), str(item["document_id"])): item
+        for item in refs
+    }
+    groups_by_document: dict[str, dict] = {}
+    for group in package.evidence_groups or ():
+        if isinstance(group, dict) and isinstance(group.get("document_id"), str):
+            groups_by_document.setdefault(group["document_id"], group)
+    evidence: list[dict] = []
+    for key, item in allowed_refs.items():
+        merged = merged_by_key.get(key, {})
+        item["origin"] = merged.get("origin", "initial")
+        timing = merged.get("timing")
+        if timing:
+            item["timing"] = list(timing)
+        group = groups_by_document.get(item["document_id"])
+        if group is not None:
+            # Attach the structured Facts and the reported role to the readable
+            # Chunk the Agent already cites, so one evidence chain arrives once.
+            item["evidence_role"] = group.get("role")
+            item["kinds"] = deepcopy(group.get("kinds", []))
+            item["reasons"] = deepcopy(group.get("reasons", []))
+            item["fact_refs"] = deepcopy(group.get("fact_refs", []))
+            item["chunk_ids"] = deepcopy(group.get("chunk_ids", []))
+        evidence.append(item)
+    return allowed_refs, evidence
+
+
+def _reload_run_and_package(
+    session: Session,
+    run_id: UUID,
+    package_id: UUID,
+) -> tuple[TaskRun, EvidencePackage]:
+    """Drop the Run Session's snapshot before more independent transactions."""
+
+    session.rollback()
+    run = session.execute(
+        select(TaskRun)
+        .where(TaskRun.id == run_id)
+        .execution_options(populate_existing=True)
+    ).scalar_one_or_none()
+    package = session.execute(
+        select(EvidencePackage)
+        .where(EvidencePackage.id == package_id)
+        .execution_options(populate_existing=True)
+    ).scalar_one_or_none()
+    if run is None or package is None:
+        raise _StepFailure(
+            "EVIDENCE_PACKAGE_UNAVAILABLE",
+            "Research Agent Evidence Package was not found for this Run",
+        )
+    return run, package
+
+
+def _live_tool_authorization(
+    execution: ExecutionContext,
+    run: TaskRun,
+    agent: AgentConfig,
+) -> tuple[ToolConfiguration, tuple[ToolConfig, ...]]:
+    """Re-check the live Tool catalog against the Run's authorization snapshot."""
+
+    try:
+        configuration = load_tool_configuration(execution.tools_config_path)
+    except ToolError as exc:
+        raise _StepFailure(
+            "TOOL_CONFIGURATION_UNAVAILABLE",
+            "Authorized Tools require a readable Tool configuration",
+        ) from exc
+    try:
+        selected = authorize_tools(configuration, agent.tools)
+    except ToolError as exc:
+        raise _StepFailure(
+            exc.code,
+            "An Agent Tool grant does not resolve to an enabled Tool",
+        ) from exc
+    snapshot = run.model_snapshot.get("tools")
+    expected = snapshot.get(agent.id) if isinstance(snapshot, dict) else None
+    if expected != tool_authorization_snapshot(selected):
+        raise _StepFailure(
+            "TOOL_AUTHORIZATION_SNAPSHOT_INVALID",
+            "Tool authorization or configuration changed after Run creation",
+        )
+    return configuration, selected
+
+
+def _supplement_rounds(
+    session: Session,
+    execution: ExecutionContext,
+    run: TaskRun,
+    package: EvidencePackage,
+    agent: AgentConfig,
+    step: TaskStepConfig,
+    *,
+    client: ModelClient,
+    routing: ChatRouting,
+    targets,
+    process_token: str | None,
+    prompt: str,
+    source_output: dict,
+) -> tuple[dict[tuple[str, str], dict], list[dict], EvidencePackage, TaskRun]:
+    """Run the bounded plan/execute rounds before the single research call.
+
+    A round only ever adds evidence the Run registered through the Repository;
+    a failure, a timeout or a summary-only result becomes a recorded gap and
+    ends the loop within its bound instead of failing the Run.
+    """
+
+    configuration, selected = _live_tool_authorization(execution, run, agent)
+    session_factory = execution.session_factory
+    if session_factory is None:
+        raise _StepFailure(
+            "TOOL_EXECUTION_UNAVAILABLE",
+            "Tool execution requires an independent database Session",
+        )
+    stage_registry = execution.stage_registry
+    if stage_registry is None:
+        from stocks.processing.processors import build_stage_registry
+
+        stage_registry = build_stage_registry(
+            execution.config_path,
+            model_transport=execution.model_transport,
+            sources_config_path=execution.sources_config_path,
+        )
+    snapshot_store = execution.snapshot_store
+    if snapshot_store is None:
+        from stocks.s3 import store_snapshot
+
+        snapshot_store = store_snapshot
+    factory = execution.tool_client_factory
+    if factory is None:
+        from stocks.tools.client import McpClient
+
+        factory = McpClient
+    runtime = ToolRuntime(
+        client=factory(configuration, agent.tools),
+        tools={tool.id: tool for tool in selected},
+        session_factory=session_factory,
+        stage_registry=stage_registry,
+        snapshot_store=snapshot_store,
+        owner_token=f"{process_token or run.id}:supplement:{uuid4().hex}",
+    )
+    budget = SupplementBudget()
+    seen_gaps: set[str] = set()
+    try:
+        for round_index in range(1, MAX_SUPPLEMENT_ROUNDS + 1):
+            run, package = _reload_run_and_package(session, run.id, package.id)
+            allowed_refs, evidence = _agent_evidence(session, run, package)
+            messages = build_plan_messages(
+                prompt,
+                context={
+                    "run_id": str(run.id),
+                    "objective": run.objective,
+                    "strategy": run.strategy,
+                    "scope": deepcopy(run.scope),
+                    "as_of": package.as_of.isoformat(),
+                    "coverage": deepcopy(source_output.get("coverage")),
+                    "evidence_count": len(evidence),
+                    "round": round_index,
+                },
+                evidence=evidence,
+                tools=tool_descriptions(selected),
+            )
+            try:
+                response = asyncio.run(
+                    client.research_chat(
+                        routing,
+                        messages,
+                        schema_name="research_tool_plan",
+                        schema=TOOL_PLAN_SCHEMA,
+                        validate_content=parse_plan,
+                    )
+                )
+            except ModelError as exc:
+                if exc.attempts:
+                    _persist_model_attempts(
+                        session,
+                        run,
+                        step,
+                        routing,
+                        targets,
+                        exc.attempts,
+                        purpose=MODEL_CALL_TOOL_PLAN,
+                    )
+                record_supplement_gap(
+                    session,
+                    run,
+                    package,
+                    process_token=process_token,
+                    now=_now(),
+                    code=GAP_TOOL_PLAN_UNAVAILABLE,
+                    message="Tool planning call did not return a usable plan",
+                    round_index=round_index,
+                )
+                break
+            _persist_model_attempts(
+                session,
+                run,
+                step,
+                routing,
+                targets,
+                response.attempts,
+                purpose=MODEL_CALL_TOOL_PLAN,
+            )
+            try:
+                plan = parse_plan(response.content)
+            except ValueError:
+                record_supplement_gap(
+                    session,
+                    run,
+                    package,
+                    process_token=process_token,
+                    now=_now(),
+                    code=GAP_TOOL_PLAN_INVALID,
+                    message="Tool planning result did not match its schema",
+                    round_index=round_index,
+                )
+                break
+            if not plan["requests"]:
+                break
+            outcome = execute_plan(
+                session,
+                execution.settings,
+                run,
+                package,
+                plan,
+                runtime=runtime,
+                budget=budget,
+                sources_config_path=execution.sources_config_path,
+                as_of=package.as_of,
+                now=_now(),
+                round_index=round_index,
+                process_token=process_token,
+            )
+            new_gaps = set(outcome.gaps) - seen_gaps
+            seen_gaps.update(outcome.gaps)
+            if not outcome.appended and not new_gaps:
+                break
+    except SupplementError as exc:
+        # A deterministic boundary failure (a rewritten Evidence Package or a
+        # Run that lost ownership) must stop the step instead of being recorded
+        # as ordinary research uncertainty.
+        raise _StepFailure(exc.code, exc.message) from exc
+    finally:
+        close = getattr(runtime.client, "close", None)
+        if callable(close):
+            close()
+    run, package = _reload_run_and_package(session, run.id, package.id)
+    allowed_refs, evidence = _agent_evidence(session, run, package)
+    return allowed_refs, evidence, package, run
+
+
 def _run_agent(
     session: Session,
     run: TaskRun,
@@ -1891,11 +2270,13 @@ def _run_agent(
     agent: AgentConfig,
     task: TaskConfig,
     source_result: TaskStepResult,
-    config_path: str,
+    execution: ExecutionContext,
     *,
     model_snapshot: dict,
+    process_token: str | None = None,
     model_transport=None,
 ) -> tuple[dict, list[dict], dict]:
+    config_path = execution.config_path
     source_output = source_result.output or {}
     package_id = source_output.get("evidence_package_id")
     if not isinstance(package_id, str):
@@ -1916,36 +2297,7 @@ def _run_agent(
             "EVIDENCE_PACKAGE_UNAVAILABLE",
             "Research Agent Evidence Package was not found for this Run",
         )
-    try:
-        allowed_refs = validate_selected_versions(
-            session,
-            package.selected_chunks,
-        )
-    except ValueError as exc:
-        raise _StepFailure(
-            "EVIDENCE_PACKAGE_INVALID",
-            "Evidence Package does not match saved Document and Chunk versions",
-        ) from exc
-    evidence = list(allowed_refs.values())
-    groups_by_document: dict[str, dict] = {}
-    for group in package.evidence_groups or ():
-        if isinstance(group, dict) and isinstance(group.get("document_id"), str):
-            groups_by_document.setdefault(group["document_id"], group)
-    for item in evidence:
-        group = groups_by_document.get(item["document_id"])
-        if group is not None:
-            # Attach the structured Facts and the reported role to the readable
-            # Chunk the Agent already cites, so one evidence chain arrives once.
-            item["evidence_role"] = group.get("role")
-            item["kinds"] = deepcopy(group.get("kinds", []))
-            item["reasons"] = deepcopy(group.get("reasons", []))
-            item["fact_refs"] = deepcopy(group.get("fact_refs", []))
-            item["chunk_ids"] = deepcopy(group.get("chunk_ids", []))
-    if not evidence:
-        raise _StepFailure(
-            "EVIDENCE_UNAVAILABLE",
-            "Research Agent requires non-empty Repository evidence",
-        )
+    allowed_refs, evidence = _agent_evidence(session, run, package)
     prompt = run.prompt_snapshot.get(agent.id)
     if not isinstance(prompt, str) or not prompt:
         raise _StepFailure(
@@ -2016,6 +2368,24 @@ def _run_agent(
             "Research Agent input schema must be a non-empty object",
         )
     client = ModelClient(targets, transport=model_transport)
+    if agent.tools:
+        # Authorized Tools are only reachable through their own planning call:
+        # an empty plan means no external request is made at all, and Repository
+        # material is never re-fetched just because a Tool is configured.
+        allowed_refs, evidence, package, run = _supplement_rounds(
+            session,
+            execution,
+            run,
+            package,
+            agent,
+            step,
+            client=client,
+            routing=routing,
+            targets=targets,
+            process_token=process_token,
+            prompt=prompt,
+            source_output=source_output,
+        )
     context = {
         "run_id": str(run.id),
         "objective": run.objective,
@@ -2111,7 +2481,29 @@ def _persist_model_attempts(
     routing: ChatRouting,
     targets,
     attempts,
+    *,
+    purpose: str = MODEL_CALL_RESEARCH,
 ) -> None:
+    if purpose not in MODEL_CALL_PURPOSES:
+        raise _StepFailure(
+            "MODEL_ATTEMPT_INVALID",
+            "Model call purpose is not supported",
+        )
+    # A Run may plan more than once. Each planning call numbers its own attempts
+    # from one, so the stored sequence continues after what this Run already
+    # recorded instead of colliding with it and silently dropping a cost row.
+    offset = 0
+    if purpose == MODEL_CALL_TOOL_PLAN:
+        offset = (
+            session.scalar(
+                select(func.max(ModelCall.attempt_number)).where(
+                    ModelCall.run_id == run.id,
+                    ModelCall.step_id == step.id,
+                    ModelCall.call_purpose == purpose,
+                )
+            )
+            or 0
+        )
     for attempt in attempts:
         if attempt.attempt_alias not in targets:
             raise _StepFailure(
@@ -2130,7 +2522,8 @@ def _persist_model_attempts(
             .values(
                 run_id=run.id,
                 step_id=step.id,
-                attempt_number=attempt.attempt_number,
+                call_purpose=purpose,
+                attempt_number=offset + attempt.attempt_number,
                 requested_alias=routing.primary,
                 attempt_alias=attempt.attempt_alias,
                 requested_model_name=targets[routing.primary].name,
@@ -2146,7 +2539,12 @@ def _persist_model_attempts(
                 created_at=_now(),
             )
             .on_conflict_do_nothing(
-                index_elements=["run_id", "step_id", "attempt_number"]
+                index_elements=[
+                    "run_id",
+                    "step_id",
+                    "call_purpose",
+                    "attempt_number",
+                ]
             )
         )
         session.execute(statement)
@@ -2227,6 +2625,21 @@ def _analysis_and_report(
             "Research output cannot be converted into an Analysis",
         )
     created_at = _now()
+    ledger = deepcopy(run.research_inputs or [])
+    coverage = deepcopy(package.coverage)
+    ledger_gaps = research_ledger_gaps(ledger)
+    if ledger_gaps and isinstance(coverage, dict):
+        recorded = coverage.get("gaps", [])
+        if not isinstance(recorded, list):
+            raise _StepFailure(
+                "ANALYSIS_INVALID",
+                "Evidence Package coverage gaps are invalid",
+            )
+        # A Tool that failed or returned nothing citable is a real coverage gap
+        # of this Run, so the saved Analysis states it beside the selection gaps.
+        coverage["gaps"] = list(
+            dict.fromkeys([*(str(gap) for gap in recorded), *ledger_gaps])
+        )
     analysis = Analysis(
         run_id=run.id,
         evidence_package_id=package.id,
@@ -2234,7 +2647,8 @@ def _analysis_and_report(
         findings=deepcopy(findings),
         open_questions=deepcopy(open_questions),
         evidence_refs=deepcopy(evidence_refs),
-        coverage=deepcopy(package.coverage),
+        research_inputs=ledger,
+        coverage=coverage,
         created_at=created_at,
     )
     # The Report references the Analysis id, which SQLAlchemy assigns on flush.

@@ -63,6 +63,7 @@ from stocks.models import (
 from stocks.processing.processors import build_stage_registry
 from stocks.processing.parser import HTML_CONTENT_TYPES, TEXT_CONTENT_TYPES
 from stocks.processing.runner import describe_stages, run_stages_for_documents
+from stocks.research.service import merged_research_refs, research_ledger_gaps
 from stocks.repository import (
     SearchFilters,
     get_document,
@@ -88,6 +89,9 @@ app = FastAPI(
 PUBLIC_PATHS = frozenset({"/health", "/api/session/login"})
 MUTATING_METHODS = frozenset({"POST", "PUT", "PATCH", "DELETE"})
 FRESHNESS_UNITS = {"m": 60, "h": 3600, "d": 86400}
+# One Run's research-input ledger is a bounded list; the API never returns an
+# unbounded projection of it.
+MAX_RESEARCH_INPUT_ENTRIES = 50
 
 
 @lru_cache(maxsize=4)
@@ -962,6 +966,7 @@ def trigger_task(task_id: str) -> dict:
                 task,
                 agents,
                 config_path=config.models_config_path if agents else None,
+                tools_config_path=config.tools_config_path,
                 triggered_by="manual",
             )
         except ValueError as exc:
@@ -1088,6 +1093,7 @@ def continue_task_run(run_id: UUID, payload: RunContinue) -> dict:
                 task,
                 agents,
                 config_path=config.models_config_path if agents else None,
+                tools_config_path=config.tools_config_path,
                 triggered_by="manual",
             )
         except ExecutionConfigError as exc:
@@ -1600,7 +1606,7 @@ def report_detail(report_id: UUID) -> dict:
         report, analysis, package = _report_chain(session, report_id)
         run = session.get(TaskRun, report.run_id)
         entries, states = _resolve_evidence(
-            session, config, _selected_chunks(package)
+            session, config, _report_research_refs(analysis, package, run)
         )
         cited = _cited_keys(analysis)
         return {
@@ -1622,13 +1628,16 @@ def report_detail(report_id: UUID) -> dict:
                 "created_at": analysis.created_at,
             },
             "evidence_package": _package_payload(package),
+            "research_inputs": _research_inputs_payload(analysis, run),
             "evidence": entries,
             "cited_chunk_ids": [
                 entry["chunk_id"]
                 for entry in entries
                 if (entry["chunk_id"], entry["document_id"]) in cited
             ],
-            "coverage_gaps": _gaps(package, entries, run),
+            "coverage_gaps": _gaps(
+                package, entries, run, analysis.research_inputs
+            ),
             "latest_collection_states": [
                 _collection_state_payload(state)
                 for state in sorted(
@@ -1648,10 +1657,11 @@ def report_evidence(
 ) -> dict:
     config = settings()
     with session_factory()() as session:
-        report, _analysis, package = _report_chain(session, report_id)
+        report, analysis, package = _report_chain(session, report_id)
+        run = session.get(TaskRun, report.run_id)
         matching = [
             item
-            for item in _selected_chunks(package)
+            for item in _report_research_refs(analysis, package, run)
             if _parse_id(item.get("chunk_id")) == chunk_id
         ]
         if not matching:
@@ -1877,6 +1887,7 @@ def _run_payload(run: TaskRun | None) -> dict | None:
         "scope": _safe_external_payload(run.scope),
         "config_hash": run.config_hash,
         "model_snapshot": _safe_model_snapshot(run.model_snapshot),
+        "research_inputs": _research_inputs_payload(None, run),
         "output": _safe_error(run.output),
         "error": _safe_error(run.error),
         "created_at": run.created_at,
@@ -1892,6 +1903,89 @@ def _selected_chunks(package: EvidencePackage) -> list[dict]:
             status_code=409, detail="Evidence Package selected chunks are invalid"
         )
     return [item for item in selected if isinstance(item, dict)]
+
+
+def _research_ledger(
+    analysis: Analysis | None,
+    run: TaskRun | None,
+) -> list:
+    """The ledger frozen onto the report's Analysis, or the Run's own record."""
+
+    if analysis is not None and isinstance(analysis.research_inputs, list):
+        return analysis.research_inputs
+    if run is not None and isinstance(run.research_inputs, list):
+        return run.research_inputs
+    return []
+
+
+def _report_research_refs(
+    analysis: Analysis,
+    package: EvidencePackage,
+    run: TaskRun | None,
+) -> list[dict]:
+    """Initial selection plus the Tool inputs the report actually adopted."""
+
+    try:
+        return merged_research_refs(package, _research_ledger(analysis, run))
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=409, detail="Report research inputs are invalid"
+        ) from exc
+
+
+def _research_inputs_payload(
+    analysis: Analysis | None,
+    run: TaskRun | None,
+) -> dict:
+    """Bounded, credential-free projection of one Run's research inputs."""
+
+    ledger = _research_ledger(analysis, run)
+    adopted: list[dict] = []
+    gaps: list[dict] = []
+    for item in ledger:
+        if not isinstance(item, dict):
+            continue
+        if item.get("kind") == "input":
+            adopted.append(
+                _safe_external_payload(
+                    {
+                        "input_id": item.get("input_id"),
+                        "tool_id": item.get("tool_id"),
+                        "purpose": item.get("purpose"),
+                        "document_id": item.get("document_id"),
+                        "source_id": item.get("source_id"),
+                        "document_version": item.get("document_version"),
+                        "title": item.get("title"),
+                        "url": _safe_source_url(item.get("url")),
+                        "chunk_ids": [
+                            chunk.get("chunk_id")
+                            for chunk in item.get("chunks", [])
+                            if isinstance(chunk, dict)
+                        ],
+                        "timing": item.get("timing"),
+                        "retrieved_at": item.get("retrieved_at"),
+                        "published_at": item.get("published_at"),
+                        "collected_at": item.get("collected_at"),
+                        "truncated": item.get("truncated"),
+                        "token_estimate": item.get("token_estimate"),
+                    }
+                )
+            )
+        elif item.get("kind") == "gap":
+            gaps.append(
+                {
+                    "code": item.get("code"),
+                    "message": item.get("message"),
+                    "tool_id": item.get("tool_id"),
+                    "round": item.get("round"),
+                    "recorded_at": item.get("recorded_at"),
+                }
+            )
+    return {
+        "count": len(adopted),
+        "entries": adopted[:MAX_RESEARCH_INPUT_ENTRIES],
+        "gaps": gaps[:MAX_RESEARCH_INPUT_ENTRIES],
+    }
 
 
 def _package_payload(package: EvidencePackage) -> dict:
@@ -1932,6 +2026,7 @@ def _gaps(
     package: EvidencePackage,
     entries: list[dict],
     run: TaskRun | None,
+    ledger: list | None = None,
 ) -> list[str]:
     """Combine recorded selection gaps with what reading the evidence shows now."""
     recorded = package.coverage.get("gaps", []) if package.coverage else []
@@ -1957,7 +2052,21 @@ def _gaps(
             observed.append("chunk_not_in_current_index")
     if run is not None and run.status != "succeeded":
         observed.append("run_not_succeeded")
-    return list(dict.fromkeys([*(str(gap) for gap in recorded), *observed]))
+    try:
+        supplement_gaps = research_ledger_gaps(ledger)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=409, detail="Report research inputs are invalid"
+        ) from exc
+    return list(
+        dict.fromkeys(
+            [
+                *(str(gap) for gap in recorded),
+                *observed,
+                *supplement_gaps,
+            ]
+        )
+    )
 
 
 def _ids(values: list[object]) -> list[UUID]:
@@ -2574,6 +2683,33 @@ def _safe_model_snapshot(value: object) -> dict:
                 )
                 if field in item
             }
+    tools = snapshot.get("tools")
+    if isinstance(tools, dict):
+        # The authorization identity holds hashes and budgets only; the Tool
+        # credentials and endpoint values never enter a Run snapshot.
+        result["tools"] = {
+            agent_id: [
+                {
+                    field: entry.get(field)
+                    for field in (
+                        "tool_id",
+                        "remote_name",
+                        "endpoint_hash",
+                        "source_id",
+                        "input_schema_hash",
+                        "output_schema_hash",
+                        "credential_required",
+                        "timeout_seconds",
+                        "budgets",
+                    )
+                    if field in entry
+                }
+                for entry in entries
+                if isinstance(entry, dict)
+            ]
+            for agent_id, entries in tools.items()
+            if isinstance(agent_id, str) and isinstance(entries, list)
+        }
     embedding = result.get("embedding")
     if isinstance(embedding, dict):
         result["embedding"] = {

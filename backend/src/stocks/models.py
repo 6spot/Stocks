@@ -180,6 +180,10 @@ class TaskRun(Base):
             "change_scan_progress ->> 'status' = 'scanned')",
             name="ck_task_runs_scan_completed_requires_scan",
         ),
+        CheckConstraint(
+            "jsonb_typeof(research_inputs) = 'array'",
+            name="ck_task_runs_research_inputs_array",
+        ),
     )
     id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, default=uuid4)
     task_id: Mapped[str] = mapped_column(ForeignKey("task_definitions.id"))
@@ -229,6 +233,14 @@ class TaskRun(Base):
     # same transaction as the saved Analysis and Report.
     change_scan_completed: Mapped[bool | None] = mapped_column(
         Boolean, nullable=True
+    )
+    # Append-only ledger of the material this Run actually used beyond the
+    # initial Evidence Package snapshot: Tool-provided originals registered in
+    # the Repository for this Run, and the bounded gaps of attempts that produced
+    # nothing citable. ``selected_chunks``/``evidence_groups``/``coverage`` stay
+    # the frozen selection snapshot and are never rewritten.
+    research_inputs: Mapped[list] = mapped_column(
+        JSONB, default=list, server_default=text("'[]'::jsonb")
     )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     started_at: Mapped[datetime | None] = mapped_column(
@@ -312,6 +324,10 @@ class Analysis(Base):
             "jsonb_typeof(open_questions) = 'array'",
             name="ck_analyses_open_questions_array",
         ),
+        CheckConstraint(
+            "jsonb_typeof(research_inputs) = 'array'",
+            name="ck_analyses_research_inputs_array",
+        ),
     )
     id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, default=uuid4)
     run_id: Mapped[UUID] = mapped_column(
@@ -324,6 +340,12 @@ class Analysis(Base):
     findings: Mapped[list] = mapped_column(JSONB)
     open_questions: Mapped[list] = mapped_column(JSONB)
     evidence_refs: Mapped[list] = mapped_column(JSONB)
+    # Frozen copy of the Run's research-input ledger at the moment this Analysis
+    # was saved, so a later Run or Document change cannot alter what a published
+    # report used as its actual inputs.
+    research_inputs: Mapped[list] = mapped_column(
+        JSONB, default=list, server_default=text("'[]'::jsonb")
+    )
     coverage: Mapped[dict] = mapped_column(JSONB)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
 
@@ -398,11 +420,16 @@ class ModelCall(Base):
             "duration_ms >= 0",
             name="ck_model_calls_duration",
         ),
+        CheckConstraint(
+            "call_purpose IN ('research', 'tool_plan')",
+            name="ck_model_calls_purpose",
+        ),
         UniqueConstraint(
             "run_id",
             "step_id",
+            "call_purpose",
             "attempt_number",
-            name="uq_model_calls_run_step_attempt",
+            name="uq_model_calls_run_step_purpose_attempt",
         ),
         Index("ix_model_calls_run_created", "run_id", "created_at"),
         CheckConstraint(
@@ -423,6 +450,12 @@ class ModelCall(Base):
         ForeignKey("task_runs.id", ondelete="CASCADE")
     )
     step_id: Mapped[str] = mapped_column(String(120))
+    # Which call of the step this attempt belongs to. One Agent step can make a
+    # bounded Tool-planning call before its single research call, and both must
+    # stay traceable without colliding on their attempt numbers.
+    call_purpose: Mapped[str] = mapped_column(
+        String(16), default="research", server_default=text("'research'")
+    )
     attempt_number: Mapped[int] = mapped_column(Integer)
     requested_alias: Mapped[str] = mapped_column(String(120))
     attempt_alias: Mapped[str] = mapped_column(String(120))

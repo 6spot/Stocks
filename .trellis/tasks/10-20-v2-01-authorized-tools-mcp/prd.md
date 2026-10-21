@@ -24,9 +24,9 @@
 
 ## 验收条件
 
-- [ ] AC-1: 已有存量足够时不调用外部；缺资料时只调用获授权工具，越权参数及外部注入不能扩权。
-- [ ] AC-2: 实际补证通过 Document/Fact/Chunk 追到保存原件；未保存或仅搜索摘要不得冒充全文引用。
-- [ ] AC-3: 工具失败/处理超时如实留下缺口并有界结束，重试保留初始包及追加输入。
+- [x] AC-1: 已有存量足够时不调用外部（`test_repository_sufficient_run_does_not_call_a_tool`：计划判定充分，零 Tool 调用）；缺资料时只调用获授权工具，未授权/已停用/参数非法在发请求前以显式缺口拒绝（`tests/test_tools.py` 授权与参数边界、`tests/test_research_supplement.py` 计划与参数校验）。
+- [x] AC-2: 实际补证先经 `ingest_document()` 入库并处理，再追加台账，引用可追到 Document 版本与原件字节（`test_research_supplement.py` 断言字节/哈希/Document 字段；`test_retry_keeps_the_ledger_and_appended_evidence_stays_citable` 断言追加证据可被报告引用）；仅有摘要或 Facts 的返回记为 `tool_content_unavailable` 缺口，不能冒充全文引用。
+- [x] AC-3: 工具失败/超时/预算耗尽/重复请求均留下具名缺口并终止本轮（`test_research_supplement.py` 超时与传输失败单次有界尝试、重复与预算耗尽不触网）；重试沿用来源 Run 的初始包并保留追加输入（`test_retry_keeps_the_ledger_and_appended_evidence_stays_citable`、`test_second_planning_round_continues_the_attempt_sequence`）。
 
 ## 不在范围内
 
@@ -34,4 +34,4 @@ stdio MCP、任意写入/交易工具、多 Agent 自主协商、历史时点严
 
 ## 约束与规划状态
 
-只改当前设计与初始化，不做旧库迁移或旧版兼容；运行期证据和历史引用仍须保留。此任务保持 planning；本轮未实施。开工前复核前置交付、实际文件和配置，再对本任务规划进行实施确认。
+只改当前设计与初始化，不做旧库迁移或旧版兼容；运行期证据和历史引用仍须保留。本任务已完成实施并在测试服务器验证；真实远程 MCP 服务与凭据未提供，实际供应商接通与真实原件字节链路记为待验收。

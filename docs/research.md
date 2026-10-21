@@ -103,6 +103,8 @@ evidence_package:
 
 以上为**格式示例，非实际采集与运行结果**。实际包还应保存研究输入引用、数据版本及运行配置的稳定快照；正文片段可通过持久 Chunk 引用获得，避免重复存储全文。表与 JSONB 如何组织属于实现选择，不要求为 Evidence Package 新建独立物理表。包内的筛选统计来自实际查询过程，不允许 Agent 虚构补齐。
 
+**Evidence Package 是本次例行选择的只读快照，不是本 Run 的全部输入。** V2 授权补证采用后追加到 Run 的 `research_inputs`（Analysis 保存采用时的冻结副本），字段与时间关系以[执行设计](execution.md#研究增量窗口与共享资料引用)为准；初始包的 `selected_chunks` / `evidence_groups` / `coverage` 永不被追加输入改写，Agent 输入、引用白名单、报告详情与单条证据接口共用“初始选择 + 已追加输入”的同一合并视图。
+
 V0 当前实现使用每次 Run 一份持久 Evidence Package：保存 objective、`run.scope`、`as_of`、规则版本、预算、每条实际 Query 及角色（`direct | background`）、所选 Chunk 的 Document/parse batch 版本与原始位置、选择理由、索引覆盖和缺口。有界语义查询无法得知候选总数时，`candidates_discovered` 与 `unexamined_count` 为 `null`；每条 Query 单独记录返回数、截断和缺口。直接资料与背景资料分开查询及标记，不要求 Scope 全部维度同时 AND。包通过持久 Chunk 引用读取正文，不复制整篇原文。
 
 **V1-06 当前实现：** 同一 Evidence Package 现在同时收录本次固定变化窗口内新可研究的 Document 与历史语义背景。`select_evidence` 先用 `stocks.changes.changed_candidates()` 按 Document 归并本页变化，再读取该 Document 当前成功解析批次的 Chunk 和已生成的 Fact，然后执行原有语义查询；同一 Document 的增量与背景命中合并为一个 `evidence_groups[]` 条目，同一个 Fact 无论经哪条路径出现都只保留一次。每组记录 `role`（`new_information` / `historical_context`）、`match_role`（`direct` / `background`）、`kinds`、`reasons`、`chunk_ids`、`fact_refs` 与增量水位；Reporting 仍以持久 Chunk 加 Document 版本作为引用单元，Fact 通过 `fact_refs` 关联回其来源 Chunk 或 JSON `evidence_ref`，因此 Document 与其 Fact 不会被计成两条独立支持。仅凭标题或向量相似不做转载合并，属于后续能力。
@@ -110,6 +112,8 @@ V0 当前实现使用每次 Run 一份持久 Evidence Package：保存 objective
 统计同时记录 `candidates_discovered`、`candidates_screened`、`selected_count`（实际选入的 Chunk 数）、`evidence_group_count`（合并后的证据链组数）、`filtered_out_count`（已筛选但未入选）与 `unexamined_count`（未扫描）。筛选后未入选与未扫描分开表达；任一查询或原始变化页触顶时 `candidates_discovered` / `unexamined_count` 保持 `null`，不填 0。`selected_count` 与 `evidence_group_count` 不同正是转载/合并后的结果，报告不能把组数当作独立来源数。分类失败不参与召回过滤：只要存在可读当前 Chunk 或结构化 Fact，资料仍可进入研究。
 
 纯结构化 API 响应（无可用 Chunk）只以 Fact 组出现，`ref` 为 `null` 并保留每个 Fact 的 `evidence_ref`。当前仍未实现跨 Document 的转载识别、高级跨源冲突解释与历史报告比较 UI。
+
+**V2-01 起的可引用边界：** 补充检索取得的资料只有在统一入库、解析并成为持久 Chunk 后才能支撑 finding；Fact-only 的补充组（例如纯 JSON 响应）仍进入证据组与覆盖统计，但不能作为引用对象，相关内容只能以 open questions 或覆盖说明表达。该限制对初始选择与补充输入一视同仁。
 
 ### Agent 补充检索与故障边界
 
@@ -121,6 +125,16 @@ V0 当前实现使用每次 Run 一份持久 Evidence Package：保存 objective
 - 取材失败与无候选不同：检索超时、分类积压、数据源断更、候选扫描不完或版本无法确定时，分别记录原因和受影响维度。允许生成明确说明覆盖不足的报告，不为补齐栏目捏造信息；失败、积压及继续扫描归于 Task/Run 和控制台管理，游标推进遵循[执行设计](execution.md#研究增量窗口与共享资料引用)。
 - Evidence Package 在下游 Agent 失败时保持可复查，重试默认沿用已保存的输入、版本和选择规则。若仍需补证，沿用同一套授权工具与入库流程追加输入，并记录实际新增引用，不改写原包或既有报告。
 - 同一 Task Run 无论研究市场、行业、股票或混合主题，都调用同一个 `repository.select_evidence`；不新增研究专属的采集器、独立 Evidence 服务、DAG 或复杂打分调度器。
+
+**补证闸门与生命周期（V2-01）：**
+
+1. **先查 Repository。** 已保存的增量与历史证据由 `select_evidence` 一次取齐；只有资料缺失、过期、存在冲突或需要交叉核实时才允许外部调用。已配置但本次不需要的 Tool 不会被调用，不得为了“更完整”例行重查外部来源。
+2. **计划与执行分离。** 研究 Agent 只提出结构化补证请求（要解决的问题 + 有界参数），权限、预算、超时与来源登记由 Stocks 决定；请求的调用数、参数与去重规则见[执行设计](execution.md#tools-与远程-mcp)。
+3. **先保存再引用。** 采用的响应走统一 Source/Repository 入库（`ingest_document()`），只对该 Document 运行 parse → classify → facts 所需阶段，成功后再追加 `research_inputs`；不等待全库积压清空，也不绕过入库直接使用临时输出。
+4. **发现与证据分开。** 搜索结果与摘要只是发现渠道，不能作为引用；只有取得可持久定位的 Chunk 才能支撑 finding。没有原文的补充结果记录为缺口或保留为 open question。
+5. **不可改写。** 初始 Evidence Package 不被重写，已保存的旧 Analysis/Report 保持原引用与生成时间；重试沿用来源 Run 的初始包与已追加输入，只追加真正新取得的材料。
+
+**补证缺口与失败语义：** 补证不改变既有缺口分类——仍区分“已耗尽检索范围”“资料/来源不可用”“有界扫描被截断（剩余未知，不填零）”“已筛选未入选”“处理/索引失败”“部分内容”与“无报告（最终 Agent 或 Analysis 失败）”。补证新增的失败一律按显式缺口记录，至少覆盖以下类别：未授权/未知/停用的工具、参数非法、重复查询、预算耗尽、超时、传输或 RPC 失败、映射结果不合法、只有摘要没有可引用原文、计划不可用或计划不合法，以及补充文档的入库/解析/分类/Fact 失败。材料缺失绝不写成“事实不存在”，未运行的检索不写成“已确认无变化”；具体代码在归属实现中固定，本表不承诺未实现状态。
 
 ## Research Agent 的输入、行为与有界补证
 
@@ -135,7 +149,8 @@ Research Agent 设计为普通可配置的 Agent 角色，执行 Research Task �
 | `evidence_package_ref` | 指向[统一研究取材](research.md)已保存的取材快照，不要求全文重复塞入 Prompt |
 | `previous_analysis_refs[]` | 可复用的历史 Analysis 或报告引用；允许为空，不要求逐条 Finding 关系 |
 | `coverage` | 取材/来源缺口、未扫描候选、分类积压等；缺口不是“没有发生变化”的证据 |
-| `allowed_tools[]`、`budget` | 由可信 Task 配置授权的 Repository/远程工具与有限调用/Token 预算，模型不能扩权 |
+| `allowed_tools[]`、`budget` | 由可信 Task 配置授权的 Repository/远程工具与有限调用/Token 预算；模型只能引用这些 ID，不能新增工具、修改参数边界或提升预算 |
+| `research_inputs[]` | 本 Run 实际采用的最终输入台账：初始 Evidence Package 边界条目 + 已追加的补充 Document 版本、Chunk/Fact 引用、Tool 调用身份与时间关系；只追加、不重写 |
 
 **研究行为：**
 
@@ -145,7 +160,7 @@ Research Agent 设计为普通可配置的 Agent 角色，执行 Research Task �
 4. 将研究结果表示为统一的 Analysis：简要综合判断、`findings[]`、`open_questions[]`、引用证据和覆盖范围；向报告层提供可阅读的段落建议，但不把 Markdown 作为唯一资产。
 5. 可以引用历史报告比较变化，但不需要逐条 Finding 历史关系表；任何比较都以真正的来源变化为依据。
 
-**补充检索调用与终止条件：** Agent 只能提出已授权工具中的结构化请求，说明 `purpose`、允许的过滤条件及需要查证的问题；系统执行超时、调用次数、Token 预算及来源登记约束。对同一检索无进展时停止，保留 `open_questions`；不会无限尝试，也不创建隐式 Agent 子任务。新的补充证据追加到本 Run 的最终 `research_inputs`，保留初始 Evidence Package 原快照。
+**补充检索调用与终止条件：** Agent 只能提出已授权工具中的结构化请求，说明 `purpose`、允许的过滤条件及需要查证的问题；系统执行超时、调用次数、Token 预算及来源登记约束。未授权、未知、已停用或参数非法的请求在发出网络请求前即以显式缺口拒绝，不会因为模型要求就放宽权限。对同一检索无进展、重复查询或预算耗尽时停止，保留 `open_questions`；不会无限尝试，也不创建隐式 Agent 子任务。新的补充证据按“先入库、再处理、后追加”的顺序进入本 Run 的最终 `research_inputs`，保留初始 Evidence Package 原快照。
 
 **输出校验：** 只检查所需结构、证据引用存在性、来源时间与版本标示、调用权限和必要字段；来源时间按实际资料展示，不以 `published_at <= as_of` 作为拒绝运行中补证的条件。不用文字长短、情绪方向或模型自评分数硬编码研究判断。非法引用或结构错误允许有限重试，不得静默编造事实。
 
@@ -163,4 +178,4 @@ Research Agent 从去重后的 Evidence Package 形成 Analysis，再生成 Repo
 
 报告在成功保存后可被后续 Task 参考，失败不覆盖最后成功报告；V2 的历史报告对照可以从简单比较开始，不为复杂关系提前建表或设计 UI。图表如需生成，数字必须来自 Repository 实际记录，而非 LLM 虚构。
 
-V0 当前实现要求每个 finding 明确标记为 `fact`、`source_opinion` 或 `model_inference`，至少引用一个本轮 Evidence Package 中选中的持久 Chunk，并保存理由与不确定性。输出结构和引用在模型调用内校验；非法引用按 Research Agent 路由有限重试或回退，最终仍非法则 Run/Step 失败，不静默写报告。Analysis 与由其确定性生成的 Markdown Report 在同一成功事务中保存；下游失败保留 Evidence Package 和此前成功的 Analysis/Report。新 Document 版本不会改变旧报告记录的 Document/Chunk 版本与原件。
+当前实现要求每个 finding 明确标记为 `fact`、`source_opinion` 或 `model_inference`，至少引用一个本轮可用持久 Chunk（初始 Evidence Package 选择或 V2-01 授权补证追加的输入），并保存理由与不确定性；只有 Fact 或只有摘要的补充内容不可引用。输出结构和引用在模型调用内校验；非法引用按 Research Agent 路由有限重试或回退，最终仍非法则 Run/Step 失败，不静默写报告。初始选择与追加输入的合法引用都为空时 Run 仍可成功，但报告只能表达缺口与不确定性，不得出现裸 finding。Analysis 与由其确定性生成的 Markdown Report 在同一成功事务中保存；下游失败保留 Evidence Package 和此前成功的 Analysis/Report。新 Document 版本不会改变旧报告记录的 Document/Chunk 版本与原件。

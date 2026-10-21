@@ -10,7 +10,14 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import yaml
 from croniter import croniter
-from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    ValidationError,
+    field_validator,
+    model_validator,
+)
 
 MAX_CONFIG_BYTES = 1_000_000
 INTERVAL_PATTERN = re.compile(r"^([1-9][0-9]{0,6})([smhd])$")
@@ -33,6 +40,8 @@ NONEMPTY_CONDITION_FIELDS = {
 EQUALITY_CONDITION_FIELDS = {
     "output.truncated",
 }
+MAX_AGENT_TOOLS = 20
+AGENT_TOOL_ID_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,119}$")
 
 
 class _UniqueKeySafeLoader(yaml.SafeLoader):
@@ -480,9 +489,24 @@ class AgentConfig(BaseModel):
     role: str = Field(min_length=1, max_length=255)
     prompt: str = Field(min_length=1, max_length=200_000)
     model_ref: str = Field(min_length=1, max_length=120)
-    tools: list[str] = Field(default_factory=list, max_length=0)
+    # Trusted, bounded Tool authorization for this Agent. The ids resolve
+    # against the separate Tool catalog; a Run that cannot resolve one of them
+    # as an enabled tool fails instead of silently continuing without it.
+    tools: list[str] = Field(default_factory=list, max_length=MAX_AGENT_TOOLS)
     output_schema: dict
     input_schema: dict
+
+    @field_validator("tools")
+    @classmethod
+    def validate_tools(cls, value: list[str]) -> list[str]:
+        if len(value) != len(set(value)):
+            raise ValueError("tools must not repeat a Tool id")
+        for tool_id in value:
+            if not isinstance(tool_id, str) or not AGENT_TOOL_ID_PATTERN.fullmatch(
+                tool_id
+            ):
+                raise ValueError("tools must contain bounded Tool ids")
+        return list(value)
 
     @model_validator(mode="after")
     def validate_schemas(self) -> AgentConfig:

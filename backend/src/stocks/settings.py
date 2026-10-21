@@ -34,6 +34,7 @@ class Settings(BaseSettings):
     sources_config_path: str = "config/sources.yaml"
     tasks_config_path: str = "config/tasks.yaml"
     models_config_path: str = "config/models.yaml"
+    tools_config_path: str = "config/tools.yaml"
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
     def model_post_init(self, __context: object, /) -> None:

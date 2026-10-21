@@ -1,4 +1,5 @@
 import os
+from copy import deepcopy
 from datetime import UTC, datetime
 from hashlib import sha256
 from uuid import UUID, uuid4
@@ -30,6 +31,7 @@ from stocks.repository import (
     persist_parse_result,
 )
 from stocks.embedding_space import VECTOR_DIMENSIONS
+from stocks.research.service import evidence_package_hash
 from stocks.settings import Settings
 
 ARTICLE_V1 = (
@@ -217,19 +219,66 @@ def selected_ref(saved: dict) -> dict:
     }
 
 
+def appended_input(saved: dict, *, input_id: str = "input-1") -> dict:
+    """One adopted Tool input in the shape the supplement loop appends."""
+
+    return {
+        "kind": "input",
+        "input_id": input_id,
+        "tool_id": "research_search",
+        "purpose": "Fetch the missing release.",
+        "role": "external_supplement",
+        "document_id": str(saved["document_id"]),
+        "source_id": saved["source_id"],
+        "document_version": saved["version"],
+        "parse_batch_id": str(saved["parse_batch_id"]),
+        "title": saved["title"],
+        "url": "https://www.example.gov/releases/one",
+        "chunks": [
+            {
+                "chunk_id": str(saved["chunk_id"]),
+                "position": saved["position"],
+                "chunk_ids": [str(saved["chunk_id"])],
+                "fact_ids": [],
+            }
+        ],
+        "timing": ["collected_after_as_of"],
+        "recorded_at": CREATED_AT.isoformat(),
+    }
+
+
 def persist_run(
     session,
     *,
     status: str = "succeeded",
     selected_chunks: list[dict] | None = None,
     gaps: list[str] | None = None,
+    appended_inputs: list[dict] | None = None,
+    appended_gaps: list[str] | None = None,
 ):
     """Save a Run with its Evidence Package, plus Analysis and Report on success.
 
     A failed Run keeps its Evidence Package but produces no Report, which is the
-    rule the V0-06 execution service enforces.
+    rule the V0-06 execution service enforces. ``appended_inputs`` and
+    ``appended_gaps`` write the V2-01 research-input ledger the same way the
+    supplement loop does: a selection boundary entry, then adopted inputs, then
+    named gaps.
     """
     selected = list(selected_chunks or [])
+    adopted = list(appended_inputs or [])
+    ledger = [
+        *adopted,
+        *(
+            {
+                "kind": "gap",
+                "code": code,
+                "message": f"{code} recorded while supplementing",
+                "round": 1,
+                "recorded_at": CREATED_AT.isoformat(),
+            }
+            for code in (appended_gaps or [])
+        ),
+    ]
     if session.get(TaskDefinition, TASK_ID) is None:
         session.add(
             TaskDefinition(
@@ -292,12 +341,30 @@ def persist_run(
         created_at=CREATED_AT,
     )
     session.add(package)
+    if ledger:
+        session.flush()
+        boundary = {
+            "kind": "selection_snapshot",
+            "evidence_package_id": str(package.id),
+            "evidence_package_hash": evidence_package_hash(package),
+            "recorded_at": CREATED_AT.isoformat(),
+        }
+        run.research_inputs = [boundary, *deepcopy(ledger)]
     report = None
     if status == "succeeded":
         session.flush()
+        # The Agent cites the initial selection plus the Chunks of every input
+        # the Run merged into its ledger view.
         refs = [
             {"chunk_id": item["chunk_id"], "document_id": item["document_id"]}
             for item in selected
+        ] + [
+            {
+                "chunk_id": chunk["chunk_id"],
+                "document_id": record["document_id"],
+            }
+            for record in adopted
+            for chunk in record.get("chunks", [])
         ]
         analysis = Analysis(
             run_id=run.id,
@@ -316,6 +383,7 @@ def persist_run(
             else [],
             open_questions=["Were later revisions published?"],
             evidence_refs=refs,
+            research_inputs=deepcopy(run.research_inputs or []),
             coverage=package.coverage,
             created_at=CREATED_AT,
         )
@@ -744,3 +812,85 @@ def test_document_payload_exposes_the_current_classification(engine, client, sna
     assert row["classification"]["companies"] == []
     detail = client.get(f"/api/documents/{first['document_id']}").json()
     assert detail["document"]["classification"]["should_extract"] is True
+
+
+def test_report_merges_initial_and_appended_evidence(
+    engine, client, snapshot_store
+):
+    """A report reads its initial package plus the inputs it actually adopted."""
+
+    config = make_config()
+    _objects, store, _read = snapshot_store
+    supplemental_bytes = (
+        b"<html><body><article><p>Payrolls rose by 180,000 in September."
+        b"</p></article></body></html>"
+    )
+    supplemental_text = "Payrolls rose by 180,000 in September."
+    with Session(engine) as session:
+        persist_source(session)
+        first = persist_parsed_version(
+            session, config, store, make_item(ARTICLE_V1), CHUNK_V1
+        )
+        mark_indexed(session, first)
+        second = persist_parsed_version(
+            session,
+            config,
+            store,
+            make_item(
+                supplemental_bytes,
+                dedupe_key="release-2",
+                title="Supplemental release",
+                original_url="https://www.example.gov/releases/two",
+            ),
+            supplemental_text,
+        )
+        mark_indexed(session, second)
+        _run, package, report = persist_run(
+            session,
+            selected_chunks=[selected_ref(first)],
+            appended_inputs=[appended_input(second)],
+            appended_gaps=["tool_timeout"],
+        )
+
+    detail = client.get(f"/api/reports/{report['report_id']}").json()
+    assert [entry["document_id"] for entry in detail["evidence"]] == [
+        str(first["document_id"]),
+        str(second["document_id"]),
+    ]
+    appended_entry = detail["evidence"][1]
+    assert appended_entry["chunk_available"] is True
+    assert appended_entry["text"] == supplemental_text
+    assert appended_entry["version_matches"] is True
+    assert set(detail["cited_chunk_ids"]) == {
+        str(first["chunk_id"]),
+        str(second["chunk_id"]),
+    }
+    # The frozen Evidence Package keeps its initial selection and count; the
+    # appended input is reported separately.
+    assert detail["evidence_package"]["selected_count"] == 1
+    assert detail["research_inputs"]["count"] == 1
+    entry = detail["research_inputs"]["entries"][0]
+    assert entry["input_id"] == "input-1"
+    assert entry["tool_id"] == "research_search"
+    assert entry["document_id"] == str(second["document_id"])
+    assert entry["timing"] == ["collected_after_as_of"]
+    assert [gap["code"] for gap in detail["research_inputs"]["gaps"]] == [
+        "tool_timeout"
+    ]
+    assert "tool_timeout" in detail["coverage_gaps"]
+
+    single = client.get(
+        f"/api/reports/{report['report_id']}/evidence/{second['chunk_id']}"
+    )
+    assert single.status_code == 200
+    assert single.json()["evidence"]["text"] == supplemental_text
+    cite_original(
+        client, second["document_id"], supplemental_bytes, "text/plain"
+    )
+
+    with Session(engine) as session:
+        row = session.get(EvidencePackage, package["package_id"])
+        assert [item["chunk_id"] for item in row.selected_chunks] == [
+            str(first["chunk_id"])
+        ]
+        assert row.selected_count == 1

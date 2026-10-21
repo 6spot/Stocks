@@ -49,19 +49,21 @@ tasks:
           agent: research_writer
           input: evidence
 
-  - id: unavailable_evidence_failure
-    name: Explicit Evidence Failure Example
+  - id: empty_evidence_report
+    name: Empty Evidence Report Example
     type: research
     trigger: manual
     enabled: true
-    objective: Demonstrate a persisted failure when the Agent has no evidence.
+    objective: >-
+      Demonstrate that a Run with no citable evidence still succeeds and
+      reports its coverage gaps instead of inventing findings.
     scope:
-      topics: [failure_example]
+      topics: [empty_evidence_example]
     steps:
       - id: evidence
         select_evidence:
           kind: select_evidence
-          queries: [deliberately unavailable evidence failure example]
+          queries: [deliberately unmatched empty evidence example]
           limit_per_query: 1
           source_ids: [__example_missing_saved_source__]
       - id: research
@@ -137,8 +139,9 @@ agents:
         evidence_package_id:
           type: string
         evidence:
+          # V2-01: a Run may legitimately have no citable evidence and report
+          # the coverage gap instead; every finding still has to cite evidence.
           type: array
-          minItems: 1
           items:
             type: object
             additionalProperties: true

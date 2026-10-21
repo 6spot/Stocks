@@ -6,7 +6,7 @@ import re
 from collections.abc import Callable
 from copy import deepcopy
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Literal
 from uuid import UUID
 
@@ -48,10 +48,39 @@ from stocks.search.service import semantic_search
 from stocks.settings import Settings
 
 EVIDENCE_SELECTION_POLICY_VERSION = "v1.0"
+# Version of the fields and normalization the Evidence Package snapshot hash
+# covers. Changing either requires a new value, so an old ledger entry cannot be
+# silently compared against a differently shaped snapshot.
+EVIDENCE_SNAPSHOT_POLICY_VERSION = "v1"
 MAX_EVIDENCE_TOKENS = 64_000
 MAX_QUERIES = 8
 MAX_QUERY_CHARACTERS = 4_000
 MAX_SOURCE_IDS = 20
+# Fields that make up the frozen selection snapshot of one Evidence Package.
+# A later supplemental Tool input may append to the package, never rewrite these.
+INITIAL_SNAPSHOT_FIELDS = (
+    "objective",
+    "scope",
+    "as_of",
+    "selection_policy_version",
+    "selection_budget",
+    "queries",
+    "selected_chunks",
+    "evidence_groups",
+    "coverage",
+    "candidates_discovered",
+    "candidates_screened",
+    "selected_count",
+    "unexamined_count",
+    "retrieval_truncated",
+    "change_scan",
+)
+LEDGER_KIND_SELECTION = "selection_snapshot"
+LEDGER_KIND_INPUT = "input"
+LEDGER_KIND_GAP = "gap"
+ORIGIN_INITIAL = "initial"
+ORIGIN_RESEARCH_INPUT = "research_input"
+SUPPLEMENT_ROLE = "external_supplement"
 
 
 @dataclass(frozen=True)
@@ -649,6 +678,163 @@ def durable_evidence_ref(item: dict) -> dict:
         "position",
     )
     return {field: deepcopy(item[field]) for field in fields}
+
+
+def _snapshot_value(value: object) -> object:
+    """Normalize one JSONB value so the snapshot hash is stable."""
+
+    if isinstance(value, datetime):
+        # One instant must hash the same whether a session reports it in UTC or
+        # in a local offset, and whether it was just created or read back.
+        if value.utcoffset() is not None:
+            return value.astimezone(UTC).isoformat()
+        return value.isoformat()
+    if isinstance(value, UUID):
+        return str(value)
+    if isinstance(value, dict):
+        return {str(key): _snapshot_value(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_snapshot_value(item) for item in value]
+    return value
+
+
+def evidence_package_snapshot(package: EvidencePackage) -> dict:
+    """The frozen selection snapshot an append must never rewrite.
+
+    Run ownership and creation time are deliberately excluded: a retry copies
+    the selection fields verbatim into a new Run, and the copied snapshot must
+    still hash to the same value.
+    """
+
+    return {
+        "snapshot_policy_version": EVIDENCE_SNAPSHOT_POLICY_VERSION,
+        **{
+            field: _snapshot_value(getattr(package, field))
+            for field in INITIAL_SNAPSHOT_FIELDS
+        },
+    }
+
+
+def evidence_package_hash(package: EvidencePackage) -> str:
+    payload = json.dumps(
+        evidence_package_snapshot(package),
+        ensure_ascii=False,
+        allow_nan=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
+def merged_research_refs(package: EvidencePackage, ledger: list | None) -> list[dict]:
+    """Combine the initial selection with every adopted Tool input.
+
+    The initial ``selected_chunks`` stay the first entries and keep their own
+    identity; adopted inputs follow in ledger order. Agent citation validation,
+    report detail and per-evidence lookup all read this one view, so a
+    supplemental Document is never citable in one place and invisible in
+    another.
+    """
+
+    selected = package.selected_chunks
+    if not isinstance(selected, list):
+        raise ValueError("Evidence Package selected chunks are invalid")
+    refs: list[dict] = []
+    for item in selected:
+        if not isinstance(item, dict):
+            raise ValueError("Evidence Package selected chunk is invalid")
+        refs.append({**deepcopy(item), "origin": ORIGIN_INITIAL})
+    if ledger is None:
+        return refs
+    if not isinstance(ledger, list):
+        raise ValueError("Research input ledger is invalid")
+    for record in ledger:
+        if not isinstance(record, dict):
+            raise ValueError("Research input ledger entry is invalid")
+        if record.get("kind") != LEDGER_KIND_INPUT:
+            continue
+        document_id = record.get("document_id")
+        parse_batch_id = record.get("parse_batch_id")
+        source_id = record.get("source_id")
+        document_version = record.get("document_version")
+        input_id = record.get("input_id")
+        chunks = record.get("chunks")
+        if (
+            not isinstance(document_id, str)
+            or not isinstance(parse_batch_id, str)
+            or not isinstance(source_id, str)
+            or not isinstance(document_version, int)
+            or isinstance(document_version, bool)
+            or not isinstance(input_id, str)
+            or not isinstance(chunks, list)
+            or not chunks
+        ):
+            raise ValueError("Research input ledger entry is invalid")
+        timing = record.get("timing")
+        if timing is not None and not isinstance(timing, list):
+            raise ValueError("Research input ledger timing is invalid")
+        for chunk in chunks:
+            if not isinstance(chunk, dict):
+                raise ValueError("Research input ledger chunk is invalid")
+            chunk_id = chunk.get("chunk_id")
+            position = chunk.get("position")
+            if (
+                not isinstance(chunk_id, str)
+                or not isinstance(position, int)
+                or isinstance(position, bool)
+            ):
+                raise ValueError("Research input ledger chunk is invalid")
+            refs.append(
+                {
+                    "chunk_id": chunk_id,
+                    "document_id": document_id,
+                    "parse_batch_id": parse_batch_id,
+                    "document_version": document_version,
+                    "source_id": source_id,
+                    "position": position,
+                    "role": SUPPLEMENT_ROLE,
+                    "reasons": ["tool_supplement"],
+                    "kinds": ["tool_retrieved"],
+                    "chunk_ids": deepcopy(chunk.get("chunk_ids", [chunk_id])),
+                    "fact_ids": deepcopy(chunk.get("fact_ids", [])),
+                    "origin": ORIGIN_RESEARCH_INPUT,
+                    "input_id": input_id,
+                    "tool_id": record.get("tool_id"),
+                    "title": record.get("title"),
+                    "timing": deepcopy(timing),
+                }
+            )
+    return refs
+
+
+def research_ledger_gaps(ledger: list | None) -> list[str]:
+    """The recorded supplement gaps of one Run, in ledger order."""
+
+    if ledger is None:
+        return []
+    if not isinstance(ledger, list):
+        raise ValueError("Research input ledger is invalid")
+    gaps: list[str] = []
+    for record in ledger:
+        if not isinstance(record, dict):
+            raise ValueError("Research input ledger entry is invalid")
+        if record.get("kind") != LEDGER_KIND_GAP:
+            continue
+        code = record.get("code")
+        if isinstance(code, str) and code:
+            gaps.append(code)
+    return list(dict.fromkeys(gaps))
+
+
+def selection_snapshot_entry(package: EvidencePackage, *, recorded_at: str) -> dict:
+    """The ledger entry that pins the Evidence Package a Run was selected from."""
+
+    return {
+        "kind": LEDGER_KIND_SELECTION,
+        "evidence_package_id": str(package.id),
+        "evidence_package_hash": evidence_package_hash(package),
+        "recorded_at": recorded_at,
+    }
 
 
 def _token_identity(hit: SearchHit) -> str:
