@@ -15,7 +15,7 @@
   "branch": "main",
   "base_branch": "main",
   "worktree_path": null,
-  "commit": null,
+  "commit": "46fa94a",
   "pr_url": null,
   "subtasks": [],
   "children": [],
@@ -27,7 +27,7 @@
     "docs/validation.md",
     "docs/quickstart.md"
   ],
-  "notes": "已完成 Compose/Nginx 生产形态、受保护同源入口和安全模型配置 503；amd64 隔离栈 smoke、Worker 单轮与 70 项定向测试通过。目标 ARM、真实 Provider/S3、真实移动设备与公网/TLS 保留 pending，详见 acceptance.md。",
+  "notes": "已完成 Compose/Nginx 生产形态、受保护同源入口和安全模型配置 503；amd64 隔离栈 smoke、Worker 单轮与 70 项定向测试通过，最终配置读取与安全头补测为 5 passed。目标 ARM、真实 Provider/S3、真实移动设备与公网/TLS 保留 pending，详见 acceptance.md。",
   "meta": {
     "milestone": "V1",
     "kind": "delivery",
