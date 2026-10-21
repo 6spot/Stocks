@@ -523,3 +523,25 @@ Removed Pi Trellis subprocess dispatch, routed Pi workflow through the main sess
 ### Status
 
 [OK] **Completed**
+
+
+## Session 18: V2-01 authorized Tool MCP and on-demand research supplement
+<!-- trellis-session: v=2 fp=1412aa1c8c72fc1d -->
+
+**Date**: 2026-10-22
+**Task**: V2-01 authorized Tool MCP and on-demand research supplement
+**Branch**: `main`
+
+### Summary
+
+Implemented deny-by-default Tool catalog, remote MCP Streamable HTTP client, bounded Repository-first supplement loop, append-only research_inputs ledger merged into report/evidence API, retry ledger preservation and empty-evidence success. Verified on test server 100.120.14.84: 229 passed across affected modules; fresh-DB alembic upgrade head + check clean. Real remote MCP provider/credentials remain unverified pending Owner input.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `0359a6f` | feat(tools): add authorized MCP retrieval with a research input ledger |
+
+### Status
+
+[OK] **Completed**

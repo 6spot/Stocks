@@ -8,8 +8,8 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 17
-- **Last Active**: 2026-10-21
+- **Total Sessions**: 18
+- **Last Active**: 2026-10-22
 <!-- @@@/auto:current-status -->
 
 ---
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~525 | Active |
+| `journal-1.md` | ~547 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 18 | 2026-10-22 | V2-01 authorized Tool MCP and on-demand research supplement | `0359a6f` | `main` |
 | 17 | 2026-10-21 | V1-06 Document/Fact 统一增量取材与覆盖 | `b21c0b5` | `main` |
 | 16 | 2026-10-21 | V1-05 提交可见变化水位与可继续扫描 | `281e065` | `main` |
 | 15 | 2026-10-21 | Inline Pi Trellis and remove OpenCode integration | `86d5376` | `chore/pi-trellis-inline-opencode` |
