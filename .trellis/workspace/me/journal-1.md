@@ -391,3 +391,25 @@ Fixed the four defects found reviewing archived V0-01/V0-02: the latest-content 
 ### Next Steps
 
 - V1-08 实施时按实际依赖版本确认 API，并在指定测试服务器执行相关验证。
+
+
+## Session 12: V1-01 scheduled Worker and Owner recovery delivery
+<!-- trellis-session: v=2 fp=ff11d98ab57e6db5 -->
+
+**Date**: 2026-10-21
+**Task**: V1-01 scheduled Worker and Owner recovery delivery
+**Branch**: `feat/v0-07-evidence-api-acceptance`
+
+### Summary
+
+交付并推送独立采集/研究定时 Worker、持久调度、Owner 确认停机后的结束/重试及证据复用。测试服务器 142 项相关 pytest、新库初始化/结构检查、容器 CLI smoke 9 阶段、SIGKILL/end/retry 18 项通过；本任务远程资源已清理。PA-1 真实模型闭环仍延后，默认 PyPI 构建下载超时，测试镜像副本构建成功。保留无关 Pi/Trellis 工作，按用户要求转入 V1-02 规划。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `8f67efe` | feat(execution): add scheduled workers and owner-confirmed run recovery |
+
+### Status
+
+[OK] **Completed**
