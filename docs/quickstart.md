@@ -12,7 +12,7 @@ Requires Docker Compose. An S3-compatible endpoint is needed to collect and pers
 
 `api` and `worker` are separate processes from the same image and configuration. The API only reads and never executes a Task Run; the Worker polls PostgreSQL for `queued` Runs and evaluates due schedules, so a restart of either one does not lose queued work. The Worker has no published port.
 
-The current implementation provides Source/Document/Chunk models, fresh-database initialization, a versioned Document repository, configured RSS/Atom discovery, safe HTTP article acquisition, a manual collection CLI, a unified Document processing backlog with manual parse/index commands, pgvector indexing and semantic/exact search CLI, a document-list API, a generic S3 snapshot helper, an HTTP model client, a configured Task runner, a persistent Task scheduler, and an independent Worker with separate Run and document processing slots. The runner persists an Evidence Package with actual Chunk/Document versions, validates structured findings against that snapshot, and saves an Analysis plus a readable Report. The repository checks `(source_id, dedupe_key)` and SHA-256 before writing storage, reuses an immutable Document version and updates a separate collection state for identical bytes, and creates the next immutable Document version for changed bytes. The read-only report and evidence API is implemented; see the next section. Lightweight classification through a configurable Decision Model is implemented; Fact extraction, reliable change watermarks, and the Web console remain to be implemented.
+The current implementation provides Source/Document/Chunk models, fresh-database initialization, a versioned Document repository, configured RSS/Atom discovery, safe HTTP article acquisition, a manual collection CLI, a unified Document processing backlog with manual parse/index commands, pgvector indexing and semantic/exact search CLI, a document-list API, a generic S3 snapshot helper, an HTTP model client, a configured Task runner, a persistent Task scheduler, and an independent Worker with separate Run and document processing slots. The runner persists an Evidence Package with actual Chunk/Document versions, validates structured findings against that snapshot, and saves an Analysis plus a readable Report. The repository checks `(source_id, dedupe_key)` and SHA-256 before writing storage, reuses an immutable Document version and updates a separate collection state for identical bytes, and creates the next immutable Document version for changed bytes. The read-only report and evidence API is implemented; see the next section. Lightweight classification through a configurable Decision Model, generic Fact storage with on-demand extraction, and structured API field mapping are implemented; reliable change watermarks and the Web console remain to be implemented.
 
 The snapshot helper stores the exact bytes supplied by its caller, computes their SHA-256 hash, and uses the supplied content type; it does not assume XML or a particular collection channel. `stocks.repository.ingest_document()` remains the only Document write entry point.
 
@@ -54,8 +54,7 @@ wait/skip reason, safe error, processor version, input batch) plus counts, the
 processor is not registered is reported as `pending` with
 `wait_reason: PROCESSOR_NOT_AVAILABLE` and `processor_available: false`; it is never
 claimed, never consumes an attempt and is never reported as completed or skipped. This
-release registers `parse`, `classify` and `index`; `facts` waits for its own
-implementation.
+release registers `parse`, `classify`, `facts` and `index`.
 
 Recover or explicitly reprocess work:
 
@@ -108,8 +107,8 @@ being returned again. `--reprocess` creates a new batch. If that attempt fails, 
 successful batch and its Chunks remain readable and unchanged; a later success becomes
 the current batch without deleting history. Unsupported formats and documents with no
 extractable evidence text are recorded as `unsupported` or `failed`; they are never
-stored as empty successful chunks. PDF/JSON/XML parsing and OCR remain future work, Facts
-are V1-04, and the Web console for reading the backlog is not implemented yet.
+stored as empty successful chunks. PDF/JSON/XML parsing and OCR remain future work, and the
+Web console for reading the backlog is not implemented yet.
 The separate Task trigger, scheduler, Worker and unified processing backlog are
 implemented; see [Tasks, scheduling and the Worker](#tasks-scheduling-and-the-worker).
 
@@ -151,6 +150,89 @@ docker compose run --rm api python -m stocks.processing status --stage classify
 docker compose run --rm api python -m stocks.processing reprocess \
   --document-id <document-uuid> --stage classify --execute
 ```
+
+## Facts and structured API sources
+
+`facts` stores reusable structured statements from either origin: text a
+Generation Model extracted, or values mapped directly from a raw API response. Both
+live in one `facts` table; `origin_method` says which one produced a row and
+type-specific detail goes into `attributes`. Every Fact cites the Document version it
+came from plus either a `chunk_id` (text) or a JSON `pointer` (mapped), so a reader can
+always resolve it back to stored bytes.
+
+Configure the generation route for text extraction in `config/models.yaml`:
+
+```yaml
+agents:
+  fact_extraction:
+    protocol: openai_compatible
+    routing:
+      primary: research
+      fallbacks: []
+      required_capabilities: [chat, structured_output]
+      timeout_seconds: 60
+      retries: 1
+```
+
+Text extraction runs only when the stored classification says `should_extract: true`;
+`false` marks the stage `NOT_APPLICABLE`, and an undecided verdict leaves it waiting as
+`CLASSIFICATION_PENDING` without consuming an attempt. `FACT_EXTRACTION_MAX_CHARACTERS`
+(default 12000, bounded to 200..80000) caps how much of the current parse batch one
+call may read.
+
+A structured API source declares a mapper instead of a feed, in `config/sources.yaml`:
+
+```yaml
+sources:
+  - source_id: bls_cpi
+    name: BLS CPI
+    connector: http_api
+    publisher: U.S. Bureau of Labor Statistics
+    trust_tier: T1
+    api_url: https://api.example.gov/cpi
+    query: {series: CPIAUCSL}
+    timeout_seconds: 30
+    max_response_bytes: 1000000
+    max_redirects: 3
+    max_items: 10
+    user_agent: StocksIntelligence/0.1 (owner@example.com)
+    mapper:
+      id: cpi-series
+      fields:
+        - kind: numeric
+          pointer: /series/observations/0/value
+          fact_type: macro_indicator
+          metric_id: cpi_yoy
+          unit: percent
+          period_start_pointer: /series/observations/0/period
+          available_at_pointer: /released_at
+```
+
+Collection makes one bounded request and stores the raw response as a Document
+version; mapping happens in the `facts` stage, so a numeric payload needs neither a
+text classifier nor a vector. A `numeric` field must declare its `unit` — a value whose
+unit is unknown is never stored as if it were comparable. A field that is absent from
+the response simply produces no Fact, and a response matching none of the configured
+fields fails with `MAPPING_NO_FIELDS_MATCHED` instead of an empty success.
+
+Run and read the stage:
+
+```bash
+docker compose run --rm api python -m stocks.processing facts --limit 20
+docker compose run --rm api python -m stocks.processing facts \
+  --document-id <document-uuid> --sources-config config/sources.yaml
+docker compose run --rm api python -m stocks.processing reprocess \
+  --document-id <document-uuid> --stage facts --execute
+
+# Read-only views: these never start extraction.
+docker compose run --rm api python -m stocks.processing facts --source-id bls_cpi
+curl -s 'http://127.0.0.1:8000/api/facts?source_id=bls_cpi&limit=20'
+curl -s "http://127.0.0.1:8000/api/documents/<document-uuid>/facts"
+```
+
+Repeating a stage for the same content version does not duplicate Facts: identity is
+`(document_id, fact_key)`. A revised value arrives as a new Document version and
+therefore a new Fact, so an older report keeps citing the value it actually used.
 
 ## Manual embedding indexing and search
 

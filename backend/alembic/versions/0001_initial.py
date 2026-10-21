@@ -605,6 +605,72 @@ def upgrade():
         "document_processing_states",
         ["stage", "status", "next_attempt_at"],
     )
+    op.create_table(
+        "facts",
+        sa.Column("id", UUID(as_uuid=True), primary_key=True),
+        sa.Column(
+            "document_id",
+            UUID(as_uuid=True),
+            sa.ForeignKey("documents.id", ondelete="CASCADE"),
+            nullable=False,
+        ),
+        sa.Column("fact_key", sa.String(200), nullable=False),
+        sa.Column("fact_type", sa.String(80), nullable=False),
+        sa.Column("origin_method", sa.String(24), nullable=False),
+        sa.Column("evidence_ref", JSONB(), nullable=False),
+        sa.Column("subject_name", sa.String(255)),
+        sa.Column("symbol", sa.String(32)),
+        sa.Column("metric_id", sa.String(120)),
+        sa.Column("statement", sa.Text()),
+        sa.Column("value", sa.Float()),
+        sa.Column("unit", sa.String(80)),
+        sa.Column("period_start", sa.DateTime(timezone=True)),
+        sa.Column("period_end", sa.DateTime(timezone=True)),
+        sa.Column("available_at", sa.DateTime(timezone=True)),
+        sa.Column(
+            "attributes",
+            JSONB(),
+            nullable=False,
+            server_default=sa.text("'{}'::jsonb"),
+        ),
+        sa.Column("processor_version", sa.String(80)),
+        sa.Column("config_fingerprint", sa.String(64)),
+        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
+        sa.CheckConstraint(
+            "origin_method IN ('llm_extraction', 'source_mapping')",
+            name="ck_facts_origin_method",
+        ),
+        sa.CheckConstraint(
+            "statement IS NOT NULL OR value IS NOT NULL",
+            name="ck_facts_content_present",
+        ),
+        sa.CheckConstraint(
+            "value IS NULL OR unit IS NOT NULL",
+            name="ck_facts_value_has_unit",
+        ),
+        sa.CheckConstraint(
+            "period_start IS NULL OR period_end IS NULL "
+            "OR period_start <= period_end",
+            name="ck_facts_period_order",
+        ),
+        sa.CheckConstraint(
+            "jsonb_typeof(evidence_ref) = 'object'",
+            name="ck_facts_evidence_ref_object",
+        ),
+        sa.CheckConstraint(
+            "jsonb_typeof(attributes) = 'object'",
+            name="ck_facts_attributes_object",
+        ),
+        sa.UniqueConstraint(
+            "document_id",
+            "fact_key",
+            name="uq_facts_document_key",
+        ),
+    )
+    op.create_index("ix_facts_document", "facts", ["document_id"])
+    op.create_index("ix_facts_type_subject", "facts", ["fact_type", "subject_name"])
+    op.create_index("ix_facts_symbol_metric", "facts", ["symbol", "metric_id"])
+    op.create_index("ix_facts_period", "facts", ["period_start", "period_end"])
 
 
 def downgrade():
@@ -612,6 +678,11 @@ def downgrade():
         "ix_document_processing_states_ready",
         table_name="document_processing_states",
     )
+    op.drop_index("ix_facts_period", table_name="facts")
+    op.drop_index("ix_facts_symbol_metric", table_name="facts")
+    op.drop_index("ix_facts_type_subject", table_name="facts")
+    op.drop_index("ix_facts_document", table_name="facts")
+    op.drop_table("facts")
     op.drop_table("document_processing_states")
     op.drop_table("document_embedding_states")
     op.drop_index("ix_document_chunk_embeddings_hnsw", table_name="document_chunk_embeddings")

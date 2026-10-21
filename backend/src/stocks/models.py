@@ -6,6 +6,7 @@ from sqlalchemy import (
     Boolean,
     CheckConstraint,
     DateTime,
+    Float,
     ForeignKey,
     Index,
     Integer,
@@ -674,4 +675,98 @@ class DocumentProcessingState(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
+
+
+FACT_ORIGIN_METHODS = ("llm_extraction", "source_mapping")
+
+
+class Fact(Base):
+    """A reusable structured statement derived from one Document version.
+
+    One generic table serves both text extraction and API field mapping. Nothing
+    here is a per-metric table: kind-specific detail lives in ``attributes``.
+
+    Every Fact cites the exact Document version it came from and an
+    ``evidence_ref`` that points at either a stored Chunk or a JSON field path, so
+    a reader can always get back to the original bytes. A revised value is a new
+    Fact on a new Document version; an existing Fact is never overwritten, which
+    is what keeps an older report's citation valid.
+    """
+
+    __tablename__ = "facts"
+    __table_args__ = (
+        CheckConstraint(
+            "origin_method IN ('llm_extraction', 'source_mapping')",
+            name="ck_facts_origin_method",
+        ),
+        CheckConstraint(
+            "statement IS NOT NULL OR value IS NOT NULL",
+            name="ck_facts_content_present",
+        ),
+        CheckConstraint(
+            "value IS NULL OR unit IS NOT NULL",
+            name="ck_facts_value_has_unit",
+        ),
+        CheckConstraint(
+            "period_start IS NULL OR period_end IS NULL "
+            "OR period_start <= period_end",
+            name="ck_facts_period_order",
+        ),
+        CheckConstraint(
+            "jsonb_typeof(evidence_ref) = 'object'",
+            name="ck_facts_evidence_ref_object",
+        ),
+        CheckConstraint(
+            "jsonb_typeof(attributes) = 'object'",
+            name="ck_facts_attributes_object",
+        ),
+        # Idempotency: the same extracted statement or the same mapped field of
+        # the same content version can exist only once, so a retried attempt
+        # cannot multiply identical Facts.
+        UniqueConstraint(
+            "document_id",
+            "fact_key",
+            name="uq_facts_document_key",
+        ),
+        Index("ix_facts_document", "document_id"),
+        Index("ix_facts_type_subject", "fact_type", "subject_name"),
+        Index("ix_facts_symbol_metric", "symbol", "metric_id"),
+        Index("ix_facts_period", "period_start", "period_end"),
+    )
+    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, default=uuid4)
+    document_id: Mapped[UUID] = mapped_column(
+        ForeignKey("documents.id", ondelete="CASCADE")
+    )
+    # Deterministic identity of this Fact within its Document version, derived
+    # from the origin method, the mapped field path or the extracted statement.
+    fact_key: Mapped[str] = mapped_column(String(200))
+    fact_type: Mapped[str] = mapped_column(String(80))
+    origin_method: Mapped[str] = mapped_column(String(24))
+    evidence_ref: Mapped[dict] = mapped_column(JSONB)
+    subject_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    symbol: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    metric_id: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    statement: Mapped[str | None] = mapped_column(Text, nullable=True)
+    value: Mapped[float | None] = mapped_column(Float, nullable=True)
+    unit: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    period_start: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    period_end: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    # When the source made this value publicly knowable, not when Stocks stored it.
+    available_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    attributes: Mapped[dict] = mapped_column(
+        JSONB, default=dict, server_default=text("'{}'::jsonb")
+    )
+    processor_version: Mapped[str | None] = mapped_column(
+        String(80), nullable=True
+    )
+    config_fingerprint: Mapped[str | None] = mapped_column(
+        String(64), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
 

@@ -36,18 +36,30 @@ STAGE_FACTS = "facts"
 STAGE_INDEX = "index"
 
 # A stage may only start once its inputs exist. ``classify`` reads the current
-# successful parse batch; ``facts`` follows the classification decision that
-# produces ``should_extract``; ``index`` only needs locatable chunks.
+# successful parse batch; ``index`` only needs locatable chunks.
+#
+# ``facts`` has no hard dependency. Its input is the stored content itself: a
+# structured API response is mapped by a Source Mapper from the raw bytes, and a
+# text Document is extracted from the current parse batch. Requiring ``parse`` would
+# block every JSON/XML response, which has no extractable prose and is therefore
+# ``unsupported`` as a parse; requiring ``classify`` would force machine-readable
+# payloads through a text classifier. The processor reads the ``should_extract``
+# verdict itself and waits while it is undecided, so the applicability relation
+# below — not a hard dependency — decides whether Facts is needed.
 STAGE_DEPENDENCIES: dict[str, tuple[str, ...]] = {
     STAGE_PARSE: (),
     STAGE_CLASSIFY: (STAGE_PARSE,),
-    STAGE_FACTS: (STAGE_CLASSIFY,),
+    STAGE_FACTS: (),
     STAGE_INDEX: (STAGE_PARSE,),
 }
 
 WAIT_PARSE_UNAVAILABLE = "PARSE_UNAVAILABLE"
 WAIT_PARSE_UNSUPPORTED = "PARSE_UNSUPPORTED"
 WAIT_PROCESSOR_NOT_AVAILABLE = "PROCESSOR_NOT_AVAILABLE"
+# Facts is ready to run but the classifier has not produced its should_extract
+# verdict yet. Waiting consumes no attempt: the decision is not a failure, it is
+# simply not made, and a completed classification clears this reason.
+WAIT_CLASSIFICATION_PENDING = "CLASSIFICATION_PENDING"
 
 # Set when a stage is skipped only because a stage it depends on was skipped, so
 # it never had its own applicability decided. A later completed dependency reopens
@@ -69,6 +81,25 @@ DIRECT_SKIP_APPLICABILITY: dict[tuple[str, str], str] = {
     (STAGE_PARSE, STAGE_CLASSIFY): "requires_classification",
     (STAGE_CLASSIFY, STAGE_FACTS): "requires_extraction",
 }
+
+
+def _affected_by(stage: str) -> tuple[str, ...]:
+    """Stages whose outcome this stage can decide, in either relation.
+
+    A hard dependency supplies the dependent's input; an applicability pair only
+    decides whether the dependent is needed at all. ``classify`` is the second kind
+    for ``facts``: the stored content, not the classification, is the input.
+    """
+
+    return tuple(
+        candidate
+        for candidate in PROCESSING_STAGES
+        if candidate != stage
+        and (
+            stage in STAGE_DEPENDENCIES[candidate]
+            or (stage, candidate) in DIRECT_SKIP_APPLICABILITY
+        )
+    )
 
 # Only these stages read the current parse batch and therefore have to run again
 # when a new successful batch becomes current. ``facts`` deliberately stays out:
@@ -669,37 +700,45 @@ def _propagate_skips(
     # is recorded as a skip.
     available = {state.stage} if outcome.status == OUTCOME_COMPLETED else set()
     skipped = {state.stage} if outcome.status == OUTCOME_SKIPPED else set()
-    for stage in PROCESSING_STAGES:
-        if stage in available or stage in skipped:
-            continue
-        dependencies = STAGE_DEPENDENCIES[stage]
-        if not any(
-            dependency in available or dependency in skipped
-            for dependency in dependencies
-        ):
-            # Its inputs are still pending, so nothing is decided here yet.
-            continue
-        field = DIRECT_SKIP_APPLICABILITY.get((state.stage, stage))
-        if (
-            field is not None
-            and state.stage in dependencies
-            and applicability.get(field) is False
-        ):
-            skip_reason = outcome.skip_reason or SKIP_NOT_APPLICABLE
-        elif any(dependency in skipped for dependency in dependencies):
-            # Its own dependency will never produce a result, so neither can it.
-            skip_reason = SKIP_DEPENDENCY_SKIPPED
-        else:
-            continue
-        skipped.add(stage)
-        row = session.get(DocumentProcessingState, (state.document_id, stage))
-        if row is None or row.status not in {"pending", "failed"}:
-            continue
-        row.status = "skipped"
-        row.skip_reason = skip_reason
-        row.wait_reason = None
-        row.next_attempt_at = None
-        row.owner_token = None
+    while True:
+        progressed = False
+        for stage in PROCESSING_STAGES:
+            if stage in available or stage in skipped:
+                continue
+            dependencies = STAGE_DEPENDENCIES[stage]
+            field = DIRECT_SKIP_APPLICABILITY.get((state.stage, stage))
+            decided_here = field is not None and applicability.get(field) is False
+            # A stage is also pointless when a stage that decides its
+            # applicability skipped itself: no verdict will ever arrive, so waiting
+            # would leave it looking permanently blocked.
+            deciding_sources = [
+                source
+                for (source, dependent) in DIRECT_SKIP_APPLICABILITY
+                if dependent == stage
+            ]
+            dependency_skipped = any(
+                dependency in skipped
+                for dependency in (*dependencies, *deciding_sources)
+            )
+            if not decided_here and not dependency_skipped:
+                # Its inputs are still pending, so nothing is decided here yet.
+                continue
+            if decided_here:
+                skip_reason = outcome.skip_reason or SKIP_NOT_APPLICABLE
+            else:
+                skip_reason = SKIP_DEPENDENCY_SKIPPED
+            skipped.add(stage)
+            progressed = True
+            row = session.get(DocumentProcessingState, (state.document_id, stage))
+            if row is None or row.status not in {"pending", "failed"}:
+                continue
+            row.status = "skipped"
+            row.skip_reason = skip_reason
+            row.wait_reason = None
+            row.next_attempt_at = None
+            row.owner_token = None
+        if not progressed:
+            return
 
 
 def _reopen_dependency_skips(
@@ -719,9 +758,7 @@ def _reopen_dependency_skips(
     """
 
     applicability = outcome.applicability or {}
-    for stage, dependencies in STAGE_DEPENDENCIES.items():
-        if state.stage not in dependencies:
-            continue
+    for stage in _affected_by(state.stage):
         row = session.get(DocumentProcessingState, (state.document_id, stage))
         if row is None or row.status != "skipped":
             continue
@@ -744,6 +781,22 @@ def _reopen_dependency_skips(
         row.wait_reason = None
 
 
+def clear_wait_reason(
+    session: Session, document_id: UUID, stage: str, reason: str
+) -> None:
+    """Drop a waiting reason a stage recorded for itself once it no longer holds.
+
+    Used when the input a stage was waiting for arrives: a ``pending`` row that
+    keeps ``CLASSIFICATION_PENDING`` after the classification completed would look
+    permanently blocked while actually being claimable.
+    """
+
+    row = session.get(DocumentProcessingState, (document_id, stage))
+    if row is None or row.status != "pending" or row.wait_reason != reason:
+        return
+    row.wait_reason = None
+
+
 def _apply_downstream(
     session: Session,
     state: DocumentProcessingState,
@@ -764,6 +817,12 @@ def _apply_downstream(
         _reopen_dependency_skips(session, state, outcome)
     if outcome.status in {OUTCOME_COMPLETED, OUTCOME_SKIPPED}:
         _propagate_skips(session, state, outcome)
+    if outcome.stage == STAGE_CLASSIFY and outcome.status == OUTCOME_COMPLETED:
+        # Facts reads the classification verdict itself; a decided verdict ends
+        # the wait it recorded while the classifier had not run.
+        clear_wait_reason(
+            session, state.document_id, STAGE_FACTS, WAIT_CLASSIFICATION_PENDING
+        )
     if outcome.stage != STAGE_PARSE:
         return
     dependents = [

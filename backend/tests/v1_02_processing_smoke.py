@@ -271,24 +271,16 @@ def main() -> int:
         status_before if not isinstance(status_before, dict) else "count mismatch",
     )
     check(
-        "status reports facts as unavailable",
+        "status reports every stage as registered",
         isinstance(status_before, dict)
-        and "facts" in set(status_before.get("unavailable_stages", [])),
+        and set(status_before.get("unavailable_stages", [])) == set(),
         status_before if not isinstance(status_before, dict) else None,
     )
     check(
-        "status shows the unavailable stage as waiting, not skipped",
+        "status shows facts as registered but not yet run",
         all(
-            status_before["items"] and row["status"] == "pending"
-            for row in [
-                item
-                for item in status_before.get("items", [])
-                if item["stage"] == "facts"
-            ]
-        )
-        and all(
-            item["wait_reason"] == "PROCESSOR_NOT_AVAILABLE"
-            and item["processor_available"] is False
+            item["processor_available"] is True
+            and item["status"] in {"pending", "skipped"}
             for item in status_before.get("items", [])
             if item["stage"] == "facts"
         ),

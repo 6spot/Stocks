@@ -116,6 +116,7 @@ class WorkerContext:
         return build_stage_registry(
             self.model_config_path,
             model_transport=self.model_transport,
+            sources_config_path=self.sources_config_path,
         )
 
 

@@ -23,6 +23,7 @@ from stocks.processing.runner import (
     run_stages_for_documents,
 )
 from stocks.processing.stages import (
+    STAGE_FACTS,
     STAGE_INDEX,
     STAGE_PARSE,
     list_stage_states,
@@ -31,6 +32,7 @@ from stocks.repository import list_parse_chunks
 from stocks.settings import settings
 
 DEFAULT_MODEL_CONFIG = "config/models.yaml"
+DEFAULT_SOURCES_CONFIG = "config/sources.yaml"
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -76,6 +78,22 @@ def _parser() -> argparse.ArgumentParser:
         "index", help="Index selected Documents through the index stage."
     )
     _add_execute_arguments(index)
+
+    facts = subparsers.add_parser(
+        "facts",
+        help="Extract or map Facts for selected Documents through the facts stage.",
+    )
+    _add_execute_arguments(facts)
+    facts.add_argument(
+        "--source-id",
+        help="Report the stored Facts of one source instead of processing anything.",
+    )
+    facts.add_argument(
+        "--document-id-report",
+        action="append",
+        dest="report_document_ids",
+        help="Report the stored Facts of these Documents; repeat for several.",
+    )
     return parser
 
 
@@ -130,7 +148,15 @@ def _add_reopen_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--config",
         default=DEFAULT_MODEL_CONFIG,
-        help="Provider/model YAML used only when an index stage actually runs.",
+        help="Provider/model YAML used only when a model-backed stage runs.",
+    )
+    parser.add_argument(
+        "--sources-config",
+        default=DEFAULT_SOURCES_CONFIG,
+        help=(
+            "Source YAML providing Source Mappers; used only when a facts "
+            "stage actually maps a structured response."
+        ),
     )
 
 
@@ -155,7 +181,15 @@ def _add_execute_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--config",
         default=DEFAULT_MODEL_CONFIG,
-        help="Provider/model YAML used only when an index stage actually runs.",
+        help="Provider/model YAML used only when a model-backed stage runs.",
+    )
+    parser.add_argument(
+        "--sources-config",
+        default=DEFAULT_SOURCES_CONFIG,
+        help=(
+            "Source YAML providing Source Mappers; used only when a facts "
+            "stage actually maps a structured response."
+        ),
     )
 
 
@@ -189,6 +223,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         return _status(args, document_ids)
     if args.command in {"retry", "reprocess"}:
         return _reopen(args, document_ids or [])
+    if args.command == "facts" and (args.source_id or args.report_document_ids):
+        return _report_facts(args)
     return _execute(args, document_ids, parser)
 
 
@@ -196,7 +232,10 @@ def _status(args, document_ids: list[UUID] | None) -> int:
     if not 1 <= args.limit <= 200:
         return _fail(_error("LIMIT_INVALID", "limit must be between 1 and 200"))
     try:
-        registry = build_stage_registry(DEFAULT_MODEL_CONFIG)
+        registry = build_stage_registry(
+            DEFAULT_MODEL_CONFIG,
+            sources_config_path=DEFAULT_SOURCES_CONFIG,
+        )
         with session_factory()() as session:
             rows = describe_stages(
                 session,
@@ -243,7 +282,9 @@ def _reopen(args, document_ids: list[UUID]) -> int:
     executions, errors = run_stages_for_documents(
         session_factory(),
         settings(),
-        build_stage_registry(args.config),
+        build_stage_registry(
+            args.config, sources_config_path=args.sources_config
+        ),
         document_ids,
         args.stage,
         reprocess=args.command == "reprocess",
@@ -258,8 +299,15 @@ def _reopen(args, document_ids: list[UUID]) -> int:
     return 1 if errors else 0
 
 
+STAGE_BY_COMMAND = {
+    "parse": STAGE_PARSE,
+    "index": STAGE_INDEX,
+    "facts": STAGE_FACTS,
+}
+
+
 def _execute(args, document_ids: list[UUID] | None, parser) -> int:
-    stage = STAGE_PARSE if args.command == "parse" else STAGE_INDEX
+    stage = STAGE_BY_COMMAND[args.command]
     if not 1 <= args.limit <= 200:
         parser.error("--limit must be between 1 and 200")
     try:
@@ -293,7 +341,9 @@ def _execute(args, document_ids: list[UUID] | None, parser) -> int:
     executions, errors = run_stages_for_documents(
         session_factory(),
         settings(),
-        build_stage_registry(args.config),
+        build_stage_registry(
+            args.config, sources_config_path=args.sources_config
+        ),
         targets,
         [stage],
         reprocess=args.reprocess,
@@ -316,6 +366,63 @@ def _execute(args, document_ids: list[UUID] | None, parser) -> int:
         output["errors"] = errors
     print(json.dumps(output, ensure_ascii=False, indent=2))
     return 1 if output["failed"] or errors else 0
+
+
+def _report_facts(args) -> int:
+    """Print stored Facts for a source or explicit Documents.
+
+    This is a read-only view of what the ``facts`` stage already produced; it does
+    not run the stage, so a report never triggers a model call.
+    """
+
+    from stocks.facts import (
+        FactFilters,
+        fact_to_dict,
+        search_facts,
+    )
+
+    try:
+        document_ids = [
+            UUID(value) for value in (args.report_document_ids or [])
+        ]
+    except ValueError:
+        return _fail(
+            _error("DOCUMENT_ID_INVALID", "document id must be a valid UUID")
+        )
+    filters = FactFilters(
+        source_ids=(args.source_id,) if args.source_id else (),
+        document_ids=tuple(document_ids),
+    )
+    try:
+        with session_factory()() as session:
+            rows = search_facts(session, filters, limit=args.limit)
+            items = [fact_to_dict(row) for row in rows]
+    except (ValueError, OSError) as exc:
+        return _fail(
+            _error(
+                "FACTS_UNAVAILABLE",
+                "Stored Facts could not be read",
+                detail=str(exc),
+            )
+        )
+    print(
+        json.dumps(
+            {
+                "count": len(items),
+                "truncated": len(items) == args.limit,
+                "filters": {
+                    "source_ids": list(filters.source_ids),
+                    "document_ids": [
+                        str(value) for value in filters.document_ids
+                    ],
+                },
+                "items": items,
+            },
+            ensure_ascii=False,
+            indent=2,
+        )
+    )
+    return 0
 
 
 def _attach_chunks(session, item: dict) -> None:

@@ -9,6 +9,7 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_valida
 
 from stocks.collection.errors import CollectionError, ConfigurationError
 from stocks.collection.urls import validate_https_url
+from stocks.source_mapper import MappingError, SourceMapper, parse_mapper
 
 MAX_CONFIG_BYTES = 1_000_000
 CONTACT_USER_AGENT = re.compile(
@@ -27,29 +28,79 @@ def validate_user_agent(value: str) -> str:
 
 
 class SourceConfig(BaseModel):
+    """One configured source.
+
+    A source either discovers articles through a feed (``rss``) or reads a
+    structured HTTP API response (``http_api``). The API variant carries a
+    ``mapper``: the field mapping that turns the stored response into Facts. It does
+    not carry a feed URL, and the RSS variant carries no mapper, so a configuration
+    cannot half-describe both.
+    """
+
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     source_id: str = Field(pattern=r"^[A-Za-z0-9_-]+$", min_length=1, max_length=120)
     name: str = Field(min_length=1, max_length=255)
-    connector: Literal["rss"]
+    connector: Literal["rss", "http_api"]
     enabled: bool = True
     publisher: str = Field(min_length=1, max_length=255)
     trust_tier: Literal["T1", "T2", "T3", "T4"]
-    feed_url: str = Field(min_length=1, max_length=2048)
+    feed_url: str | None = Field(default=None, min_length=1, max_length=2048)
+    api_url: str | None = Field(default=None, min_length=1, max_length=2048)
+    query: dict[str, str] = Field(default_factory=dict)
+    mapper: SourceMapper | None = None
     timeout_seconds: float = Field(ge=1, le=120)
     max_response_bytes: int = Field(ge=1_024, le=20_000_000)
     max_redirects: int = Field(ge=0, le=10)
     max_items: int = Field(ge=1, le=200)
     user_agent: str = Field(min_length=1, max_length=255)
 
-    @field_validator("feed_url")
+    @field_validator("feed_url", "api_url")
     @classmethod
-    def validate_feed_url(cls, value: str) -> str:
+    def validate_fetch_url(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
         try:
             validate_https_url(value)
         except CollectionError as exc:
             raise ValueError(exc.message) from exc
         return value
+
+    @field_validator("mapper", mode="before")
+    @classmethod
+    def build_mapper(cls, value: object) -> SourceMapper | None:
+        if value is None or isinstance(value, SourceMapper):
+            return value
+        try:
+            return parse_mapper(value)
+        except MappingError as exc:
+            raise ValueError(exc.message) from exc
+
+    @field_validator("query")
+    @classmethod
+    def validate_query(cls, value: dict[str, str]) -> dict[str, str]:
+        for key, item in value.items():
+            if not isinstance(key, str) or not key.strip() or len(key) > 120:
+                raise ValueError("query parameter names must be non-empty")
+            if not isinstance(item, str) or len(item) > 500:
+                raise ValueError("query parameter values must be strings")
+        return value
+
+    def model_post_init(self, __context: object, /) -> None:
+        if self.connector == "rss":
+            if not self.feed_url:
+                raise ValueError("an rss source requires feed_url")
+            if self.api_url is not None or self.mapper is not None or self.query:
+                raise ValueError(
+                    "an rss source must not configure api_url, query or mapper"
+                )
+        else:
+            if not self.api_url:
+                raise ValueError("an http_api source requires api_url")
+            if self.mapper is None:
+                raise ValueError("an http_api source requires a mapper")
+            if self.feed_url is not None:
+                raise ValueError("an http_api source must not configure feed_url")
 
     @field_validator("name", "publisher", "user_agent")
     @classmethod

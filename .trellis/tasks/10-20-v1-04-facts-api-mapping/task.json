@@ -3,7 +3,7 @@
   "name": "v1-04-facts-api-mapping",
   "title": "V1-04 按需 Fact 与结构化 API 字段映射",
   "description": "把文本或原始 API 响应中的可复用事实保存为带单位、口径和证据位置的 Fact。",
-  "status": "planning",
+  "status": "in_progress",
   "dev_type": "backend",
   "scope": null,
   "package": null,
@@ -12,7 +12,7 @@
   "assignee": "me",
   "createdAt": "2026-10-20",
   "completedAt": null,
-  "branch": null,
+  "branch": "main",
   "base_branch": "main",
   "worktree_path": null,
   "commit": null,
@@ -34,8 +34,8 @@
       ".trellis/tasks/10-20-v1-02-processing-recovery",
       ".trellis/tasks/10-20-v1-03-classification"
     ],
-    "planning_review": "pending",
+    "planning_review": "completed",
     "planning_depth": "delivery-plan",
-    "implementation_authorized": false
+    "implementation_authorized": "true"
   }
 }

@@ -851,7 +851,8 @@ def test_classify_route_is_resolved_lazily_by_the_registry(tmp_path, monkeypatch
     processor = registry.for_stage(STAGE_CLASSIFY)
     assert resolved == ["classify"]
     assert isinstance(processor, ClassifyStageProcessor)
-    assert STAGE_FACTS not in registry.available_stages()
+    # Facts has its own lazily resolved factory, registered in V1-04.
+    assert STAGE_FACTS in registry.available_stages()
 
 
 def test_config_fingerprint_identifies_route_and_vocabulary(tmp_path):
@@ -937,13 +938,14 @@ def test_stale_classification_owner_cannot_overwrite_a_newer_result(tmp_path, en
     assert stored_classification(engine, document.id) is None
 
 
-def test_registry_registers_classify_and_leaves_facts_pending(tmp_path):
+def test_registry_registers_classify_and_facts(tmp_path):
     registry = build_stage_registry(
         write_models(tmp_path), taxonomy_path=write_taxonomy(tmp_path)
     )
 
+    # Both stages are registered; each resolves its own route lazily.
     assert STAGE_CLASSIFY in registry.available_stages()
-    assert STAGE_FACTS not in registry.available_stages()
+    assert STAGE_FACTS in registry.available_stages()
 
 
 def test_reclassification_from_no_extraction_to_extraction_reopens_facts(

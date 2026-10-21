@@ -241,6 +241,12 @@ document_classification:
 
 `facts` 保存值得重复查询和比较的内容：LLM 从公告/文章中按需抽取的事实，以及从 API 原始响应直接解析的数值。**所有 Fact 都引用来源 `document_id`**，证据可定位到文本段落、PDF 页码或 JSON 字段路径；API 一次返回多个指标时，可以用一份原始响应 Document 对应多条 Fact。不产生结构化信息的 Document 依旧可检索。Fact 不是替代原文的“真值表”，模型抽取的内容先视为带来源的陈述。
 
+**V1-04 当前实现：** 单一 `facts` 表同时服务两种来源，`origin_method` 区分 `llm_extraction` 与 `source_mapping`，类型相关细节放在 `attributes` JSONB，不按指标建专表。`evidence_ref` 至少记录定位种类与身份：文本事实保存 `chunk_id`/`parse_batch_id`/`position`，映射事实保存 RFC 6901 `pointer` 与来源内容哈希/版本。幂等身份是 `(document_id, fact_key)` 唯一约束，`fact_key` 由来源方法、事实类型、证据位置、指标与主体推导，因此同一内容版本的同一位置只会存一条；重试或显式重处理不会倍增相同事实，而修订值属于新的 Document 版本、也就是新的 `document_id`，旧 Fact 不被覆盖。数值 Fact 必须带明确单位（`value IS NULL OR unit IS NOT NULL`），未知单位不猜测：抽取结果若只有数字没有单位，保留文字陈述并丢弃数字。`period_start/end`、`available_at` 与入库时间相互独立。读取入口为只读 `/api/facts`（按来源、Document、类型、代码、指标过滤）、`/api/documents/{id}/facts` 与 `stocks.processing facts --source-id|--document-id-report`，都不触发抽取。
+
+**结构化 API 与 Source Mapper（V1-04）：** `config/sources.yaml` 的 `connector: http_api` 来源声明 `api_url`、可选 `query` 与 `mapper`；它不配置 `feed_url`，RSS 来源也不配置 `mapper`，两者不能混写。采集只做一次有界请求，把原始响应字节连同声明的内容类型存成 Document 版本，`dedupe_key` 为来源标识，相同字节复用版本、变化字节产生下一版本；解析响应、映射 Fact 留给 `facts` 阶段，因此纯数值响应不需要文本分类或向量。`mapper.fields` 的每项声明 `kind`（`numeric`/`text`）、`pointer` 与 `fact_type`；`numeric` 必须配置 `unit`（无法确定单位即拒绝配置），可选 `metric_id` 与 `subject/symbol/period/available_at` 指针。映射是确定性程序：字段缺失或为 null 时该字段不产生 Fact（全部缺失报 `MAPPING_NO_FIELDS_MATCHED`），数值路径上的非数值报 `MAPPING_VALUE_NOT_NUMERIC`，时间字段接受完整 ISO 8601 或 `YYYY-MM`/`YYYY` 期间并按 UTC 期间起点锚定。
+
+`facts` 阶段按内容来自行选择路径：结构化响应用配置的 Source Mapper 直接映射（无模型调用），普通文本只在当前分类 `should_extract=true` 时调用 Generation Model，`should_extract=false` 则显式以 `NOT_APPLICABLE` 跳过而未决定的判定会让阶段以 `CLASSIFICATION_PENDING` 等待（不消耗尝试次数）。生成模型路由与 Source Mapper 都在真正领取该阶段时才读取，缺失或损坏只让该次尝试失败或等待，不影响解析、分类、索引与采集。抽取结果若引用不在当前解析批次中的 Chunk 会被拒绝（`EXTRACTION_CITATION_INVALID`），伪造引用不能进入可检索证据。
+
 | 字段 | 最小语义 |
 | --- | --- |
 | `id`、`document_id`、`evidence_ref` | Fact 标识、来源原文/响应及准确证据位置 |

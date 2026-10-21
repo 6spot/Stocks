@@ -258,23 +258,25 @@ def build_stage_registry(
     embed: Callable[..., object] | None = None,
     clock: Callable[[], datetime] | None = None,
     classify: Callable[..., object] | None = None,
+    facts: Callable[..., object] | None = None,
     taxonomy_path: str | None = None,
+    sources_config_path: str | None = None,
 ) -> StageRegistry:
     """The processors this deployment can run.
 
-    Parse and index are wired to the existing implementations and ``classify`` to
-    the configured Decision Model. ``facts`` stays unregistered until its own
-    implementation lands, so its stage remains visibly pending with
-    ``PROCESSOR_NOT_AVAILABLE`` instead of being reported as completed, skipped or
-    irrelevant. The decision and embedding routes are resolved lazily by their
-    factories for the same reason: a broken route only fails the attempt that was
-    actually eligible to run.
+    Parse and index are wired to the existing implementations, ``classify`` to the
+    configured Decision Model and ``facts`` either to a configured Generation Model
+    or to a Source Mapper. Every model-backed stage resolves its route lazily
+    through a factory, so a broken decision or embedding route only fails the
+    attempt that was actually eligible to run and never stops parsing, mapping or
+    collection.
     """
 
     from stocks.classification.service import (
         DEFAULT_TAXONOMY_PATH,
         load_classify_processor,
     )
+    from stocks.extraction.service import load_facts_processor
 
     resolved_taxonomy = taxonomy_path or DEFAULT_TAXONOMY_PATH
     if classify is not None:
@@ -285,10 +287,19 @@ def build_stage_registry(
             model_transport=model_transport,
             taxonomy_path=resolved_taxonomy,
         )
+    if facts is not None:
+        facts_factory = lambda: facts  # noqa: E731 - a fixed processor
+    else:
+        facts_factory = lambda: load_facts_processor(  # noqa: E731
+            model_config_path,
+            model_transport=model_transport,
+            sources_config_path=sources_config_path,
+        )
 
     return StageRegistry(
         parse=build_parse_processor(read_bytes=read_bytes, clock=clock),
         classify_factory=classify_factory,
+        facts_factory=facts_factory,
         index_factory=lambda: load_index_processor(
             model_config_path,
             model_transport=model_transport,

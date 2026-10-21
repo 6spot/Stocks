@@ -83,6 +83,7 @@ class StageRegistry:
     index: StageProcessor | None = None
     index_factory: Callable[[], StageProcessor] | None = None
     classify_factory: Callable[[], StageProcessor] | None = None
+    facts_factory: Callable[[], StageProcessor] | None = None
 
     def available_stages(self) -> frozenset[str]:
         return frozenset(
@@ -91,6 +92,7 @@ class StageRegistry:
             if getattr(self, stage) is not None
             or (stage == STAGE_INDEX and self.index_factory is not None)
             or (stage == STAGE_CLASSIFY and self.classify_factory is not None)
+            or (stage == STAGE_FACTS and self.facts_factory is not None)
         )
 
     def for_stage(self, stage: str) -> StageProcessor | None:

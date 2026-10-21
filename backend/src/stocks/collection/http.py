@@ -31,6 +31,8 @@ ARTICLE_CONTENT_TYPES = frozenset(
         "text/plain",
     }
 )
+# A structured API response is stored as its raw bytes and later mapped to Facts.
+STRUCTURED_CONTENT_TYPES = frozenset({"application/json", "text/json"})
 REDIRECT_STATUSES = frozenset({301, 302, 303, 307, 308})
 
 

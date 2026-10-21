@@ -10,6 +10,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from stocks.db import session_factory
+from stocks.facts import FactFilters, fact_to_dict, list_document_facts, search_facts
 from stocks.models import (
     Analysis,
     Document,
@@ -65,6 +66,54 @@ def documents(limit: int = Query(50, ge=1, le=200)) -> list[dict]:
             }
             for d in rows
         ]
+
+
+@app.get("/api/facts")
+def facts(
+    source_id: list[str] | None = Query(None),
+    document_id: list[UUID] | None = Query(None),
+    fact_type: list[str] | None = Query(None),
+    symbol: list[str] | None = Query(None),
+    metric_id: list[str] | None = Query(None),
+    limit: int = Query(50, ge=1, le=200),
+) -> dict:
+    """Read stored Facts by source, document, type, symbol or metric.
+
+    This is a bounded structured query over already-extracted data. It never runs
+    extraction, and a Fact always keeps the Document version and field or Chunk it
+    came from, so a reader can resolve it back to the original bytes.
+    """
+
+    filters = FactFilters(
+        source_ids=tuple(source_id or ()),
+        document_ids=tuple(document_id or ()),
+        fact_types=tuple(fact_type or ()),
+        symbols=tuple(symbol or ()),
+        metric_ids=tuple(metric_id or ()),
+    )
+    with session_factory()() as session:
+        rows = search_facts(session, filters, limit=limit)
+    return {
+        "count": len(rows),
+        # A full page means more rows may exist; an empty or short page does not
+        # promise anything about unexamined candidates.
+        "truncated": len(rows) == limit,
+        "items": [fact_to_dict(row) for row in rows],
+    }
+
+
+@app.get("/api/documents/{document_id}/facts")
+def document_facts(document_id: UUID) -> dict:
+    """Every stored Fact of one Document version, in creation order."""
+
+    with session_factory()() as session:
+        if get_document(session, document_id) is None:
+            raise HTTPException(status_code=404, detail="Unknown document")
+        rows = list_document_facts(session, document_id)
+    return {
+        "count": len(rows),
+        "items": [fact_to_dict(row) for row in rows],
+    }
 
 
 @app.get("/api/documents/{document_id}")

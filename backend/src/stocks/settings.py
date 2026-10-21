@@ -18,6 +18,10 @@ class Settings(BaseSettings):
     # Characters of the current parse batch a single classification call may read.
     # The Decision Model never receives an unbounded full text.
     classification_max_characters: int = Field(default=6000, ge=200, le=40000)
+    # Characters of the current parse batch one Fact extraction call may read.
+    # A longer document is extracted from its leading Chunks only; the rest stays
+    # in the original text and the Chunks a report can still cite.
+    fact_extraction_max_characters: int = Field(default=12000, ge=200, le=80000)
     worker_max_concurrent_runs: int = Field(default=2, ge=1, le=16)
     worker_max_concurrent_documents: int = Field(default=1, ge=1, le=16)
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")

@@ -5,6 +5,7 @@ import logging
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any, Callable
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 from uuid import UUID
 
 from sqlalchemy.orm import Session
@@ -15,6 +16,7 @@ from stocks.collection.feed import FeedItem, parse_feed
 from stocks.collection.http import (
     ARTICLE_CONTENT_TYPES,
     FEED_CONTENT_TYPES,
+    STRUCTURED_CONTENT_TYPES,
     SafeFetcher,
 )
 from stocks.models import DocumentCollectionState, Source
@@ -34,6 +36,7 @@ FEED_ACCEPT = (
     "application/xml;q=0.9, text/xml;q=0.8"
 )
 ARTICLE_ACCEPT = "text/html, application/xhtml+xml, text/plain;q=0.9"
+STRUCTURED_ACCEPT = "application/json"
 
 
 @dataclass
@@ -97,7 +100,20 @@ def collect_source(
     store: Callable[..., tuple[str, str]] = store_snapshot,
     clock: Callable[[], datetime] | None = None,
 ) -> CollectionSummary:
+    """Collect one configured source into the Repository.
+
+    A feed source discovers entries and fetches each article; an API source makes
+    one bounded request, stores the raw response as a Document version and leaves
+    field mapping to the ``facts`` stage. Both go through the same
+    ``ingest_document`` entry point and the same idempotency rules, so nothing here
+    branches into a second storage path.
+    """
+
     fetcher = fetcher or SafeFetcher()
+    if source.connector == "http_api":
+        return _collect_structured_source(
+            session, config, source, fetcher=fetcher, store=store, clock=clock
+        )
     clock = clock or (lambda: datetime.now(timezone.utc))
     summary = CollectionSummary(source_id=source.source_id)
     _sync_source(session, source)
@@ -312,3 +328,137 @@ def _partial_payload(item: FeedItem) -> bytes:
         sort_keys=True,
         separators=(",", ":"),
     ).encode("utf-8")
+
+
+
+def _collect_structured_source(
+    session: Session,
+    config: Settings,
+    source: SourceConfig,
+    *,
+    fetcher: SafeFetcher,
+    store: Callable[..., tuple[str, str]],
+    clock: Callable[[], datetime] | None,
+) -> CollectionSummary:
+    """Fetch one API response and register it as a raw Document version.
+
+    The response is stored byte-for-byte with its own content type. Deduplication
+    uses the response hash, so an unchanged payload reuses the existing version
+    while a changed payload becomes the next version of the same item. Nothing is
+    parsed here: this only produces evidence the ``facts`` stage can map.
+    """
+
+    clock = clock or (lambda: datetime.now(timezone.utc))
+    summary = CollectionSummary(source_id=source.source_id)
+    _sync_source(session, source)
+    url = _with_query(source.api_url or "", source.query)
+    dedupe_key = source.source_id
+    try:
+        response = fetcher.fetch(
+            url,
+            timeout_seconds=source.timeout_seconds,
+            max_response_bytes=source.max_response_bytes,
+            max_redirects=source.max_redirects,
+            accept=STRUCTURED_ACCEPT,
+            allowed_content_types=STRUCTURED_CONTENT_TYPES,
+            user_agent=source.user_agent,
+        )
+    except CollectionError as exc:
+        summary.discovered = 1
+        summary.failed = 1
+        summary.items.append(
+            CollectionItemResult(
+                title=source.name,
+                url=url,
+                status="failed",
+                dedupe_key=dedupe_key,
+                error=exc.to_dict(),
+            )
+        )
+        return summary
+
+    summary.discovered = 1
+    if not response.payload:
+        summary.failed = 1
+        summary.items.append(
+            CollectionItemResult(
+                title=source.name,
+                url=url,
+                status="failed",
+                dedupe_key=dedupe_key,
+                error={
+                    "code": "EMPTY_RESPONSE",
+                    "message": "Structured response did not contain any bytes",
+                },
+            )
+        )
+        return summary
+
+    item_input = DocumentInput(
+        source_id=source.source_id,
+        dedupe_key=dedupe_key,
+        title=source.name,
+        payload=response.payload,
+        content_type=response.content_type,
+        collected_at=clock(),
+        original_url=url,
+        completeness="complete",
+    )
+    try:
+        ingested = ingest_document(session, config, item_input, store=store)
+    except Exception as exc:  # noqa: BLE001 - one source failure, not a crash
+        session.rollback()
+        logger.warning(
+            "Structured collection failed for source=%s error_type=%s",
+            source.source_id,
+            type(exc).__name__,
+        )
+        summary.failed += 1
+        summary.items.append(
+            CollectionItemResult(
+                title=source.name,
+                url=url,
+                status="failed",
+                dedupe_key=dedupe_key,
+                error={
+                    "code": "INGEST_FAILED",
+                    "message": "Fetched response could not be registered",
+                },
+            )
+        )
+        return summary
+
+    if ingested.created:
+        summary.ingested += 1
+        status = "ingested"
+    else:
+        summary.reused += 1
+        status = "reused"
+    summary.items.append(
+        CollectionItemResult(
+            title=source.name,
+            url=url,
+            status=status,
+            dedupe_key=dedupe_key,
+            completeness="complete",
+            document_id=ingested.document.id,
+            version=ingested.document.version,
+        )
+    )
+    return summary
+
+
+def _with_query(url: str, query: dict[str, str]) -> str:
+    """Attach configured query parameters without duplicating an existing one."""
+
+    if not query:
+        return url
+    parsed = urlsplit(url)
+    existing = parse_qsl(parsed.query, keep_blank_values=True)
+    merged = list(existing) + [
+        (key, value) for key, value in sorted(query.items())
+        if key not in {name for name, _ in existing}
+    ]
+    return urlunsplit(
+        (parsed.scheme, parsed.netloc, parsed.path, urlencode(merged), parsed.fragment)
+    )

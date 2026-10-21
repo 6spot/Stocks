@@ -425,8 +425,8 @@ def test_cli_status_reports_capability_and_counts(monkeypatch, capsys):
     assert payload["available_stages"] == sorted(
         build_stage_registry("config/models.yaml").available_stages()
     )
-    # Only ``facts`` has no implementation in this deployment.
-    assert payload["unavailable_stages"] == [STAGE_FACTS]
+    # Every stage has a registered processor in this deployment.
+    assert payload["unavailable_stages"] == []
 
 
 def test_cli_status_rejects_an_out_of_range_limit(capsys):

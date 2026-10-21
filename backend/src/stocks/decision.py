@@ -141,16 +141,22 @@ class ClassificationDecision:
         }
 
 
-def load_decision_route(path: str) -> DecisionRoute:
-    """Resolve the configured Decision Model route.
+def load_decision_route(
+    path: str, *, agent_alias: str = DECISION_AGENT
+) -> DecisionRoute:
+    """Resolve one configured Agent route.
 
-    The agent entry may declare ``protocol``; only the implemented protocol is
-    accepted. Missing ``protocol`` defaults to ``openai_compatible`` because that
-    is the only adapter this deployment actually provides.
+    The same thin adapter serves both roles: a Decision Model chooses from the
+    controlled vocabulary, and a Generation Model writes structured facts or
+    research text. Both are reached through the one implemented protocol, so the
+    resolution and validation are shared instead of duplicated per role.
+
+    Only ``openai_compatible`` is accepted. Missing ``protocol`` defaults to it,
+    because that is the sole adapter this deployment actually provides.
     """
 
-    routing, targets = load_chat_routing(path, DECISION_AGENT)
-    protocol = agent_protocol(path, DECISION_AGENT)
+    routing, targets = load_chat_routing(path, agent_alias)
+    protocol = agent_protocol(path, agent_alias)
     if protocol not in SUPPORTED_DECISION_PROTOCOLS:
         raise ValueError(
             "Decision Model protocol is not implemented by this deployment"

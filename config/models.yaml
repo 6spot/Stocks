@@ -44,3 +44,15 @@ agents:
       timeout_seconds: 30
       retries: 1
       retry_backoff_seconds: 0
+  # Generation Model for on-demand Fact extraction. Only Documents whose
+  # classification says `should_extract: true` reach it; structured API responses
+  # are mapped by a Source Mapper and never call a model.
+  fact_extraction:
+    protocol: openai_compatible
+    routing:
+      primary: research
+      fallbacks: []
+      required_capabilities: [chat, structured_output]
+      timeout_seconds: 60
+      retries: 1
+      retry_backoff_seconds: 0

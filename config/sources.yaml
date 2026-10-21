@@ -11,3 +11,37 @@ sources:
     max_redirects: 3
     max_items: 20
     user_agent: StocksIntelligence/0.1 (owner@example.com)
+
+  # Structured HTTP API example (disabled). An `http_api` source stores the raw
+  # response as a Document version and maps it to Facts through `mapper`; it never
+  # configures `feed_url`. A numeric field must declare its unit — a value whose
+  # unit is unknown is not stored as if it were comparable. Enable after replacing
+  # the placeholder URL and contact email, and confirm the API's terms.
+  - source_id: bls_cpi_example
+    name: BLS CPI (disabled example)
+    connector: http_api
+    enabled: false
+    publisher: U.S. Bureau of Labor Statistics
+    trust_tier: T1
+    api_url: https://api.example.gov/v1/timeseries/observations
+    query:
+      series: CPIAUCSL
+    timeout_seconds: 30
+    max_response_bytes: 2000000
+    max_redirects: 3
+    max_items: 10
+    user_agent: StocksIntelligence/0.1 (owner@example.com)
+    mapper:
+      id: cpi-series
+      fields:
+        - kind: numeric
+          pointer: /series/observations/0/value
+          fact_type: macro_indicator
+          metric_id: cpi_yoy
+          unit: percent
+          period_start_pointer: /series/observations/0/period
+          available_at_pointer: /released_at
+        - kind: text
+          pointer: /series/id
+          fact_type: series_identity
+          metric_id: series_id

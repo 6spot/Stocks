@@ -252,6 +252,8 @@ Provider 定义 protocol、HTTP endpoint、认证方式、默认超时等。**�
 
 **V1-03 决策路由实现：** `config/models.yaml` 的 `agents.classification` 声明 `protocol` 与 `routing`；当前只实现 `openai_compatible` 一个 Adapter（复用 `research_chat` 的有界重试、结构化输出与按序回退），其他 `protocol` 在读取配置时直接报错，不假设兼容。分类业务 Schema、受控词表与 Prompt 约束由 Stocks 在 `config/taxonomy.yaml` 维护，不由 Provider 定义；`required_capabilities` 至少包含 `chat` 与 `structured_output`。决策路由与词表都在真正领取 `classify` 阶段时才读取，缺失或损坏只让该次分类尝试失败（`DECISION_ROUTING_UNAVAILABLE` / `TAXONOMY_UNAVAILABLE`，不自动重试），不影响解析、索引与采集。
 
+**V1-04 Fact 执行实现：** `facts` 阶段在真正领取时才解析所需能力：结构化响应（`application/json`/`text/json`）按来源的 Source Mapper 直接映射，不读取生成模型路由；普通文本才需要 `config/models.yaml` 的 `agents.fact_extraction` 路由，并只在当前分类 `should_extract=true` 时运行。缺失 mapper 或生成模型路由时阶段以 `pending` + `PROCESSOR_NOT_AVAILABLE` 等待、分类未决时以 `CLASSIFICATION_PENDING` 等待，两者都不消耗重试次数；真正的模型或映射失败才记 `failed` 并进入既有有限重试。`facts` 不依赖 `parse` 或 `classify` 作为硬前置：它的输入是已存内容本身，`classify` 与它之间是适用性关系而非输入依赖，因此纯数值响应不会因为"无需文本片段"而永远等待解析。抽取结果中任何不在当前解析批次内的 `chunk_id` 都会被拒绝，模型无法把伪造引用写入可检索证据。
+
 Embedding 同样通过 Provider 和模型引用配置，声明向量生成能力，复用现有超时、有限重试和调用记录。入库片段与查询文本使用兼容的模型和维度；回退目标不兼容时记录失败，不混写不同向量空间。索引与模型切换的行为由[数据设计](data.md#检索)维护，不新增模型路由服务。
 
 模型策略只定义 primary 与按顺序排列的 fallback[]：

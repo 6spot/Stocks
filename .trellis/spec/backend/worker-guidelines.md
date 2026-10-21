@@ -109,6 +109,18 @@ cron/时区语义、漏触发策略、增量水位等产品契约的唯一来源
    token 不匹配整体回滚——错误码会变成 `STAGE_NOT_OWNED`，但语义上它本不该走到写结果这一步。
    同时：处理器的路由/词表必须用 `*_factory` 惰性解析（参照 `index_factory`、`classify_factory`），
    否则构建 registry 或执行采集 Run 时会读模型凭据，损坏的配置会变成全局故障而不是单次尝试失败。
+7i. **硬依赖与适用性关系要分开表达。** `STAGE_DEPENDENCIES` 表示"没有它就没有输入"；
+   `DIRECT_SKIP_APPLICABILITY` 表示"它决定该阶段是否需要"。二者不能混用：`facts` 的输入是
+   已存内容本身，`classify` 只决定 `should_extract`，所以把 `classify` 写成 `facts` 的硬依赖会
+   让"无需文本分类"的结构化响应永远卡在等待，反之把结构化资料硬绑到 `parse` 会让它在
+   `unsupported` 后无法映射。阶段自读判定时需要自己的等待原因（如 `CLASSIFICATION_PENDING`）
+   且**不消耗尝试次数**，并在上游完成时用 `clear_wait_reason` 清掉，否则会看起来永久阻塞。
+   跳过传播要按传递闭包迭代，并区分"输入被跳过"与"适用性来源被跳过"两种情况。
+7j. **派生写入前的所有权校验必须用本 Session 内的权威实体。** 处理器在提交派生结果前
+   先 `assert_stage_owned`，并且要用 `select(...).with_for_update().execution_options(
+   populate_existing=True)` 在**本 Session** 内重读 Document/阶段行；直接对调用方传入的、
+   来自另一 Session 的 ORM 实例做 `session.refresh()` 会抛 `InvalidRequestError`，而依赖
+   缓存实例会绕过行锁校验。
 8. **重试复制快照与已完成工作，不新建历史表。** `retry_run` 只接受 `failed|cancelled`；复制**被结束 Run 自己的**
    `config_snapshot`/`model_snapshot`/`prompt_snapshot`（`config_path=None`、`upsert_definition=False`），
    只复制**连续成功**且非 `research_agent` 的步骤；Evidence Package 为新 Run 重新建一份，并把

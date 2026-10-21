@@ -39,6 +39,26 @@ Document 版本保存当次实际取得的不可变证据元数据；相同原�
 否则全新库结构与当前模型出现漂移。唯一性属于表级契约时使用具名约束；新增或调整
 约束后立即在新库跑 `upgrade head` 与 `check`，两者都通过才算结构一致。
 
+## 派生事实与幂等键
+
+派生事实（如 `facts`）用一张通用表 + `attributes` JSONB 表达不同种类，不为
+每种指标建专表。每行必须引用它来自的不可变来源身份（Document 版本 + Chunk 或
+JSON 字段路径），并且必须有一条**由来源位置推导**的确定性幂等键，在该版本内唯一：
+
+```python
+# Correct：身份来自证据位置，同一位置重复处理只会命中同一行
+payload = {"origin": fact.origin_method, "type": fact.fact_type,
+           "evidence": fact.evidence_ref, "metric": fact.metric_id, ...}
+fact_key = hashlib.sha256(json.dumps(payload, sort_keys=True).encode()).hexdigest()
+```
+
+- 修订值必须落在**新的 Document 版本**（新 `document_id`），不覆盖旧行；这是旧报告引用
+  仍然有效的前提。
+- 语义上不可比较的值要有表级约束兜底，例如 `value IS NULL OR unit IS NOT NULL`：未知
+  单位宁可不存数值，也不能存成看起来可比较的数字。
+- 只有显式重处理（`reprocess_requested`）才在同一版本内先删除再重写；普通重试依赖唯一
+  约束复用，不删除已有结果。
+
 ## pgvector 查询
 
 向量召回从 `document_chunk_embeddings` 出发，按 `chunk_id`、`document_id` 和当前
