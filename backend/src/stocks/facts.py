@@ -55,6 +55,7 @@ class PersistFactsResult:
     created: int
     reused: int
     total: int
+    created_ids: tuple[UUID, ...] = ()
 
     def to_dict(self) -> dict:
         return {
@@ -62,6 +63,7 @@ class PersistFactsResult:
             "created": self.created,
             "reused": self.reused,
             "total": self.total,
+            "created_ids": [str(value) for value in self.created_ids],
         }
 
 
@@ -153,32 +155,34 @@ def persist_facts(
     )
     created = 0
     reused = 0
+    created_ids: list[UUID] = []
     for fact, key in zip(facts, keys, strict=True):
         if key in existing:
             reused += 1
             continue
-        session.add(
-            Fact(
-                document_id=document_id,
-                fact_key=key,
-                fact_type=fact.fact_type,
-                origin_method=fact.origin_method,
-                evidence_ref=dict(fact.evidence_ref),
-                subject_name=fact.subject_name,
-                symbol=fact.symbol,
-                metric_id=fact.metric_id,
-                statement=fact.statement,
-                value=fact.value,
-                unit=fact.unit,
-                period_start=fact.period_start,
-                period_end=fact.period_end,
-                available_at=fact.available_at,
-                attributes=dict(fact.attributes),
-                processor_version=processor_version,
-                config_fingerprint=config_fingerprint,
-                created_at=created_at,
-            )
+        row = Fact(
+            document_id=document_id,
+            fact_key=key,
+            fact_type=fact.fact_type,
+            origin_method=fact.origin_method,
+            evidence_ref=dict(fact.evidence_ref),
+            subject_name=fact.subject_name,
+            symbol=fact.symbol,
+            metric_id=fact.metric_id,
+            statement=fact.statement,
+            value=fact.value,
+            unit=fact.unit,
+            period_start=fact.period_start,
+            period_end=fact.period_end,
+            available_at=fact.available_at,
+            attributes=dict(fact.attributes),
+            processor_version=processor_version,
+            config_fingerprint=config_fingerprint,
+            created_at=created_at,
         )
+        session.add(row)
+        session.flush()
+        created_ids.append(row.id)
         existing.add(key)
         created += 1
     session.flush()
@@ -187,6 +191,7 @@ def persist_facts(
         created=created,
         reused=reused,
         total=len(facts),
+        created_ids=tuple(created_ids),
     )
 
 

@@ -25,7 +25,7 @@ Task 属性：
 
 研究的取材、游标、分析与报告共用 `run.scope`，步骤不再另定义一份研究范围；补充查询可带具体检索条件以查找直接资料或相关背景，但不能修改 Run 的研究范围。采集轮询由采集 Task 的 `trigger` 唯一调度，Source 只保存获取参数和可选更新预期，不另设第二个调度入口。
 
-**V1 已实现的 Task 子集：** 研究 Task 接受 `select_evidence` 与 `research_agent` 两种步骤，最后一个步骤必须是 `research_agent`；采集 Task 只接受一个 `collect_sources` 步骤，由 `sources` 指定 Source，不加载任何研究模型路由。`trigger` 接受 `manual` 或 `schedule`。`select_evidence` 从已保存的当前 Chunk 中生成并持久化 Evidence Package；可配置最多 8 条 `queries`、每条候选上限 `limit_per_query`、总估算 Token 预算 `max_tokens`，以及最多 20 个去重的 `source_ids`。未配置 `queries` 时按 `run.scope` 生成直接研究和背景查询。`research_agent` 只接收该 Run 已保存的 Evidence Package；成功结果在同一事务中保存 Analysis 与 Report；`tools` 必须为空，不执行外部 Tool/MCP。`when` 只允许引用更早的 `select_evidence` 结果，并仅支持以下白名单判断：
+**V1 已实现的 Task 子集：** 研究 Task 接受恰好一个 `select_evidence` 与一个最终 `research_agent` 步骤；采集 Task 只接受一个 `collect_sources` 步骤，由 `sources` 指定 Source，不加载任何研究模型路由。`trigger` 接受 `manual` 或 `schedule`。`select_evidence` 从已保存的当前 Chunk 中生成 Evidence Package，并读取固定变化窗口的一张有界原始变化页；可配置最多 8 条 `queries`、每条候选上限 `limit_per_query`、总估算 Token 预算 `max_tokens`、最多 20 个去重的 `source_ids` 以及 `change_page_limit`（默认 100，范围 1–1000）。未配置 `queries` 时按 `run.scope` 生成直接研究和背景查询。当前实现尚未把增量 Document/Fact 与历史背景 Chunk 统一合并去重，该能力属于 V1-06。`research_agent` 只接收该 Run 已保存的 Evidence Package；每个研究 Run 正常只取得一张原始变化页，若未耗尽窗口则保留检查点并由后续 Run 继续。最终 Research Agent Step、Analysis、Report、成功游标与 Run `succeeded` 在一个事务内提交；`tools` 必须为空，不执行外部 Tool/MCP。`when` 只允许引用更早的 `select_evidence` 结果，并仅支持以下白名单判断：
 
 | `op` | 允许的 `field` | 语义 |
 | --- | --- | --- |
@@ -33,7 +33,7 @@ Task 属性：
 | `nonempty` | `output`、`output.items`、`output.coverage`、`evidence_refs` | 对应结构化结果为非空 |
 | `equals` / `not_equals` | `output.truncated` | 与显式布尔值比较 |
 
-条件不满足时保存 `skipped` 的 StepResult。配置拒绝未知字段、未知步骤/类型、未知 Agent、重复步骤 ID、向前引用、未声明 Schema 关键字以及未实现的 Tool。公开示例位于 `config/tasks.yaml`，分别覆盖成功执行、条件跳过和无证据失败。
+条件不满足时保存 `skipped` 的 StepResult。最终 `research_agent` 被跳过时 Run 以 `FINAL_RESEARCH_STEP_NOT_SUCCEEDED` 失败，不得推进成功游标。配置拒绝未知字段、未知步骤/类型、未知 Agent、重复步骤 ID、向前引用、未声明 Schema 关键字以及未实现的 Tool。公开示例位于 `config/tasks.yaml`，分别覆盖成功执行、条件跳过和无证据失败。
 
 统一执行结果：
 
@@ -65,7 +65,7 @@ V0 Run 在创建时快照 Task 的 objective、strategy、scope、步骤/Agent �
 - 每个执行上下文使用独立数据库 Session；某一 Task 的配置、模型初始化或执行失败只记录为该 Run 的结构化错误，不终止 Worker 轮次，也不影响其他 Task 的执行。
 - 采集 Run 只加载 `config/sources.yaml` 与现有 `collect_source`，不解析 chat/embedding 路由；研究模型配置损坏不影响采集入队与执行，采集故障也不阻止研究读取存量资料。
 - Run 未正常结束、Worker 中断或步骤失败时，保留已保存的步骤结果、Evidence Package、原始错误与 ModelCall 记录。Worker 自身不检测死进程、不做自动接管。Owner 必须先确认旧进程已停止，再通过受控 CLI 显式结束该 Run；结束后清除运行占用并保留全部进度与错误。
-- 重试创建新的 Run 记录，复用被结束 Run 的配置/模型/提示词快照、失败点之前已成功的 StepResult，并复制其 Evidence Package（新包的 `run_id` 属于新 Run，`select_evidence` 输出中的 `evidence_package_id` 同步改指新包），把 `retry_of_run_id` 指向原 Run。`research_agent` 步骤不复制，Analysis/Report 由重试重新生成，不借用旧 Run 名下的结果。原 Run、其失败步骤、ModelCall、Analysis/Report 与错误继续保留为失败历史，不删除失败证据、不伪装为首次执行。`skipped` 步骤不复制而是重新判断条件，避免把旧判断带入新一次尝试。重试只允许针对 `failed` 或 `cancelled` 的 Run，且仍受同一 Task 单个活跃 Run 约束。
+- 重试创建新的 Run 记录，复用被结束 Run 的配置/模型/提示词快照、失败点之前已成功的 StepResult，并复制其原变化窗口、展示时间、`change_scan_progress` 与 Evidence Package（新包的 `run_id` 属于新 Run，`select_evidence` 输出中的 `evidence_package_id` 同步改指新包），把 `retry_of_run_id` 指向原 Run；重试不重新绑定最新端点。`research_agent` 步骤不复制，Analysis/Report 由重试重新生成，不借用旧 Run 名下的结果。原 Run、其失败步骤、ModelCall、Analysis/Report 与错误继续保留为失败历史，不删除失败证据、不伪装为首次执行。`skipped` 步骤不复制而是重新判断条件，避免把旧判断带入新一次尝试。重试只允许针对 `failed` 或 `cancelled` 的 Run，且仍受同一 Task 单个活跃 Run 约束。
 - 结束 Run、写入步骤结果与写入最终状态都核对 Run 状态与所有权；Owner 结束之后，旧执行不能再把 StepResult、Analysis/Report 或 Run 最终状态写成成功，这一步是确定性 fence。`select_evidence` 与 `collect_sources` 会在步骤内部提交自己的派生结果（Evidence Package、Document），因此在执行每一步前以及每个 Source 开始前再核对一次所有权，避免被结束的 Run 启动新的步骤或新的 Source；这层事前检查不持行锁，也不能回滚已经开始的步骤已在自身事务中提交的资料，采集到的原文仍按统一入库规则保留，只是该 Run 不会因此获得成功的步骤结果或报告。结束 Run 的前提始终是 Owner 已确认旧进程停止。
 - 解析、分类、抽取、索引和取材积压使用 Task/Run 或 Document 处理状态管理；有限自动重试后，可由 Owner 手动重试或继续处理，不另建积压管理服务。V1-02 已提供 `stocks.processing status|retry|reprocess` 的有界 CLI：`status` 按 Document、阶段与状态查询积压并显示本部署已注册/未接入的阶段，`retry` 只重开失败或未完成阶段，`reprocess` 可显式重跑已完成阶段，运行中阶段必须 `--confirm-stopped`。阶段状态机与重处理边界见[数据设计](data.md#后台解析片段与索引)；交互见[界面设计](interface.md)。
 
@@ -123,11 +123,11 @@ V0 Run 在创建时快照 Task 的 objective、strategy、scope、步骤/Agent �
 
 **窗口生成与推进规则：**
 
-1. 研究 Run 开始执行时固定本次变化水位范围：起点取**同一 Task + 研究范围上一次成功提交结果并完成扫描的终点水位**，终点取本次启动时可确认已提交的最高水位；`window_start` / `window_end` 记录对应展示时间，默认 `as_of` 为 Run 启动时间。第一次运行使用明确配置的初始起点或初始回看范围并据此确定初始水位；更换研究范围后重新初始化，不沿用旧范围游标。待执行期间不提前扫描或推进窗口。
-   若同一范围存在待继续的扫描进度，优先沿用保存的原窗口、查询条件及分页位置，扫描完成后再打开后续窗口；本次 Run 的 `as_of` 仍按实际参考时间记录，不将续扫误报为新的扫描范围。
+1. 研究 Run 开始执行时固定本次变化水位范围：起点取**同一 Task + 研究范围上一次成功提交结果并完成扫描的终点水位**，终点取本次启动时可确认已提交的最高水位；`window_start` / `window_end` 记录对应展示时间，默认 `as_of` 为 Run 启动时间。第一次运行使用明确配置的初始起点或初始回看范围并据此确定初始水位；更换研究范围后重新初始化，不沿用旧范围游标。待执行期间不提前扫描或推进窗口。Run 在扫描前提交固定窗口与初始 `change_scan_progress`，因此进程在此后中断仍可恢复；尚未开始的取消 Run 不会自行创建窗口。
+   若同一 Task + Scope 存在未完成 Run，且其窗口终点仍高于该 Scope 的成功游标，正常新 Run 沿用最新有效检查点的原窗口、展示时间、冻结查询条件和分页位置（按 `created_at DESC`，再以窗口起止与 Run ID 确定性排序），扫描完成后再打开后续窗口；不会选择其他 Task/Scope 的进度，也不会把当前 Run 自己作为续扫来源。原始增量分页只执行 `change_scan_progress.query_snapshot` 中冻结的 `source_ids`、`page_limit` 等扫描条件，当前 Task 配置变化不影响未完成窗口的续扫；当前语义背景查询仍可按当前配置执行。retry 则明确复制来源 Run 的原窗口和进度。本次 Run 的 `as_of` 仍按实际参考时间记录，不将续扫误报为新的扫描范围。
 2. 窗口只用于发现已进入 Repository、并在本次可研究增量中首次出现或发生重要修订的资料。文章的 `published_at` 不用于判定是否“已处理”：周二才入库或完成分类的上周五公告，也会作为周二新增可研究信息进入后续 Run。保留资料自身的真实发布时间供报告解释。
 3. 对 Document 入库、解析/分类/索引完成、Fact 抽取/解析及内容修订保留可追溯的系统可研究变化。增量窗口以**已提交变化的稳定水位**界定；水位必须按提交可见顺序推进，不能直接把事务开始时的 `collected_at`、自增序列分配时刻或原文发布时间当作游标。Run 取得终点水位时，应保证此前水位的写入已经提交；之后提交的写入即使更早开始，也进入后续窗口。窗口同时保留相应时间用于报告展示。实现可使用同一 PostgreSQL 内按事务串行提交的变化计数，不引入额外服务。
-4. 只有要求的分析与报告结果**成功持久化**且对应窗口**完成扫描**后，才原子地推进该 Task + Scope 的研究游标。扫描未完成时，将查询条件、原窗口与分页位置保存在 Task/Run，后续自动或由 Owner 手动继续扫描，不因已生成一份报告就跳过剩余候选；已完成筛选但未选入模型输入的候选不阻塞推进。失败、取消或中断不推进；下次运行重试或覆盖未成功区间。即使周末无定时运行，周一仍包含周末新增信息。上述进度沿用现有记录，不新增独立扫描服务。
+4. `TaskRun.change_scan_progress` 保存版本化扫描状态、原始 `after_watermark`/`after_change_id`、窗口与展示时间、冻结查询条件、页/原始变化/候选 Document/选中计数及已扫描 Document 身份。只有原始窗口耗尽、最终 `research_agent` Step 成功且匹配的 Analysis、Report、Evidence Package 关系完整时，才在最终事务中把 `change_scan_completed=true` 并推进该 Task + Scope 的研究游标；任一写入失败则最终 Step、Analysis、Report、游标和 Run 成功状态一起回滚。扫描未完成时 Run 仍可在报告成功后关闭，但保留可续扫 progress、`change_scan_completed=false` 且不推进游标；最终 Step skipped、报告缺失、关系损坏或所有权失效时 Run 失败。已完成筛选但未选入模型输入的候选不阻塞推进。失败、取消或中断不推进；下次正常 Run 或 retry 覆盖未成功区间。已提交的扫描 Checkpoint 与 Evidence Package 在后续 Agent/report 失败时保留。即使周末无定时运行，周一仍包含周末新增信息。上述进度沿用现有记录，不新增独立扫描服务。
    “完成扫描”针对本次记录的增量查询范围与候选，不表示已穷尽全部背景资料或互联网信息；索引积压和来源缺失仍按实际情况说明。
 5. Agent 可以根据明确的 Research Scope、`as_of` 与检索条件访问**增量窗口之外的历史背景资料和以前的 Analysis**，并对比既有结论；这些背景不应错误计作本次新增情报。每个研究 Run 将最终采用的输入 ID、版本、选择原因或查询条件留在独立 `research_inputs` 中，以便复现。
 6. 同一份资料可参与多个不同的 Task、时间窗口与策略研究，不在 Document 上设置全局 `analyzed`、`last_used_by_task`、`research_window` 或 `consumed_at`。重复性由各自 Run 和输入引用的幂等约束处理。
@@ -142,7 +142,7 @@ Run B（行业周报）：自身独立的增量变化窗口
                  → 保存自身 research_inputs → 行业报告
 ~~~
 
-**两类检索必须区分**：`repository.search_changes` 按变化水位选择本次新增/修订的候选证据；`repository.search` 按研究时点、Scope 与条件选择所有可用的背景/验证资料。二者均读取同一 Repository，前者不修改资料，也不把研究消费进度写回 Document。研究任务通常通过[统一研究取材](research.md)的 `repository.select_evidence` 统一执行这两类查询及取材，不需要每种研究自己重写步骤。
+**两类检索必须区分**：`stocks.changes.search_changes()` 按变化水位读取本次新增/修订的候选证据；`stocks.repository.search_chunks()`／`search_chunks_exact()`（经 `stocks.search` 暴露）按研究时点、Scope 与条件选择所有可用的背景/验证资料。二者均读取同一 Repository，前者不修改资料，也不把研究消费进度写回 Document。研究任务通常通过[统一研究取材](research.md)的 `stocks.research.select_evidence()` 统一执行这两类查询及取材，不需要每种研究自己重写步骤。
 
 以下为 **V1 定时任务的逻辑配置示例**，不属于 V0 交付门槛：
 

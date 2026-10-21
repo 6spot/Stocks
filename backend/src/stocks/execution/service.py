@@ -21,6 +21,17 @@ from stocks.execution.config import (
     snapshot_hash,
     snapshot_payload,
 )
+from stocks.changes import (
+    ChangeCursorError,
+    ChangeWindow,
+    advance_cursor,
+    checkpoint_scan,
+    get_cursor,
+    initial_scan_progress,
+    open_window,
+    scope_fingerprint,
+    validate_scan_progress,
+)
 from stocks.collection.config import load_sources, select_sources
 from stocks.collection.errors import CollectionError
 from stocks.collection.service import collect_source
@@ -89,6 +100,7 @@ class ExecutionContext:
 TRIGGER_MANUAL = "manual"
 TRIGGER_SCHEDULE = "schedule"
 TRIGGER_RETRY = "retry"
+MAX_UNFINISHED_SCAN_CANDIDATES = 100
 ENDED_BY_OWNER = {
     "code": "RUN_ENDED_BY_OWNER",
     "message": "Task Run was ended after the Owner confirmed the old process stopped",
@@ -452,30 +464,36 @@ def _copy_completed_work(
     rows are never copied: the retried Agent step builds them for the new Run.
     """
 
-    package = session.scalar(
-        select(EvidencePackage).where(EvidencePackage.run_id == source_run_id)
+    source_run = session.get(TaskRun, source_run_id)
+    target_run = session.get(TaskRun, target_run_id)
+    if source_run is None or target_run is None:
+        raise ExecutionError("RUN_NOT_FOUND", "Task Run was not found")
+    # A retry continues the exact window and raw page position of its source.
+    # Binding a fresh endpoint here would skip unfetched records or rescan an
+    # already completed window.
+    target_run.change_watermark_start = source_run.change_watermark_start
+    target_run.change_watermark_end = source_run.change_watermark_end
+    target_run.window_start = source_run.window_start
+    target_run.window_end = source_run.window_end
+    target_run.scope_fingerprint = source_run.scope_fingerprint
+    target_run.change_scan_progress = deepcopy(source_run.change_scan_progress)
+    target_run.change_scan_completed = source_run.change_scan_completed
+    new_package = _copy_evidence_package(
+        session, source_run_id, target_run_id
     )
-    new_package: EvidencePackage | None = None
-    if package is not None:
-        new_package = EvidencePackage(
-            run_id=target_run_id,
-            objective=package.objective,
-            scope=deepcopy(package.scope),
-            as_of=package.as_of,
-            selection_policy_version=package.selection_policy_version,
-            selection_budget=deepcopy(package.selection_budget),
-            queries=deepcopy(package.queries),
-            selected_chunks=deepcopy(package.selected_chunks),
-            coverage=deepcopy(package.coverage),
-            candidates_discovered=package.candidates_discovered,
-            candidates_screened=package.candidates_screened,
-            selected_count=package.selected_count,
-            unexamined_count=package.unexamined_count,
-            retrieval_truncated=package.retrieval_truncated,
-            created_at=_now(),
-        )
-        session.add(new_package)
-        session.flush()
+    if (
+        new_package is not None
+        and target_run.change_scan_progress is not None
+    ):
+        progress = deepcopy(target_run.change_scan_progress)
+        selection = progress.get("selection")
+        if not isinstance(selection, dict):
+            raise ExecutionError(
+                "SCAN_PROGRESS_INVALID",
+                "Task Run change scan selection state is invalid",
+            )
+        selection["evidence_package_id"] = str(new_package.id)
+        target_run.change_scan_progress = progress
     steps = list(
         session.scalars(
             select(TaskStepResult)
@@ -512,6 +530,39 @@ def _copy_completed_work(
             )
         )
     session.flush()
+
+
+def _copy_evidence_package(
+    session: Session, source_run_id: UUID, target_run_id: UUID
+) -> EvidencePackage | None:
+    """Copy a Run's Evidence Package without copying Analysis or Report."""
+
+    package = session.scalar(
+        select(EvidencePackage).where(EvidencePackage.run_id == source_run_id)
+    )
+    if package is None:
+        return None
+    new_package = EvidencePackage(
+        run_id=target_run_id,
+        objective=package.objective,
+        scope=deepcopy(package.scope),
+        as_of=package.as_of,
+        selection_policy_version=package.selection_policy_version,
+        selection_budget=deepcopy(package.selection_budget),
+        queries=deepcopy(package.queries),
+        selected_chunks=deepcopy(package.selected_chunks),
+        coverage=deepcopy(package.coverage),
+        candidates_discovered=package.candidates_discovered,
+        candidates_screened=package.candidates_screened,
+        selected_count=package.selected_count,
+        unexamined_count=package.unexamined_count,
+        retrieval_truncated=package.retrieval_truncated,
+        change_scan=deepcopy(package.change_scan),
+        created_at=_now(),
+    )
+    session.add(new_package)
+    session.flush()
+    return new_package
 
 
 def get_active_run(session: Session, task_id: str) -> TaskRun | None:
@@ -625,8 +676,10 @@ def execute_claimed_run(
         )
     results: dict[str, TaskStepResult] = {}
     terminal_error: dict | None = None
+    change_window: ChangeWindow | None = None
 
     try:
+        change_window = _bind_change_window(session, run, task)
         for position, step in enumerate(task.steps):
             existing_step = session.scalar(
                 select(TaskStepResult).where(
@@ -701,6 +754,13 @@ def execute_claimed_run(
                             durable_evidence_ref(item)
                             for item in existing_package.selected_chunks
                         ]
+                        if (
+                            run.change_watermark_end is not None
+                            and run.change_scan_progress is not None
+                        ):
+                            output["change_scan"] = deepcopy(
+                                run.change_scan_progress
+                            )
                     usage = {}
                 elif step.collect_sources is not None:
                     output, evidence_refs, usage = _run_collection(
@@ -764,6 +824,17 @@ def execute_claimed_run(
                 }
                 failed_usage = {}
             if terminal_error is not None:
+                # Artifact-building failures can leave uncommitted rows in the
+                # Session (for example an Analysis flushed before its Report
+                # could be rendered). Discard those partial final artifacts
+                # before writing the failed step; the earlier scan checkpoint is
+                # already independently committed and remains resumable.
+                session.rollback()
+                run = session.get(TaskRun, run_id)
+                if run is None:
+                    raise ExecutionError(
+                        "RUN_NOT_FOUND", "Task Run was not found"
+                    )
                 _persist_step(
                     session,
                     run,
@@ -789,19 +860,65 @@ def execute_claimed_run(
                 evidence_refs=evidence_refs,
                 usage=usage,
                 error=None,
+                commit=not (
+                    terminal_error is None
+                    and position == len(task.steps) - 1
+                    and task.type == "research"
+                ),
             )
             results[step.id] = result
 
         if terminal_error is None:
+            final_result = results.get(task.steps[-1].id)
+            if (
+                task.type == "research"
+                and (
+                    final_result is None
+                    or final_result.status != "succeeded"
+                )
+            ):
+                terminal_error = {
+                    "code": "FINAL_RESEARCH_STEP_NOT_SUCCEEDED",
+                    "message": (
+                        "Research Run cannot succeed without a succeeded "
+                        "final Agent step"
+                    ),
+                }
+        if terminal_error is None:
             final_output = _final_output(session, run, task, results)
-            _finish_run(
-                session,
-                run_id,
-                process_token=process_token,
-                status="succeeded",
-                output=final_output,
-                error=None,
-            )
+            if task.type == "research":
+                try:
+                    _finish_research_run(
+                        session,
+                        run_id,
+                        run=run,
+                        task=task,
+                        process_token=process_token,
+                        window=change_window,
+                        output=final_output,
+                    )
+                except _StepFailure as exc:
+                    # The final step/report were flushed but failed the completion
+                    # contract. Roll back that entire unit, then close the Run as
+                    # failed with the specific integrity error.
+                    session.rollback()
+                    _finish_run(
+                        session,
+                        run_id,
+                        process_token=process_token,
+                        status="failed",
+                        output=None,
+                        error=exc.to_dict(),
+                    )
+            else:
+                _finish_run(
+                    session,
+                    run_id,
+                    process_token=process_token,
+                    status="succeeded",
+                    output=final_output,
+                    error=None,
+                )
         else:
             _finish_run(
                 session,
@@ -811,12 +928,352 @@ def execute_claimed_run(
                 output=None,
                 error=terminal_error,
             )
+    except ExecutionError as exc:
+        session.rollback()
+        _fail_claimed_run(
+            session,
+            run_id,
+            process_token=process_token,
+            error=exc.to_dict(),
+        )
+        raise
     except Exception:
         session.rollback()
         _fail_claimed_run(session, run_id, process_token=process_token)
         raise
     session.refresh(run)
     return run
+
+
+def _bind_change_window(
+    session: Session, run: TaskRun, task: TaskConfig
+) -> ChangeWindow | None:
+    """Fix this Run's incremental change window, persisted on the Run itself.
+
+    A collection Run has no research window: it discovers new material rather than
+    scanning the Repository. A research Run stores the window so a retry or a later
+    inspection can tell exactly which range it covered.
+    """
+
+    if task.type != "research":
+        return None
+    scope = run.scope if isinstance(run.scope, dict) else {}
+    try:
+        if run.change_watermark_end is not None:
+            if not isinstance(run.scope_fingerprint, str):
+                raise ChangeCursorError(
+                    "WINDOW_INVALID",
+                    "Task Run incremental window has no scope fingerprint",
+                )
+            window = ChangeWindow(
+                start=int(run.change_watermark_start),
+                end=run.change_watermark_end,
+                task_id=task.id,
+                fingerprint=run.scope_fingerprint,
+                resume=True,
+            )
+            if run.change_scan_progress is not None:
+                validate_scan_progress(run.change_scan_progress, window)
+        else:
+            window = _find_unfinished_window(session, run, task) or open_window(
+                session,
+                task_id=task.id,
+                scope=scope,
+                initial_lookback=task.initial_lookback,
+            )
+    except ChangeCursorError as exc:
+        raise ExecutionError(exc.code, exc.message) from exc
+    run.change_watermark_start = window.start
+    run.change_watermark_end = window.end
+    if run.window_start is None:
+        run.window_start = run.started_at or _now()
+    if run.window_end is None:
+        run.window_end = _now()
+    run.scope_fingerprint = window.fingerprint
+    if run.change_scan_progress is None:
+        run.change_scan_progress = initial_scan_progress(
+            window,
+            query_snapshot=_change_query_snapshot(task),
+            window_start=run.window_start,
+            window_end=run.window_end,
+        )
+    if run.change_scan_completed is None:
+        # ``change_scan_progress.status == "scanned"`` only means the raw page
+        # has been exhausted. A Run completes the window when its final report
+        # and cursor commit successfully, which happens later.
+        run.change_scan_completed = False
+    # Persist the fixed window and initial continuation before scanning starts.
+    # If the process stops after this commit, a later Run can resume their exact
+    # raw position instead of deriving a new endpoint from a moved cursor.
+    session.commit()
+    return window
+
+
+def _find_unfinished_window(
+    session: Session, run: TaskRun, task: TaskConfig
+) -> ChangeWindow | None:
+    """Resume the latest valid unfinished checkpoint for this Task and scope."""
+
+    fingerprint = scope_fingerprint(task.id, run.scope)
+    cursor = get_cursor(session, task.id, run.scope)
+    cursor_watermark = cursor.watermark if cursor is not None else 0
+    candidates = list(
+        session.scalars(
+            select(TaskRun)
+            .where(
+                TaskRun.task_id == task.id,
+                TaskRun.scope_fingerprint == fingerprint,
+                TaskRun.id != run.id,
+                TaskRun.change_watermark_end.is_not(None),
+                TaskRun.change_watermark_end > cursor_watermark,
+                TaskRun.change_scan_completed.is_not(True),
+                TaskRun.change_scan_progress.is_not(None),
+            )
+            # A resumed Run checkpoints further without mutating its source Run.
+            # Inspect a bounded recent set so a damaged newest row cannot hide an
+            # older checkpoint that can still continue safely.
+            .order_by(
+                TaskRun.created_at.desc(),
+                TaskRun.change_watermark_start.desc(),
+                TaskRun.change_watermark_end.desc(),
+                TaskRun.id.desc(),
+            )
+            .limit(MAX_UNFINISHED_SCAN_CANDIDATES)
+            .with_for_update()
+        )
+        .all()
+    )
+    if not candidates:
+        return None
+    for previous in candidates:
+        checkpoint = _validated_resume_checkpoint(
+            previous,
+            task_id=task.id,
+            fingerprint=fingerprint,
+        )
+        if checkpoint is None:
+            continue
+        window, progress = checkpoint
+        run.change_scan_progress = progress
+        run.change_scan_completed = previous.change_scan_completed
+        run.window_start = previous.window_start
+        run.window_end = previous.window_end
+        return window
+    raise ChangeCursorError(
+        "SCAN_PROGRESS_INVALID",
+        "No valid unfinished change scan checkpoint is available for this "
+        "Task and Scope",
+    )
+
+
+def _validated_resume_checkpoint(
+    previous: TaskRun,
+    *,
+    task_id: str,
+    fingerprint: str,
+) -> tuple[ChangeWindow, dict] | None:
+    """Decode one candidate before it becomes the continuation source."""
+
+    start = previous.change_watermark_start
+    end = previous.change_watermark_end
+    if (
+        not isinstance(start, int)
+        or isinstance(start, bool)
+        or not isinstance(end, int)
+        or isinstance(end, bool)
+        or start > end
+        or not isinstance(previous.scope_fingerprint, str)
+        or previous.scope_fingerprint != fingerprint
+        or previous.window_start is None
+        or previous.window_end is None
+        or previous.window_start.utcoffset() is None
+        or previous.window_end.utcoffset() is None
+        or previous.window_start > previous.window_end
+    ):
+        return None
+    window = ChangeWindow(
+        start=start,
+        end=end,
+        task_id=task_id,
+        fingerprint=fingerprint,
+        resume=True,
+    )
+    try:
+        progress = validate_scan_progress(previous.change_scan_progress, window)
+        display_window = progress["window"]
+        progress_start = datetime.fromisoformat(display_window["window_start"])
+        progress_end = datetime.fromisoformat(display_window["window_end"])
+    except (ChangeCursorError, KeyError, TypeError, ValueError):
+        return None
+    if (
+        progress_start.utcoffset() is None
+        or progress_end.utcoffset() is None
+        or progress_start > progress_end
+        or progress_start != previous.window_start
+        or progress_end != previous.window_end
+    ):
+        return None
+    return window, progress
+
+
+def _change_query_snapshot(task: TaskConfig) -> dict:
+    evidence_steps = [
+        step for step in task.steps if step.select_evidence is not None
+    ]
+    if len(evidence_steps) != 1:
+        raise ChangeCursorError(
+            "SCAN_SNAPSHOT_INVALID",
+            "A research Task requires exactly one Evidence Selection step",
+        )
+    selection = evidence_steps[0].select_evidence
+    assert selection is not None
+    return {
+        "queries": list(
+            _normalize_query_snapshot(
+                task.run_objective,
+                selection.queries,
+                task.run_scope,
+            )
+        ),
+        "source_ids": list(selection.source_ids),
+        "limit_per_query": selection.limit_per_query,
+        "max_tokens": selection.max_tokens,
+        "page_limit": selection.change_page_limit,
+    }
+
+
+def _normalize_query_snapshot(
+    objective: str, queries: list[str], scope: dict
+) -> tuple[str, ...]:
+    """Match ``select_evidence``'s canonical query normalization."""
+
+    from stocks.research.service import _normalize_queries
+
+    _, normalized = _normalize_queries(objective, scope, queries)
+    return tuple(normalized)
+
+
+def _complete_change_scan(
+    session: Session,
+    run: TaskRun,
+    task: TaskConfig,
+    window: ChangeWindow | None,
+) -> None:
+    """Mark the window scanned and advance the cursor, inside this transaction.
+
+    Called only after the final Agent step and Report have been validated in this
+    transaction. ``advance_cursor`` and the successful Run close commit together,
+    so a Run that fails after this point cannot leave a cursor that moved without
+    a saved result.
+    """
+
+    if window is None:
+        raise _StepFailure(
+            "CHANGE_WINDOW_UNAVAILABLE",
+            "A research Run must have a fixed change window",
+        )
+    progress = validate_scan_progress(run.change_scan_progress, window)
+    _validate_research_completion(session, run, task)
+    completed = progress["status"] == "scanned"
+    run.change_scan_completed = completed
+    if not completed:
+        return
+    advance_cursor(session, window, updated_at=datetime.now(UTC))
+
+
+def _validate_research_completion(
+    session: Session,
+    run: TaskRun,
+    task: TaskConfig,
+) -> tuple[TaskStepResult, Analysis, Report, EvidencePackage]:
+    """Require the final Agent result and its matching report artifacts."""
+
+    final_step = task.steps[-1]
+    if final_step.research_agent is None:
+        raise _StepFailure(
+            "FINAL_RESEARCH_STEP_REQUIRED",
+            "A research Run requires a final Research Agent step",
+        )
+    final_result = session.scalar(
+        select(TaskStepResult).where(
+            TaskStepResult.run_id == run.id,
+            TaskStepResult.step_id == final_step.id,
+        )
+    )
+    if final_result is None or final_result.status != "succeeded":
+        raise _StepFailure(
+            "FINAL_RESEARCH_STEP_NOT_SUCCEEDED",
+            "Research Run cannot succeed without a succeeded final Agent step",
+        )
+    analysis = session.scalar(select(Analysis).where(Analysis.run_id == run.id))
+    report = session.scalar(select(Report).where(Report.run_id == run.id))
+    package = session.scalar(
+        select(EvidencePackage).where(EvidencePackage.run_id == run.id)
+    )
+    if analysis is None or report is None or package is None:
+        raise _StepFailure(
+            "REPORT_INCOMPLETE",
+            "Research Run cannot succeed without an Analysis, Report and Evidence Package",
+        )
+    if (
+        analysis.evidence_package_id != package.id
+        or report.analysis_id != analysis.id
+        or analysis.run_id != run.id
+        or report.run_id != run.id
+    ):
+        raise _StepFailure(
+            "REPORT_INTEGRITY_FAILED",
+            "Research Analysis and Report do not reference this Run's Evidence Package",
+        )
+    return final_result, analysis, report, package
+
+
+def _finish_research_run(
+    session: Session,
+    run_id: UUID,
+    *,
+    run: TaskRun,
+    task: TaskConfig,
+    process_token: str,
+    window: ChangeWindow | None,
+    output: dict,
+) -> None:
+    """Commit the final step, report, Run success and cursor together."""
+
+    # The final research StepResult, Analysis/Report, cursor and Run status
+    # intentionally share this commit. For a research Task, the final step was
+    # flushed but not committed by ``_persist_step``. A missing/skipped final
+    # result never advances the cursor.
+    _assert_run_ownership(session, run_id, process_token)
+    _complete_change_scan(
+        session,
+        run,
+        task,
+        window,
+    )
+    finished = session.execute(
+        update(TaskRun)
+        .where(
+            TaskRun.id == run_id,
+            TaskRun.status == "running",
+            TaskRun.process_token == process_token,
+        )
+        .values(
+            status="succeeded",
+            process_token=None,
+            output=deepcopy(output),
+            error=None,
+            finished_at=_now(),
+        )
+        .returning(TaskRun.id)
+    ).scalar_one_or_none()
+    if finished is None:
+        session.rollback()
+        raise ExecutionError(
+            "RUN_NOT_OWNED",
+            "Task Run is no longer owned by this process",
+        )
+    session.commit()
 
 
 def fail_claimed_run(
@@ -995,6 +1452,7 @@ def _persist_step(
     usage: dict,
     error: dict | None,
     additional: tuple[Any, ...] = (),
+    commit: bool = True,
 ) -> TaskStepResult:
     _assert_run_ownership(session, run.id, process_token)
     result = TaskStepResult(
@@ -1015,7 +1473,8 @@ def _persist_step(
     try:
         session.flush()
         result_id = result.id
-        session.commit()
+        if commit:
+            session.commit()
     except Exception:
         session.rollback()
         raise
@@ -1080,6 +1539,19 @@ def _run_evidence_selection(
         from stocks.indexing.service import embed_texts
 
         search_embed = embed_texts
+    progress = None
+    window: ChangeWindow | None = None
+    if run.change_watermark_end is not None:
+        assert run.change_watermark_start is not None
+        assert run.scope_fingerprint is not None
+        window = ChangeWindow(
+            start=run.change_watermark_start,
+            end=run.change_watermark_end,
+            task_id=run.task_id,
+            fingerprint=run.scope_fingerprint,
+            resume=True,
+        )
+        progress = validate_scan_progress(run.change_scan_progress, window)
     try:
         package_result = select_evidence(
             session,
@@ -1094,6 +1566,27 @@ def _run_evidence_selection(
             limit_per_query=selection.limit_per_query,
             source_ids=tuple(selection.source_ids),
             max_tokens=selection.max_tokens,
+            change_window=window if progress is not None else None,
+            scan_query_snapshot=(
+                progress["query_snapshot"] if progress is not None else None
+            ),
+            after_watermark=(
+                progress["after_watermark"]
+                if progress is not None
+                else None
+            ),
+            after_change_id=(
+                progress.get("after_change_id")
+                if progress is not None
+                else None
+            ),
+            page_limit=selection.change_page_limit,
+            scanned_document_ids=(
+                progress["scanned_document_ids"]
+                if progress is not None
+                else ()
+            ),
+            commit=progress is None,
             embed=search_embed,
         )
     except EmbeddingError:
@@ -1105,6 +1598,25 @@ def _run_evidence_selection(
         ) from exc
     package = package_result.package
     refs = list(package_result.refs)
+    if progress is not None:
+        checkpoint_scan(
+            session,
+            run,
+            page=package_result.scan_page,
+            selection={
+                "evidence_package_id": str(package.id),
+                "selected_count": package.selected_count,
+            },
+        )
+        # The Evidence Package and page checkpoint form one durable unit. A later
+        # Agent/report failure keeps this checkpoint but cannot advance the
+        # successful cursor.
+        session.commit()
+        package = session.get(EvidencePackage, package.id)
+        assert package is not None
+        refs = [
+            durable_evidence_ref(item) for item in package.selected_chunks
+        ]
     return _evidence_package_output(package), refs
 
 
@@ -1202,7 +1714,7 @@ def _run_collection(
 
 
 def _evidence_package_output(package: EvidencePackage) -> dict:
-    return {
+    output = {
         "evidence_package_id": str(package.id),
         "objective": package.objective,
         "scope": deepcopy(package.scope),
@@ -1214,6 +1726,9 @@ def _evidence_package_output(package: EvidencePackage) -> dict:
         "coverage": deepcopy(package.coverage),
         "truncated": package.retrieval_truncated,
     }
+    if package.change_scan is not None:
+        output["change_scan"] = deepcopy(package.change_scan)
+    return output
 
 
 def _embedding_targets_from_snapshot(
@@ -1735,10 +2250,18 @@ def _final_output(
 ) -> dict:
     last = task.steps[-1]
     result = results.get(last.id)
-    payload = {
+    payload: dict = {
         "step_id": last.id,
         "output": deepcopy(result.output) if result and result.output else None,
     }
+    if run.change_watermark_end is not None:
+        # The window and whether it was fully scanned are part of the Run's
+        # observable output: the cursor only advances when this says completed.
+        payload["change_window"] = {
+            "change_watermark_start": run.change_watermark_start,
+            "change_watermark_end": run.change_watermark_end,
+            "scope_fingerprint": run.scope_fingerprint,
+        }
     if result is not None and result.status == "succeeded":
         analysis = session.scalar(
             select(Analysis).where(Analysis.run_id == run.id)

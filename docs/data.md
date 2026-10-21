@@ -114,7 +114,7 @@ RSS 条目和搜索结果可用于发现链接；实际文章仍以取得的文�
 
 当前后端提供 `stocks.repository.ingest_document()` 作为这条入库链的最小实现。调用方提交 `DocumentInput`，Repository 校验 Source、内容类型、完整性状态及获取错误，按 `(source_id, dedupe_key)` 查找现有版本；新哈希先保存不可变 S3 原件，再提交下一版本号。同一内容版本不原位改写：每次取得结果分别记录在该 Document 的 `completeness`/`fetch_error`，并在 `document_collection_states` 保存资料身份最近一次尝试所对应的 Document、完整性、错误、来源时间和采集时间，用于展示最近采集状态及决定是否重试；相同原始字节仍复用内容版本，只更新这份采集状态。数据库提交失败时回滚 Document 事务，已写入但未被登记的对象不视为可用证据。`get_document()`、`get_latest_document()`、`get_collection_state()`、`list_document_versions()` 与 `read_document_bytes()` 提供按版本读取及当前采集状态。`get_latest_document()` 返回**最近一次实际取得内容**对应的 Document，即采集状态指针指向的版本；版本号只记录创建顺序，因此 “正文 A → 获取失败的部分内容 → 恢复正文 A” 会复用 A 的不可变版本，此时最近内容仍是 A 而不是版本号最大的版本。采集跳过判断与最近内容读取使用同一指针，历史版本的正文、标题与时间不回写。
 
-V0 已提供 `config/sources.yaml` 配置的 RSS/Atom 手动采集入口。`stocks.collection.collect_source()` 先发现 Feed 条目，只对没有本地版本的条目、已有内容为 `partial` 的条目，或来源 `updated` / `pubDate` 信号发生变化的条目请求文章页；完整 HTML/文本字节连同响应声明的媒体类型与 `charset` 参数一起交给 `ingest_document()`；类型白名单只比较媒体类型本身，保存的内容类型保留编码声明，供后续解析严格解码。文章内容链接在通过 HTTPS、端口、userinfo 与地址校验前若无法解析，作为该条目的 `INVALID_ARTICLE_URL` 失败记录，同批其余条目继续处理。文章请求失败或正文为空时，以实际取得的 Feed 标题和摘要生成 `text/plain` 部分内容，记录 `completeness = partial` 与脱敏 `fetch_error`，并在后续运行重试：部分内容本身不是正文证据，即使来源没有提供任何时间信号也必须再次尝试全文，未知时间保持未知。相同原始字节复用内容版本；重试得到正文时因字节不同形成新版本。Embedding 索引见后文。V1-01 起采集可由 `collection` 类型 Task 按自身 `trigger` 定时触发：采集 Run 复用同一 `collect_source` 与本文描述的幂等/完整性规则，Run 记录位于 `task_runs`，不另建 Collection Run 表；采集仍不保存采集游标（属于 V1-05），当前也未实现持久采集游标、分类、Fact 或证据阅读 API。
+V0 已提供 `config/sources.yaml` 配置的 RSS/Atom 手动采集入口。`stocks.collection.collect_source()` 先发现 Feed 条目，只对没有本地版本的条目、已有内容为 `partial` 的条目，或来源 `updated` / `pubDate` 信号发生变化的条目请求文章页；完整 HTML/文本字节连同响应声明的媒体类型与 `charset` 参数一起交给 `ingest_document()`；类型白名单只比较媒体类型本身，保存的内容类型保留编码声明，供后续解析严格解码。文章内容链接在通过 HTTPS、端口、userinfo 与地址校验前若无法解析，作为该条目的 `INVALID_ARTICLE_URL` 失败记录，同批其余条目继续处理。文章请求失败或正文为空时，以实际取得的 Feed 标题和摘要生成 `text/plain` 部分内容，记录 `completeness = partial` 与脱敏 `fetch_error`，并在后续运行重试：部分内容本身不是正文证据，即使来源没有提供任何时间信号也必须再次尝试全文，未知时间保持未知。相同原始字节复用内容版本；重试得到正文时因字节不同形成新版本。Embedding 索引见后文。V1-01 起采集可由 `collection` 类型 Task 按自身 `trigger` 定时触发：采集 Run 复用同一 `collect_source` 与本文描述的幂等/完整性规则，Run 记录位于 `task_runs`，不另建 Collection Run 表。采集的是“本次是否已取得该条目的当前内容”，判断依据是 `document_collection_states` 与来源时间信号，而不是按 Feed 条目保存的 per-Source Feed 游标；这样的 Feed 游标尚无任务实现，V1-05 交付的是下节所述的研究侧提交可见变化水位与消费游标，两者不是同一个概念。分类（V1-03）、通用 Fact 与 `http_api` Source Mapper（V1-04）及 Document/Fact/报告/证据阅读 API 已在当前代码实现。
 
 ### 后台解析、片段与索引
 
@@ -294,11 +294,13 @@ V0 的 Repository 查询 Document Chunk：使用 **pgvector 语义召回**，结
 
 **pgvector 是首版必备能力**：Document/Chunk 的 Embedding 记录模型标识和维度；查询使用兼容的向量模型与相应索引，不混合不同模型的向量距离结果。原始内容可读与向量可检索是两个状态，分类及抽取失败也不阻止向量索引任务。
 
-当前 `stocks.search` 提供两条读取路径。语义查询只为本次查询文本生成向量，通过当前模型和维度的 HNSW 余弦索引结合来源、发布时间或采集时间过滤，返回当前解析批次中的持久 Chunk、Document 版本、来源和相似度；精确查询只接受 64 字符以内的股票代码或指标编号形式，使用词边界正则在有界结果集中匹配已存 Chunk，不依赖 Embedding 或分类。两条路径都返回实际过滤条件和 `truncated`；语义查询还返回当前解析批次的向量索引覆盖，精确查询不需要 Provider 或向量空间，因此不报告由模型决定的向量覆盖。`truncated` 表示返回数量达到上限，未扫描数量在未知时保持未知；精确查询要求至少存在已解析的当前 Chunk。Document 命中后可用 `--chunk-id` 读取当前批次的相邻已存片段。`stocks.research.select_evidence` 基于这些结果形成持久 Evidence Package；当前尚未实现 `search_changes`、公开证据 API 或跨 Document/Fact 去重。
+当前 `stocks.search` 提供两条读取路径。语义查询只为本次查询文本生成向量，通过当前模型和维度的 HNSW 余弦索引结合来源、发布时间或采集时间过滤，返回当前解析批次中的持久 Chunk、Document 版本、来源和相似度；精确查询只接受 64 字符以内的股票代码或指标编号形式，使用词边界正则在有界结果集中匹配已存 Chunk，不依赖 Embedding 或分类。两条路径都返回实际过滤条件和 `truncated`；语义查询还返回当前解析批次的向量索引覆盖，精确查询不需要 Provider 或向量空间，因此不报告由模型决定的向量覆盖。`truncated` 表示返回数量达到上限，未扫描数量在未知时保持未知；精确查询要求至少存在已解析的当前 Chunk。Document 命中后可用 `--chunk-id` 读取当前批次的相邻已存片段。`stocks.research.select_evidence` 基于这些结果形成持久 Evidence Package。
+
+**V1-05 当前实现：** `stocks.changes.search_changes()` 是原始变化页的公开读取入口。它在同一条 PostgreSQL 查询中按固定 `(start,end]`、可选 `kind` 与 `Document.source_id` 条件先过滤，再执行 `LIMIT`，并以 `(watermark, change_record.id)` 返回原始续点；额外读取一行只用于判断该筛选条件在原窗口内是否还有记录，因此不会被候选按 Document 聚合后的水位推进分页。`ChangePage.completed` 只表示本页已耗尽当前固定查询条件，`TaskRun.change_scan_progress.status='scanned'` 也只表示原始页耗尽；二者都不表示最终报告成功或成功游标已经推进。当前边界是原始 change scan 与 checkpoint，尚未实现把增量 Document/Fact 与历史背景证据统一合并、去重并覆盖统计的 V1-06 能力，也尚未提供公开证据 API。
 
 Embedding 模型引用、维度及分块参数通过配置指定；首版使用一个当前模型及其对应向量索引即可。模型切换后的重建属于后台处理，完成前明确显示索引覆盖状态，不以无结果掩盖重建缺口。结构化 Fact 查询不以其是否已生成向量为前提。
 
-**取材查询接口：** `repository.search_changes` 按 Task Run 增量窗口查询新增 Document、Fact 或重要修订；`repository.search` 不受增量窗口限制，读取适用历史证据。`as_of` 随查询记录为研究参考时间，不作为限制运行中补证的硬截止。两者可同时返回 Document 与 Fact 候选及稳定来源引用、数据版本和查询条件；**在统一 Evidence Selection 内合并关联并去重**，而不是分别给研究模型喂两份重复结果，也不能修改全局 Document 状态。具体去重见[研究取材](research.md)。
+**取材查询边界：** `stocks.changes.search_changes()` 按固定 Run 窗口读取新增 Document/Fact 变化原始页，`stocks.repository.search` 对应路径不受增量窗口限制、读取适用历史证据。当前 Evidence Selection 已接入前者，记录原始页续点与已扫描 Document 身份，但仍分别形成语义背景 Chunk 候选；把两者统一合并、关联 Fact/Document 并去重属于 V1-06，不得把本任务的分页状态描述成已完成统一证据合并。两类读取都不修改全局 Document 消费状态。
 
 ## 来源可信度、证据与安全
 

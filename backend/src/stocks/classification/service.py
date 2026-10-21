@@ -24,6 +24,7 @@ from uuid import UUID
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from stocks.changes import record_change
 from stocks.decision import (
     DECISION_AGENT,
     ClassificationDecision,
@@ -333,6 +334,14 @@ def classify_document_stage(
             ),
             now=attempted_at,
         )
+    # A completed classification is a researchable change: it is what makes the
+    # tags and the should_extract verdict available to a later window.
+    record_change(
+        session,
+        kind="document_classified",
+        document_id=locked.id,
+        recorded_at=attempted_at,
+    )
     _commit(session)
     session.refresh(locked)
     return _summary(

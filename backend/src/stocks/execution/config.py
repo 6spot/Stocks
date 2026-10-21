@@ -249,6 +249,9 @@ class EvidenceStepConfig(BaseModel):
     limit_per_query: int = Field(default=8, ge=1, le=50)
     source_ids: list[str] = Field(default_factory=list, max_length=20)
     max_tokens: int = Field(default=30_000, ge=1, le=64_000)
+    # A Run consumes at most this many raw committed change records. A full page
+    # keeps the Task on the same fixed window with a persisted continuation.
+    change_page_limit: int = Field(default=100, ge=1, le=1000)
 
     @model_validator(mode="after")
     def validate_inputs(self) -> EvidenceStepConfig:
@@ -339,6 +342,10 @@ class TaskConfig(BaseModel):
     strategy: str | None = Field(default=None, max_length=255)
     scope: dict | None = None
     sources: list[str] | None = Field(default=None, max_length=20)
+    # Optional first-run bound on how much already-stored material a research task
+    # scans. Omitted means the first Run scans from the beginning, because silently
+    # starting at "now" would pretend nothing was ever stored before.
+    initial_lookback: int | None = Field(default=None, ge=0, le=10_000)
     steps: list[TaskStepConfig] = Field(min_length=1, max_length=20)
 
     @model_validator(mode="before")
@@ -411,6 +418,16 @@ class TaskConfig(BaseModel):
 
     @model_validator(mode="after")
     def validate_steps(self) -> TaskConfig:
+        if (
+            self.type == "research"
+            and sum(
+                step.select_evidence is not None for step in self.steps
+            )
+            != 1
+        ):
+            raise ValueError(
+                "research Task requires exactly one Evidence Selection step"
+            )
         if self.scope is not None:
             _validate_json_value(self.scope, path="scope")
         seen: set[str] = set()

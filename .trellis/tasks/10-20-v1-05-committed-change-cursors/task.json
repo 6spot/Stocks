@@ -3,7 +3,7 @@
   "name": "v1-05-committed-change-cursors",
   "title": "V1-05 提交可见变化水位与可继续扫描",
   "description": "研究增量按已提交变化推进，晚提交、晚到和处理完成的资料均不会被跳过。",
-  "status": "planning",
+  "status": "in_progress",
   "dev_type": "backend",
   "scope": null,
   "package": null,
@@ -12,7 +12,7 @@
   "assignee": "me",
   "createdAt": "2026-10-20",
   "completedAt": null,
-  "branch": null,
+  "branch": "main",
   "base_branch": "main",
   "worktree_path": null,
   "commit": null,
@@ -34,8 +34,8 @@
     "depends_on": [
       ".trellis/tasks/10-20-v1-04-facts-api-mapping"
     ],
-    "planning_review": "pending",
+    "planning_review": "completed",
     "planning_depth": "delivery-plan",
-    "implementation_authorized": false
+    "implementation_authorized": "true"
   }
 }

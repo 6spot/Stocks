@@ -3,6 +3,7 @@ from uuid import UUID, uuid4
 
 from pgvector.sqlalchemy import Vector
 from sqlalchemy import (
+    BigInteger,
     Boolean,
     CheckConstraint,
     DateTime,
@@ -138,6 +139,41 @@ class TaskRun(Base):
             "retry_of_run_id IS NULL OR retry_of_run_id != id",
             name="ck_task_runs_retry_distinct",
         ),
+        CheckConstraint(
+            "(change_watermark_start IS NULL) = "
+            "(change_watermark_end IS NULL)",
+            name="ck_task_runs_change_watermark_pair",
+        ),
+        CheckConstraint(
+            "change_watermark_start IS NULL OR "
+            "change_watermark_start <= change_watermark_end",
+            name="ck_task_runs_change_watermark_order",
+        ),
+        CheckConstraint(
+            "(window_start IS NULL) = (window_end IS NULL)",
+            name="ck_task_runs_window_time_pair",
+        ),
+        CheckConstraint(
+            "window_start IS NULL OR window_start <= window_end",
+            name="ck_task_runs_window_time_order",
+        ),
+        CheckConstraint(
+            "scope_fingerprint IS NULL OR "
+            "scope_fingerprint ~ '^[0-9a-f]{64}$'",
+            name="ck_task_runs_scope_fingerprint",
+        ),
+        CheckConstraint(
+            "change_scan_progress IS NULL OR "
+            "jsonb_typeof(change_scan_progress) = 'object'",
+            name="ck_task_runs_change_scan_progress",
+        ),
+        CheckConstraint(
+            "change_scan_completed IS NOT TRUE OR "
+            "(change_watermark_end IS NOT NULL AND "
+            "change_scan_progress IS NOT NULL AND "
+            "change_scan_progress ->> 'status' = 'scanned')",
+            name="ck_task_runs_scan_completed_requires_scan",
+        ),
     )
     id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, default=uuid4)
     task_id: Mapped[str] = mapped_column(ForeignKey("task_definitions.id"))
@@ -158,6 +194,36 @@ class TaskRun(Base):
     config_hash: Mapped[str] = mapped_column(String(64))
     output: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     error: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    # The incremental change window this Run scanned, fixed when execution starts so
+    # a retry or a later Run cannot silently widen or narrow it. ``None`` on a
+    # collection Run, which does not use research windows.
+    change_watermark_start: Mapped[int | None] = mapped_column(
+        BigInteger, nullable=True
+    )
+    change_watermark_end: Mapped[int | None] = mapped_column(
+        BigInteger, nullable=True
+    )
+    window_start: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    window_end: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    scope_fingerprint: Mapped[str | None] = mapped_column(
+        String(64), nullable=True
+    )
+    # Versioned raw page position and scan state. This holds references and
+    # counts only; source text remains in the Repository and Evidence Package.
+    # ``none_as_null`` keeps "no scan state yet" as SQL NULL rather than the JSON
+    # value ``null``, so the column constraint and the resume query agree.
+    change_scan_progress: Mapped[dict | None] = mapped_column(
+        JSONB(none_as_null=True), nullable=True
+    )
+    # Set only when the window scan finished; the cursor advances with this, in the
+    # same transaction as the saved Analysis and Report.
+    change_scan_completed: Mapped[bool | None] = mapped_column(
+        Boolean, nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     started_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
@@ -215,6 +281,9 @@ class EvidencePackage(Base):
     selected_count: Mapped[int] = mapped_column(Integer)
     unexamined_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
     retrieval_truncated: Mapped[bool] = mapped_column(Boolean)
+    # Snapshot of the fixed change window and raw page position represented by
+    # this package. It remains None for nonincremental selection callers.
+    change_scan: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
 
 
@@ -770,3 +839,89 @@ class Fact(Base):
     )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
 
+
+
+class ChangeCounter(Base):
+    """A single row holding the committed-visible change watermark.
+
+    Incrementing this counter takes a row lock that is held until the enclosing
+    transaction commits. Two writers therefore serialize on it: a transaction that
+    started earlier but commits later gets the higher watermark, and any reader that
+    observes watermark N knows every change with a lower watermark is already
+    committed. That property is what makes a research window不漏数 — a plain
+    timestamp or a sequence value allocated at statement time does not have it,
+    because a sequence number is handed out before the row is visible.
+    """
+
+    __tablename__ = "change_counters"
+    __table_args__ = (
+        CheckConstraint("watermark >= 0", name="ck_change_counters_watermark"),
+    )
+    name: Mapped[str] = mapped_column(String(64), primary_key=True)
+    watermark: Mapped[int] = mapped_column(BigInteger)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
+class ChangeRecord(Base):
+    """One research-visible change, ordered by its committed watermark.
+
+    Written in the same transaction as the change it describes, so a record and the
+    Document/Fact state it refers to become visible together. `kind` says what
+    changed; `document_id` is the version the change applies to. A Fact change keeps
+    its own `fact_id` so a revision can be attributed without rewriting the
+    Document.
+    """
+
+    __tablename__ = "change_records"
+    __table_args__ = (
+        CheckConstraint(
+            "kind IN ('document_ingested', 'document_parsed', "
+            "'document_classified', 'document_indexed', "
+            "'fact_mapped', 'fact_extracted')",
+            name="ck_change_records_kind",
+        ),
+        UniqueConstraint("watermark", name="uq_change_records_watermark"),
+        Index("ix_change_records_document", "document_id", "watermark"),
+        Index("ix_change_records_kind_watermark", "kind", "watermark"),
+    )
+    id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True), primary_key=True, default=uuid4
+    )
+    watermark: Mapped[int] = mapped_column(BigInteger)
+    kind: Mapped[str] = mapped_column(String(32))
+    document_id: Mapped[UUID] = mapped_column(
+        ForeignKey("documents.id", ondelete="CASCADE")
+    )
+    fact_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("facts.id", ondelete="CASCADE"), nullable=True
+    )
+    recorded_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+class ResearchCursor(Base):
+    """Per Task + scope watermark of the last completed incremental scan.
+
+    Keyed by a deterministic fingerprint of the Task and its research scope, so two
+    Tasks researching the same material keep independent progress and a Task whose
+    scope changes starts from a fresh row instead of inheriting the old range.
+    """
+
+    __tablename__ = "research_cursors"
+    __table_args__ = (
+        CheckConstraint(
+            "scope_fingerprint ~ '^[0-9a-f]{64}$'",
+            name="ck_research_cursors_scope_fingerprint",
+        ),
+        CheckConstraint(
+            "watermark >= 0", name="ck_research_cursors_watermark"
+        ),
+        Index("ix_research_cursors_task", "task_id"),
+    )
+    task_id: Mapped[str] = mapped_column(
+        ForeignKey("task_definitions.id"), primary_key=True
+    )
+    scope_fingerprint: Mapped[str] = mapped_column(String(64), primary_key=True)
+    watermark: Mapped[int] = mapped_column(BigInteger)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))

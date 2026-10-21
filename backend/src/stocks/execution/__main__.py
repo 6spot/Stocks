@@ -9,6 +9,7 @@ from uuid import UUID
 
 from sqlalchemy import select
 
+from stocks.changes import current_watermark, scope_fingerprint
 from stocks.db import session_factory
 from stocks.execution.config import (
     ExecutionConfigError,
@@ -22,7 +23,13 @@ from stocks.execution.service import (
     get_active_run,
     retry_run,
 )
-from stocks.models import ModelCall, TaskRun, TaskStepResult
+from stocks.models import (
+    ModelCall,
+    ResearchCursor,
+    TaskDefinition,
+    TaskRun,
+    TaskStepResult,
+)
 
 
 def _run_payload(
@@ -62,6 +69,16 @@ def _run_payload(
         "finished_at": run.finished_at.isoformat() if run.finished_at else None,
         "error": run.error,
         "output": run.output,
+        "change_window": (
+            {
+                "change_watermark_start": run.change_watermark_start,
+                "change_watermark_end": run.change_watermark_end,
+                "scope_fingerprint": run.scope_fingerprint,
+                "change_scan_completed": run.change_scan_completed,
+            }
+            if run.change_watermark_end is not None
+            else None
+        ),
         "steps": [
             {
                 "step_id": item.step_id,
@@ -215,6 +232,43 @@ def _show_run(args: argparse.Namespace) -> int:
     return 0
 
 
+def _show_cursor(args: argparse.Namespace) -> int:
+    """Read-only view of a Task's watermark and stored cursor.
+
+    A missing cursor is reported as ``null`` rather than as 0: "never scanned" and
+    "scanned up to the beginning" are different states, and the next Run treats them
+    differently.
+    """
+
+    with session_factory()() as session:
+        task = session.get(TaskDefinition, args.task)
+        if task is None:
+            raise ExecutionError("TASK_NOT_FOUND", "Task was not found")
+        scope = task.scope if isinstance(task.scope, dict) else {}
+        fingerprint = scope_fingerprint(args.task, scope)
+        stored = session.get(ResearchCursor, (args.task, fingerprint))
+        print(
+            json.dumps(
+                {
+                    "task_id": args.task,
+                    "scope_fingerprint": fingerprint,
+                    "committed_watermark": current_watermark(session),
+                    "cursor": (
+                        {
+                            "watermark": stored.watermark,
+                            "updated_at": stored.updated_at.isoformat(),
+                        }
+                        if stored is not None
+                        else None
+                    ),
+                },
+                ensure_ascii=False,
+                indent=2,
+            )
+        )
+    return 0
+
+
 def _end_run(args: argparse.Namespace) -> int:
     if not args.confirm_stopped:
         raise ExecutionError(
@@ -311,6 +365,16 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     retry.add_argument("--run-id", required=True)
     retry.set_defaults(handler=_retry_run)
+
+    cursor = commands.add_parser(
+        "cursor",
+        help=(
+            "Show this Task's incremental change cursor and the committed "
+            "watermark, without scanning anything."
+        ),
+    )
+    cursor.add_argument("--task", required=True, help="Task identifier.")
+    cursor.set_defaults(handler=_show_cursor)
     return parser
 
 

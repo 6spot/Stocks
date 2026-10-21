@@ -295,12 +295,26 @@ reachable, report the checks as unverified and do not fall back to the local mac
 `config/tasks.yaml` defines Tasks and Agents, `config/models.yaml` defines the model
 routing, and `config/sources.yaml` defines Sources. A Task is either:
 
-* `type: research` — ordered `select_evidence` steps plus a final `research_agent` step.
-  It reads the currently saved Chunks, persists the selected Evidence Package,
-  validates every finding against the recorded Document/Chunk versions, and saves an
-  Analysis plus a readable Report. It does not collect, parse, index, or call external
-  Tools; the Agent input is untrusted JSON data and the configured `tools` list must be
-  empty.
+* `type: research` — exactly one `select_evidence` step followed by a final
+  `research_agent` step. It reads one bounded page of committed change records from the
+  Run's fixed `(start,end]` window, records the raw continuation in
+  `TaskRun.change_scan_progress`, persists the selected Evidence Package, validates every
+  finding against the recorded Document/Chunk versions, and saves an Analysis plus a
+  readable Report. `change_page_limit` (default `100`, range `1..1000`) bounds each Run's
+  raw change page. A normal later Run resumes the newest valid unfinished checkpoint for
+  the same Task and Scope; a retry copies its source Run's original window, display times,
+  checkpoint and Evidence Package. The raw continuation executes the frozen
+  `query_snapshot` (`source_ids`, `page_limit`, and related scan conditions), so changing
+  the live Task query cannot mutate an in-progress window; semantic background queries
+  can still use current settings. The final Agent Step, Analysis, Report, successful
+  cursor advance and Run `succeeded` state commit together. An incomplete raw window can
+  still produce a successful report, but `change_scan_completed` stays `false`, the
+  checkpoint remains for a later Run, and the cursor does not move; a skipped final Agent,
+  missing/invalid report, unfinished scan or ownership loss cannot advance the cursor.
+  This scans changes and exposes their selected/scanned state; it does not yet merge
+  incremental Document/Fact evidence with historical evidence under V1-06. It does not
+  collect, parse, index, or call external Tools; the Agent input is untrusted JSON data
+  and the configured `tools` list must be empty.
 * `type: collection` — a single `collect_sources` step plus `sources: [id, ...]`. It
   reuses `stocks.collection.service.collect_source`, `config/sources.yaml` and the
   existing Repository idempotency, and never resolves a chat or embedding route, so a
@@ -350,12 +364,13 @@ really gone, because the Worker never takes over or reaps a `running` Run on its
 Ending sets `status: cancelled` with `error.code: RUN_ENDED_BY_OWNER`, clears the
 execution owner, and keeps every stored StepResult, Evidence Package and error. `retry`
 is allowed only for a `failed` or `cancelled` Run; it creates a new Run that copies the
-ended Run's configuration, model routing and prompt snapshot plus the succeeded steps
-before the failure point, re-creates an Evidence Package owned by the new Run, and
-records `retry_of_run_id`. The final `research_agent` step is always re-run, so the
-retry writes its own Analysis and Report. The original Run, its failed step,
-ModelCalls, Analysis/Report and error stay intact, so a retry never pretends the earlier
-attempt did not happen.
+ended Run's configuration, model routing, prompt snapshot, original change window,
+window display times and raw scan checkpoint plus the succeeded steps before the failure
+point, re-creates an Evidence Package owned by the new Run, and records
+`retry_of_run_id`. It does not bind a fresh endpoint. The final `research_agent` step is
+always re-run, so the retry writes its own Analysis and Report. The original Run, its
+failed step, ModelCalls, Analysis/Report and error stay intact, so a retry never pretends
+the earlier attempt did not happen.
 
 Ending and retrying both respect the per-Task single active Run index: a retry is
 rejected while the Task still has a queued or running Run.
@@ -421,10 +436,16 @@ batches; there is no automatic crash detection or takeover.
 Confirm the process stopped, then `end`/`retry` the Run and
 `stocks.processing retry --confirm-stopped` the stage.
 
-Each `select_evidence` step may set up to eight `queries`, a `limit_per_query`, a
-`max_tokens` budget, and up to 20 unique `source_ids`. With no explicit `queries`, the
-runner derives direct company/symbol and separate background topic queries from
-`run.scope`; it does not require every scope dimension in one AND filter.
+The research `select_evidence` step may set up to eight `queries`, a `limit_per_query`, a
+`max_tokens` budget, `change_page_limit`, and up to 20 unique `source_ids`. Its raw change
+query applies those filters before `LIMIT` and stores the last raw
+`(watermark, change_id)`, not a grouped candidate watermark, so filtered pages and repeated
+Document changes cannot skip records as the window continues. With no explicit `queries`,
+the runner derives direct company/symbol and separate background topic queries from
+`run.scope`; it does not require every scope dimension in one AND filter. Use
+`stocks.execution show --run-id <run-id>` to inspect the fixed window and
+`change_scan_completed`; use `stocks.execution cursor --task <task-id>` to inspect the
+committed per-Task/Scope watermark without changing it.
 `candidates_discovered` and `unexamined_count` stay `null` when bounded queries cannot
 determine them. Every finding is marked `fact`, `source_opinion`, or
 `model_inference`, and must cite at least one selected Chunk. Invalid citations retry

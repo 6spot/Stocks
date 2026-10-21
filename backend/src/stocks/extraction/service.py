@@ -24,6 +24,7 @@ from uuid import UUID
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from stocks.changes import record_change
 from stocks.decision import decision_client, load_decision_route
 from stocks.facts import (
     FactInput,
@@ -565,6 +566,9 @@ def extract_document_facts(
         ),
         created_at=attempted_at,
     )
+    _record_fact_changes(
+        session, locked.id, result, kind="fact_extracted", recorded_at=attempted_at
+    )
     if claim is not None:
         apply_stage_outcome(
             session,
@@ -609,6 +613,33 @@ def _select_chunks(chunks: list, budget: int) -> list:
         selected.append(chunk)
         used += len(chunk.text)
     return selected
+
+
+def _record_fact_changes(
+    session: Session,
+    document_id: UUID,
+    result,
+    *,
+    kind: str,
+    recorded_at: datetime,
+) -> None:
+    """Record one change per newly created Fact, in this same transaction.
+
+    Only newly created Facts are changes: a retry that reused an existing row
+    produced nothing new, and recording it again would make an unchanged Document
+    look like fresh material in the next research window.
+    """
+
+    if not result.created_ids:
+        return
+    for fact_id in result.created_ids:
+        record_change(
+            session,
+            kind=kind,
+            document_id=document_id,
+            fact_id=fact_id,
+            recorded_at=recorded_at,
+        )
 
 
 def _commit(session: Session) -> None:
@@ -854,6 +885,9 @@ def map_document_facts(
         processor_version=MAPPER_PROCESSOR_VERSION,
         config_fingerprint=fingerprint,
         created_at=attempted_at,
+    )
+    _record_fact_changes(
+        session, locked.id, result, kind="fact_mapped", recorded_at=attempted_at
     )
     if claim is not None:
         apply_stage_outcome(

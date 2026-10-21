@@ -14,6 +14,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from stocks.indexing.service import embed_texts
+from stocks.changes import ChangeCursorError, ChangeWindow, search_changes
 from stocks.models import (
     Analysis,
     Document,
@@ -42,6 +43,7 @@ MAX_SOURCE_IDS = 20
 class EvidenceSelectionResult:
     package: EvidencePackage
     refs: tuple[dict, ...]
+    scan_page: dict
 
 
 def select_evidence(
@@ -58,6 +60,13 @@ def select_evidence(
     limit_per_query: int,
     source_ids: tuple[str, ...] | list[str] = (),
     max_tokens: int = MAX_EVIDENCE_TOKENS,
+    change_window: ChangeWindow | None = None,
+    scan_query_snapshot: dict | None = None,
+    after_watermark: int | None = None,
+    after_change_id: UUID | str | None = None,
+    page_limit: int = 100,
+    scanned_document_ids: tuple[str, ...] | list[str] = (),
+    commit: bool = True,
     embed: Callable[
         [ModelClient, EmbeddingTargets, list[str]], EmbeddingResponse
     ] = embed_texts,
@@ -77,11 +86,6 @@ def select_evidence(
         raise ValueError(
             f"Evidence budget max_tokens must be between 1 and {MAX_EVIDENCE_TOKENS}"
         )
-    query_roles, query_texts = _normalize_queries(
-        objective,
-        scope,
-        queries,
-    )
     normalized_sources = tuple(source_ids)
     if len(normalized_sources) > MAX_SOURCE_IDS:
         raise ValueError(f"source_ids supports at most {MAX_SOURCE_IDS} values")
@@ -91,6 +95,68 @@ def select_evidence(
     ):
         raise ValueError(
             "source_ids must be unique non-empty values of at most 120 characters"
+        )
+    if change_window is not None:
+        if not isinstance(scan_query_snapshot, dict) or not scan_query_snapshot:
+            raise ValueError(
+                "Incremental Evidence Selection requires a query snapshot"
+            )
+        snapshot_sources = scan_query_snapshot.get("source_ids")
+        snapshot_page_limit = scan_query_snapshot.get("page_limit")
+        if (
+            not isinstance(snapshot_sources, list)
+            or len(snapshot_sources) > MAX_SOURCE_IDS
+            or len(set(snapshot_sources)) != len(snapshot_sources)
+            or any(
+                not isinstance(item, str)
+                or not item.strip()
+                or len(item) > 120
+                for item in snapshot_sources
+            )
+        ):
+            raise ValueError("Frozen change scan source_ids are invalid")
+        if (
+            not isinstance(snapshot_page_limit, int)
+            or isinstance(snapshot_page_limit, bool)
+            or not 1 <= snapshot_page_limit <= 1000
+        ):
+            raise ValueError("change page limit must be between 1 and 1000")
+        snapshot_queries = scan_query_snapshot.get("queries")
+        snapshot_limit_per_query = scan_query_snapshot.get("limit_per_query")
+        snapshot_max_tokens = scan_query_snapshot.get("max_tokens")
+        if (
+            not isinstance(snapshot_queries, list)
+            or len(snapshot_queries) > MAX_QUERIES
+            or any(
+                not isinstance(item, str)
+                or not item.strip()
+                or len(item) > MAX_QUERY_CHARACTERS
+                for item in snapshot_queries
+            )
+            or not isinstance(snapshot_limit_per_query, int)
+            or isinstance(snapshot_limit_per_query, bool)
+            or not 1 <= snapshot_limit_per_query <= 50
+            or not isinstance(snapshot_max_tokens, int)
+            or isinstance(snapshot_max_tokens, bool)
+            or not 1 <= snapshot_max_tokens <= MAX_EVIDENCE_TOKENS
+        ):
+            raise ValueError("Frozen change scan query snapshot is invalid")
+        query_roles, query_texts = _normalize_queries(
+            objective,
+            scope,
+            queries,
+        )
+        # The incremental raw scan is a frozen operation. Its continuation must
+        # not change when the Task's live queries or filters change. Semantic
+        # background selection remains current and is intentionally not used as
+        # the raw scanner's condition source or checkpoint identity.
+        normalized_scan_sources = tuple(snapshot_sources)
+        scan_page_limit = snapshot_page_limit
+    else:
+        query_roles, query_texts = _normalize_queries(
+            objective,
+            scope,
+            queries,
         )
 
     filters = SearchFilters(source_ids=normalized_sources)
@@ -104,7 +170,52 @@ def select_evidence(
     retrieval_truncated = False
     query_truncated = False
     coverage_snapshots: list[dict] = []
-
+    change_page: dict
+    accumulated_scanned_documents = {
+        str(value) for value in scanned_document_ids
+    }
+    if change_window is None:
+        change_page = {
+            "completed": True,
+            "after_watermark": change_window.end if change_window else None,
+            "after_change_id": None,
+            "raw_changes_scanned": 0,
+            "candidate_documents_scanned": 0,
+            "source_ids": list(normalized_sources),
+            "kinds": [],
+        }
+    else:
+        try:
+            raw_page = search_changes(
+                session,
+                change_window,
+                source_ids=normalized_scan_sources,
+                limit=scan_page_limit,
+                after_watermark=after_watermark,
+                after_change_id=after_change_id,
+            )
+        except ChangeCursorError as exc:
+            raise ValueError(exc.message) from exc
+        changed_document_ids = tuple(
+            dict.fromkeys(record.document_id for record in raw_page.records)
+        )
+        accumulated_scanned_documents.update(
+            str(value) for value in changed_document_ids
+        )
+        change_page = {
+            "completed": raw_page.completed,
+            "after_watermark": raw_page.after_watermark,
+            "after_change_id": (
+                str(raw_page.after_change_id)
+                if raw_page.after_change_id is not None
+                else None
+            ),
+            "raw_changes_scanned": len(raw_page.records),
+            "candidate_documents_scanned": len(changed_document_ids),
+            "scanned_document_ids": sorted(accumulated_scanned_documents),
+            "source_ids": list(raw_page.source_ids),
+            "kinds": list(raw_page.kinds),
+        }
     for query, role in zip(query_texts, query_roles, strict=True):
         result = semantic_search(
             session,
@@ -189,7 +300,8 @@ def select_evidence(
         None if query_truncated else len(discovered_chunks - examined_chunks)
     )
     coverage = {
-        "current_query_only": True,
+        "current_query_only": False if change_window is not None else True,
+        "change_scan": deepcopy(change_page),
         "candidates_discovered": candidates_discovered,
         "candidates_screened": candidates_screened,
         "selected_count": len(selected),
@@ -218,6 +330,9 @@ def select_evidence(
         selection_budget={
             "max_tokens": max_tokens,
             "limit_per_query": limit_per_query,
+            "change_page_limit": (
+                scan_page_limit if change_window is not None else None
+            ),
             "estimated_selected_tokens": selected_tokens,
         },
         queries=query_records,
@@ -228,13 +343,25 @@ def select_evidence(
         selected_count=coverage["selected_count"],
         unexamined_count=coverage["unexamined_count"],
         retrieval_truncated=coverage["retrieval_truncated"],
+        change_scan=(
+            {
+                "window": {
+                    "change_watermark_start": change_window.start,
+                    "change_watermark_end": change_window.end,
+                },
+                **deepcopy(change_page),
+            }
+            if change_window is not None
+            else None
+        ),
         created_at=as_of,
     )
     session.add(package)
     try:
         session.flush()
         package_id = package.id
-        session.commit()
+        if commit:
+            session.commit()
     except Exception:
         session.rollback()
         raise
@@ -244,6 +371,7 @@ def select_evidence(
     return EvidenceSelectionResult(
         package=persisted,
         refs=tuple(durable_evidence_ref(item) for item in selected),
+        scan_page=change_page,
     )
 
 

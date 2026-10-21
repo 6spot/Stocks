@@ -101,6 +101,13 @@ def upgrade():
         sa.Column("config_hash", sa.String(64), nullable=False),
         sa.Column("output", JSONB()),
         sa.Column("error", JSONB()),
+        sa.Column("change_watermark_start", sa.BigInteger()),
+        sa.Column("change_watermark_end", sa.BigInteger()),
+        sa.Column("window_start", sa.DateTime(timezone=True)),
+        sa.Column("window_end", sa.DateTime(timezone=True)),
+        sa.Column("scope_fingerprint", sa.String(64)),
+        sa.Column("change_scan_progress", JSONB()),
+        sa.Column("change_scan_completed", sa.Boolean()),
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
         sa.Column("started_at", sa.DateTime(timezone=True)),
         sa.Column("finished_at", sa.DateTime(timezone=True)),
@@ -124,6 +131,41 @@ def upgrade():
             "status NOT IN ('queued', 'succeeded', 'failed', 'cancelled') "
             "OR process_token IS NULL",
             name="ck_task_runs_closed_owner",
+        ),
+        sa.CheckConstraint(
+            "(change_watermark_start IS NULL) = "
+            "(change_watermark_end IS NULL)",
+            name="ck_task_runs_change_watermark_pair",
+        ),
+        sa.CheckConstraint(
+            "change_watermark_start IS NULL OR "
+            "change_watermark_start <= change_watermark_end",
+            name="ck_task_runs_change_watermark_order",
+        ),
+        sa.CheckConstraint(
+            "(window_start IS NULL) = (window_end IS NULL)",
+            name="ck_task_runs_window_time_pair",
+        ),
+        sa.CheckConstraint(
+            "window_start IS NULL OR window_start <= window_end",
+            name="ck_task_runs_window_time_order",
+        ),
+        sa.CheckConstraint(
+            "scope_fingerprint IS NULL OR "
+            "scope_fingerprint ~ '^[0-9a-f]{64}$'",
+            name="ck_task_runs_scope_fingerprint",
+        ),
+        sa.CheckConstraint(
+            "change_scan_progress IS NULL OR "
+            "jsonb_typeof(change_scan_progress) = 'object'",
+            name="ck_task_runs_change_scan_progress",
+        ),
+        sa.CheckConstraint(
+            "change_scan_completed IS NOT TRUE OR "
+            "(change_watermark_end IS NOT NULL AND "
+            "change_scan_progress IS NOT NULL AND "
+            "change_scan_progress ->> 'status' = 'scanned')",
+            name="ck_task_runs_scan_completed_requires_scan",
         ),
     )
     op.create_index(
@@ -157,6 +199,7 @@ def upgrade():
         sa.Column("selected_count", sa.Integer(), nullable=False),
         sa.Column("unexamined_count", sa.Integer()),
         sa.Column("retrieval_truncated", sa.Boolean(), nullable=False),
+        sa.Column("change_scan", JSONB()),
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
         sa.CheckConstraint(
             "selection_policy_version ~ '^[A-Za-z0-9._-]+$'",
@@ -671,6 +714,69 @@ def upgrade():
     op.create_index("ix_facts_type_subject", "facts", ["fact_type", "subject_name"])
     op.create_index("ix_facts_symbol_metric", "facts", ["symbol", "metric_id"])
     op.create_index("ix_facts_period", "facts", ["period_start", "period_end"])
+    op.create_table(
+        "change_counters",
+        sa.Column("name", sa.String(64), primary_key=True),
+        sa.Column("watermark", sa.BigInteger(), nullable=False),
+        sa.Column(
+            "updated_at",
+            sa.DateTime(timezone=True),
+            nullable=False,
+            server_default=sa.text("now()"),
+        ),
+        sa.CheckConstraint("watermark >= 0", name="ck_change_counters_watermark"),
+    )
+    op.create_table(
+        "change_records",
+        sa.Column("id", UUID(as_uuid=True), primary_key=True),
+        sa.Column("watermark", sa.BigInteger(), nullable=False),
+        sa.Column("kind", sa.String(32), nullable=False),
+        sa.Column(
+            "document_id",
+            UUID(as_uuid=True),
+            sa.ForeignKey("documents.id", ondelete="CASCADE"),
+            nullable=False,
+        ),
+        sa.Column(
+            "fact_id",
+            UUID(as_uuid=True),
+            sa.ForeignKey("facts.id", ondelete="CASCADE"),
+        ),
+        sa.Column("recorded_at", sa.DateTime(timezone=True), nullable=False),
+        sa.CheckConstraint(
+            "kind IN ('document_ingested', 'document_parsed', "
+            "'document_classified', 'document_indexed', "
+            "'fact_mapped', 'fact_extracted')",
+            name="ck_change_records_kind",
+        ),
+        sa.UniqueConstraint("watermark", name="uq_change_records_watermark"),
+    )
+    op.create_index(
+        "ix_change_records_document", "change_records", ["document_id", "watermark"]
+    )
+    op.create_index(
+        "ix_change_records_kind_watermark", "change_records", ["kind", "watermark"]
+    )
+    op.create_table(
+        "research_cursors",
+        sa.Column(
+            "task_id",
+            sa.String(120),
+            sa.ForeignKey("task_definitions.id"),
+            primary_key=True,
+        ),
+        sa.Column("scope_fingerprint", sa.String(64), primary_key=True),
+        sa.Column("watermark", sa.BigInteger(), nullable=False),
+        sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False),
+        sa.CheckConstraint(
+            "scope_fingerprint ~ '^[0-9a-f]{64}$'",
+            name="ck_research_cursors_scope_fingerprint",
+        ),
+        sa.CheckConstraint(
+            "watermark >= 0", name="ck_research_cursors_watermark"
+        ),
+    )
+    op.create_index("ix_research_cursors_task", "research_cursors", ["task_id"])
 
 
 def downgrade():
@@ -678,6 +784,12 @@ def downgrade():
         "ix_document_processing_states_ready",
         table_name="document_processing_states",
     )
+    op.drop_index("ix_research_cursors_task", table_name="research_cursors")
+    op.drop_table("research_cursors")
+    op.drop_index("ix_change_records_kind_watermark", table_name="change_records")
+    op.drop_index("ix_change_records_document", table_name="change_records")
+    op.drop_table("change_records")
+    op.drop_table("change_counters")
     op.drop_index("ix_facts_period", table_name="facts")
     op.drop_index("ix_facts_symbol_metric", table_name="facts")
     op.drop_index("ix_facts_type_subject", table_name="facts")

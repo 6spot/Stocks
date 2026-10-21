@@ -1,6 +1,7 @@
 import asyncio
 import json
 import os
+from copy import deepcopy
 from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime
 from pathlib import Path
@@ -35,6 +36,7 @@ from stocks.providers import (
     ModelError,
     ModelTarget,
 )
+from stocks.repository import SearchHit
 from stocks.models import (
     Analysis,
     Base,
@@ -95,7 +97,14 @@ def cli_session_factory(engine, monkeypatch):
     )
 
 
-def write_config(tmp_path, *, condition: dict | None = None) -> str:
+def write_config(
+    tmp_path,
+    *,
+    condition: dict | None = None,
+    queries: list[str] | None = None,
+    source_ids: list[str] | None = None,
+    change_page_limit: int | None = None,
+) -> str:
     condition_yaml = ""
     if condition is not None:
         condition_lines = [
@@ -115,6 +124,20 @@ def write_config(tmp_path, *, condition: dict | None = None) -> str:
         condition_yaml = "\n".join(
             ["        " + line for line in condition_lines]
         )
+    selection_extra = ""
+    if source_ids is not None:
+        selection_extra += (
+            "\n          source_ids: "
+            + json.dumps(source_ids, ensure_ascii=False)
+        )
+    if change_page_limit is not None:
+        selection_extra += (
+            f"\n          change_page_limit: {change_page_limit}"
+        )
+    query_text = json.dumps(
+        queries if queries is not None else ["inflation", "macro policy"],
+        ensure_ascii=False,
+    )
     path = tmp_path / "tasks.yaml"
     path.write_text(
         f"""
@@ -129,8 +152,9 @@ tasks:
       - id: evidence
         select_evidence:
           kind: select_evidence
-          queries: [inflation, macro policy]
+          queries: {query_text}
           limit_per_query: 2
+{selection_extra}
       - id: research
 {condition_yaml}
         research_agent:
@@ -205,40 +229,14 @@ agents:
 
 
 def test_config_accepts_bounded_source_filters(tmp_path):
-    path = Path(write_config(tmp_path))
-    with open(path, encoding="utf-8") as stream:
-        valid = stream.read()
-    path.write_text(
-        valid.replace(
-            "queries: [inflation, macro policy]\n          limit_per_query: 2",
-            (
-                "queries: [inflation, macro policy]\n"
-                "          limit_per_query: 2\n"
-                "          source_ids: [sec, media]"
-            ),
-        ),
-        encoding="utf-8",
-    )
+    path = Path(write_config(tmp_path, source_ids=["sec", "media"]))
     search = load_task_configuration(path).tasks[0].steps[0].select_evidence
     assert search is not None
     assert search.source_ids == ["sec", "media"]
 
 
 def test_config_rejects_duplicate_source_filters(tmp_path):
-    path = Path(write_config(tmp_path))
-    with open(path, encoding="utf-8") as stream:
-        valid = stream.read()
-    path.write_text(
-        valid.replace(
-            "queries: [inflation, macro policy]\n          limit_per_query: 2",
-            (
-                "queries: [inflation, macro policy]\n"
-                "          limit_per_query: 2\n"
-                "          source_ids: [sec, sec]"
-            ),
-        ),
-        encoding="utf-8",
-    )
+    path = Path(write_config(tmp_path, source_ids=["sec", "sec"]))
     with pytest.raises(ExecutionConfigError, match="unique"):
         load_task_configuration(path)
 
@@ -551,8 +549,10 @@ def test_condition_whitelist_skips_later_step(tmp_path):
     )
 
 
-def _make_task_config(tmp_path, condition=None):
-    return load_task_configuration(write_config(tmp_path, condition=condition))
+def _make_task_config(tmp_path, condition=None, **overrides):
+    return load_task_configuration(
+        write_config(tmp_path, condition=condition, **overrides)
+    )
 
 
 def _fake_embed(client, targets, texts):
@@ -699,6 +699,22 @@ def _evidence_selection_result(
     gaps: list[str],
 ):
     """Stand in for Evidence Selection, persisting the package for this Run."""
+    change_scan = None
+    if run.change_watermark_end is not None:
+        change_scan = {
+            "window": {
+                "change_watermark_start": run.change_watermark_start,
+                "change_watermark_end": run.change_watermark_end,
+            },
+            "completed": True,
+            "after_watermark": run.change_watermark_end,
+            "after_change_id": None,
+            "raw_changes_scanned": 0,
+            "candidate_documents_scanned": 0,
+            "scanned_document_ids": [],
+            "source_ids": [],
+            "kinds": [],
+        }
     package = EvidencePackage(
         run_id=run.id,
         objective=run.objective,
@@ -714,9 +730,29 @@ def _evidence_selection_result(
         selected_count=len(selected_chunks),
         unexamined_count=None,
         retrieval_truncated=False,
+        change_scan=change_scan,
         created_at=run.created_at,
     )
     session.add(package)
+    session.flush()
+    if run.change_scan_progress is not None:
+        from stocks.changes import checkpoint_scan
+
+        checkpoint_scan(
+            session,
+            run,
+            page={
+                "completed": True,
+                "after_watermark": run.change_watermark_end,
+                "after_change_id": None,
+                "raw_changes_scanned": 0,
+                "scanned_document_ids": [],
+            },
+            selection={
+                "evidence_package_id": str(package.id),
+                "selected_count": package.selected_count,
+            },
+        )
     session.commit()
     output = {
         "evidence_package_id": str(package.id),
@@ -724,6 +760,8 @@ def _evidence_selection_result(
         "coverage": package.coverage,
         "truncated": False,
     }
+    if change_scan is not None:
+        output["change_scan"] = deepcopy(change_scan)
     refs = [
         {
             "chunk_id": item["chunk_id"],
@@ -959,6 +997,47 @@ def test_claim_and_execution_reject_wrong_process_owner(engine, tmp_path):
         assert exc_info.value.code == "RUN_NOT_OWNED"
 
 
+def test_binding_failure_fails_claimed_run(engine, tmp_path, monkeypatch):
+    config = _make_task_config(tmp_path)
+    task = config.tasks[0]
+    with Session(engine) as session:
+        claimed = create_or_get_run(
+            session,
+            task,
+            list(config.agents),
+            config_path=write_models_config(tmp_path),
+        )
+        run_id = claimed.run.id
+        assert claim_run(session, run_id, process_token=PROCESS_A)
+
+        def fail_binding(*args, **kwargs):
+            raise ExecutionError("WINDOW_INVALID", "window binding failed")
+
+        monkeypatch.setattr(
+            execution_service,
+            "_bind_change_window",
+            fail_binding,
+        )
+        with pytest.raises(ExecutionError) as exc_info:
+            execute_claimed_run(
+                ExecutionContext(
+                    session=session,
+                    settings=make_config(),
+                    config_path="unused",
+                ),
+                run_id,
+                process_token=PROCESS_A,
+            )
+
+        assert exc_info.value.code == "WINDOW_INVALID"
+        session.expire_all()
+        failed = session.get(TaskRun, run_id)
+        assert failed is not None
+        assert failed.status == "failed"
+        assert failed.process_token is None
+        assert failed.error["code"] == "WINDOW_INVALID"
+
+
 def test_successful_run_persists_snapshot_steps_and_never_overwrites_success(
     engine, tmp_path
 ):
@@ -1051,6 +1130,13 @@ def test_successful_run_persists_snapshot_steps_and_never_overwrites_success(
         assert selected_chunk["chunk_id"] in report.content
         assert completed.output["analysis_id"] == str(analysis.id)
         assert completed.output["report_id"] == str(report.id)
+        assert completed.change_scan_completed is True
+        assert completed.change_scan_progress["status"] == "scanned"
+        from stocks.changes import get_cursor
+
+        cursor = get_cursor(session, task.id, task.run_scope)
+        assert cursor is not None
+        assert cursor.watermark == completed.change_watermark_end
         calls = session.scalars(
             select(ModelCall).where(ModelCall.run_id == run_id)
         ).all()
@@ -1159,6 +1245,9 @@ def test_empty_evidence_fails_without_overwriting_success(engine, tmp_path):
         assert step is not None
         assert step.status == "failed"
         assert step.error["code"] == "EVIDENCE_UNAVAILABLE"
+        from stocks.changes import get_cursor
+
+        assert get_cursor(session, task.id, task.run_scope) is None
 
 
 def test_skipped_step_is_persisted(engine, tmp_path):
@@ -1206,11 +1295,494 @@ def test_skipped_step_is_persisted(engine, tmp_path):
         results = session.scalars(
             select(TaskStepResult).where(TaskStepResult.run_id == completed.id)
         ).all()
-        assert completed.status == "succeeded"
+        assert completed.status == "failed"
+        assert completed.error["code"] == "FINAL_RESEARCH_STEP_NOT_SUCCEEDED"
         assert {result.step_id: result.status for result in results} == {
             "evidence": "succeeded",
             "research": "skipped",
         }
+        assert completed.change_scan_completed is False
+        from stocks.changes import get_cursor
+
+        assert get_cursor(session, task.id, task.run_scope) is None
+
+
+def test_final_report_failure_rolls_back_final_step_and_keeps_scan_checkpoint(
+    engine, tmp_path, monkeypatch
+):
+    """A report failure cannot commit an Analysis, final step, or cursor."""
+
+    from stocks.changes import get_cursor
+
+    config = _make_task_config(tmp_path)
+    task = config.tasks[0]
+    models_path = write_models_config(tmp_path)
+    selected = _selected_evidence_chunk()
+
+    def fail_report(*args, **kwargs):
+        raise ValueError("report rendering failed")
+
+    monkeypatch.setattr(execution_service, "render_report", fail_report)
+    with Session(engine) as session:
+        claimed = create_or_get_run(
+            session,
+            task,
+            list(config.agents),
+            config_path=models_path,
+        )
+        run_id = claimed.run.id
+        assert claim_run(session, run_id, process_token=PROCESS_A)
+        _add_saved_evidence(session)
+
+        def fake_search(session, settings, config_path, step, *, run, **kwargs):
+            return _evidence_selection_result(
+                session,
+                run,
+                selected_chunks=[selected],
+                gaps=[],
+            )
+
+        monkeypatch.setattr(
+            execution_service,
+            "_run_evidence_selection",
+            fake_search,
+        )
+        failed = execute_claimed_run(
+            ExecutionContext(
+                session=session,
+                settings=make_config(),
+                config_path=str(models_path),
+                model_transport=_mock_transport(),
+            ),
+            run_id,
+            process_token=PROCESS_A,
+        )
+
+        assert failed.status == "failed"
+        assert session.scalar(
+            select(TaskStepResult).where(
+                TaskStepResult.run_id == run_id,
+                TaskStepResult.step_id == "research",
+            )
+        ).status == "failed"
+        assert session.scalar(
+            select(Analysis).where(Analysis.run_id == run_id)
+        ) is None
+        assert session.scalar(
+            select(Report).where(Report.run_id == run_id)
+        ) is None
+        assert failed.change_scan_completed is False
+        assert failed.change_scan_progress["status"] == "scanned"
+        assert get_cursor(session, task.id, task.run_scope) is None
+
+
+def test_final_ownership_loss_commits_no_success_artifacts(
+    engine, tmp_path, monkeypatch
+):
+    from stocks.changes import get_cursor
+
+    config = _make_task_config(tmp_path)
+    task = config.tasks[0]
+    selected = _selected_evidence_chunk()
+    with Session(engine) as session:
+        claimed = create_or_get_run(
+            session,
+            task,
+            list(config.agents),
+            config_path=write_models_config(tmp_path),
+        )
+        run_id = claimed.run.id
+        assert claim_run(session, run_id, process_token=PROCESS_A)
+        _add_saved_evidence(session)
+
+        def fake_search(session, settings, config_path, step, *, run, **kwargs):
+            return _evidence_selection_result(
+                session,
+                run,
+                selected_chunks=[selected],
+                gaps=[],
+            )
+
+        original_assert_ownership = execution_service._assert_run_ownership
+        ownership_checks = 0
+
+        def lose_ownership(session, owned_run_id, process_token):
+            nonlocal ownership_checks
+            ownership_checks += 1
+            if ownership_checks < 3:
+                return original_assert_ownership(
+                    session, owned_run_id, process_token
+                )
+            assert ownership_checks == 3
+            assert owned_run_id == run_id
+            assert process_token == PROCESS_A
+            # The final StepResult, Analysis and Report are flushed but not
+            # committed here. Release their row locks, then let the Owner end
+            # the Run before the authoritative final ownership fence.
+            session.rollback()
+            with Session(engine) as owner_session:
+                owned = owner_session.get(TaskRun, run_id, with_for_update=True)
+                assert owned is not None
+                owned.status = "cancelled"
+                owned.process_token = None
+                owned.error = {
+                    "code": "RUN_ENDED_BY_OWNER",
+                    "message": "ended during final completion",
+                }
+                owned.finished_at = datetime.now(UTC)
+                owner_session.commit()
+            raise ExecutionError(
+                "RUN_NOT_OWNED",
+                "Task Run is no longer owned by this process",
+            )
+
+        monkeypatch.setattr(
+            execution_service,
+            "_run_evidence_selection",
+            fake_search,
+        )
+        monkeypatch.setattr(
+            execution_service,
+            "_assert_run_ownership",
+            lose_ownership,
+        )
+        with pytest.raises(ExecutionError) as exc_info:
+            execute_claimed_run(
+                ExecutionContext(
+                    session=session,
+                    settings=make_config(),
+                    config_path=str(write_models_config(tmp_path)),
+                    model_transport=_mock_transport(),
+                ),
+                run_id,
+                process_token=PROCESS_A,
+            )
+
+        assert exc_info.value.code == "RUN_NOT_OWNED"
+        session.expire_all()
+        ended = session.get(TaskRun, run_id)
+        assert ended is not None
+        assert ended.status == "cancelled"
+        assert ended.process_token is None
+        assert ended.error["code"] == "RUN_ENDED_BY_OWNER"
+        assert ended.change_scan_completed is False
+        research_step = session.scalar(
+            select(TaskStepResult).where(
+                TaskStepResult.run_id == run_id,
+                TaskStepResult.step_id == "research",
+            )
+        )
+        assert research_step is None
+        assert session.scalar(
+            select(Analysis).where(Analysis.run_id == run_id)
+        ) is None
+        assert session.scalar(
+            select(Report).where(Report.run_id == run_id)
+        ) is None
+        assert get_cursor(session, task.id, task.run_scope) is None
+
+
+def test_retry_recovers_a_failed_agent_without_rebinding_the_window(
+    engine, tmp_path
+):
+    """A retry continues the source Run's exact window after its checkpoint."""
+
+    from stocks.changes import get_cursor
+
+    config = _make_task_config(tmp_path)
+    task = config.tasks[0]
+    models_path = write_models_config(tmp_path)
+    selected = _selected_evidence_chunk()
+    with Session(engine) as session:
+        claimed = create_or_get_run(
+            session,
+            task,
+            list(config.agents),
+            config_path=models_path,
+        )
+        run_id = claimed.run.id
+        assert claim_run(session, run_id, process_token=PROCESS_A)
+        _add_saved_evidence(session)
+
+        def fake_search(session, settings, config_path, step, *, run, **kwargs):
+            return _evidence_selection_result(
+                session,
+                run,
+                selected_chunks=[selected],
+                gaps=[],
+            )
+
+        original_search = execution_service._run_evidence_selection
+        execution_service._run_evidence_selection = fake_search
+        try:
+            failed = execute_claimed_run(
+                ExecutionContext(
+                    session=session,
+                    settings=make_config(),
+                    config_path=str(models_path),
+                    model_transport=_mock_transport(statuses=[500, 500, 500]),
+                ),
+                run_id,
+                process_token=PROCESS_A,
+            )
+        finally:
+            execution_service._run_evidence_selection = original_search
+        assert failed.status == "failed"
+        original_window = (
+            failed.change_watermark_start,
+            failed.change_watermark_end,
+        )
+        original_position = failed.change_scan_progress["after_watermark"]
+        assert get_cursor(session, task.id, task.run_scope) is None
+
+        retried = execution_service.retry_run(session, run_id)
+        assert (
+            retried.run.change_watermark_start,
+            retried.run.change_watermark_end,
+        ) == original_window
+        assert (
+            retried.run.change_scan_progress["after_watermark"]
+            == original_position
+        )
+        package = session.scalar(
+            select(EvidencePackage).where(
+                EvidencePackage.run_id == retried.run.id
+            )
+        )
+        assert package is not None
+        assert len(package.selected_chunks) == 1
+        assert package.selected_chunks[0]["chunk_id"] == selected["chunk_id"]
+        retried_progress = retried.run.change_scan_progress
+        assert retried_progress["selection"]["evidence_package_id"] == str(
+            package.id
+        )
+        assert retried_progress["window"]["change_watermark_start"] == (
+            retried.run.change_watermark_start
+        )
+        assert retried_progress["window"]["change_watermark_end"] == (
+            retried.run.change_watermark_end
+        )
+        copied_step = session.scalar(
+            select(TaskStepResult).where(
+                TaskStepResult.run_id == retried.run.id,
+                TaskStepResult.step_id == "evidence",
+            )
+        )
+        assert copied_step is not None
+        assert copied_step.output["evidence_package_id"] == str(package.id)
+        assert package.change_scan["window"] == {
+            "change_watermark_start": retried.run.change_watermark_start,
+            "change_watermark_end": retried.run.change_watermark_end,
+        }
+
+
+def test_normal_runs_advance_through_frozen_paged_scan(
+    engine, tmp_path, monkeypatch
+):
+    """Three normal Runs consume pages 1->2->3 using one frozen scan snapshot."""
+
+    from stocks.changes import record_change
+
+    task_config = _make_task_config(
+        tmp_path,
+        queries=["live query after resume"],
+        source_ids=["sec"],
+        change_page_limit=1,
+    )
+    task = task_config.tasks[0]
+    models_path = write_models_config(tmp_path)
+
+    with Session(engine) as session:
+        _add_saved_evidence(session)
+        session.add(
+            Source(
+                id="media",
+                name="Media",
+                connector="rss",
+                publisher="Media",
+                trust_tier="T2",
+            )
+        )
+        session.flush()
+        documents = []
+        for source_id, dedupe_key in (
+            ("sec", "first"),
+            ("sec", "second"),
+            ("sec", "third"),
+            ("media", "filtered"),
+            ("sec", "fourth"),
+        ):
+            document = Document(
+                source_id=source_id,
+                dedupe_key=dedupe_key,
+                version=1,
+                title=dedupe_key,
+                collected_at=datetime.now(UTC),
+                completeness="complete",
+                content_type="text/plain",
+                content_size=1,
+                content_hash=(
+                    dedupe_key[0] * 64
+                ),
+                snapshot_key=f"snapshot-{dedupe_key}",
+                trust_tier_snapshot="T1",
+            )
+            session.add(document)
+            session.flush()
+            record_change(
+                session,
+                kind="document_ingested",
+                document_id=document.id,
+                recorded_at=datetime.now(UTC),
+            )
+            documents.append(document)
+        session.commit()
+        expected_documents = [
+            documents[0].id,
+            documents[1].id,
+            documents[2].id,
+            documents[4].id,
+        ]
+
+        hit = SearchHit(
+            chunk_id=UUID(EVIDENCE_CHUNK_ID),
+            document_id=UUID(EVIDENCE_DOCUMENT_ID),
+            parse_batch_id=UUID(EVIDENCE_BATCH_ID),
+            position=0,
+            text="Evidence",
+            locator={},
+            title="Evidence",
+            source_id="sec",
+            version=1,
+            published_at=None,
+            source_updated_at=None,
+            collected_at=datetime.now(UTC),
+            completeness="complete",
+            similarity=0.9,
+        )
+
+        def semantic_result(*args, **kwargs):
+            return type(
+                "Result",
+                (),
+                {"hits": (hit,), "coverage": None, "truncated": False},
+            )()
+
+        monkeypatch.setattr(
+            "stocks.research.service.semantic_search",
+            semantic_result,
+        )
+
+        seen_sources: list[tuple[str, ...]] = []
+        original_search_changes = (
+            execution_service.select_evidence.__globals__["search_changes"]
+        )
+
+        def observe_page(session, window, **kwargs):
+            seen_sources.append(tuple(kwargs["source_ids"]))
+            return original_search_changes(session, window, **kwargs)
+
+        monkeypatch.setitem(
+            execution_service.select_evidence.__globals__,
+            "search_changes",
+            observe_page,
+        )
+
+        runs = []
+        for index in range(3):
+            claimed = create_or_get_run(
+                session,
+                task,
+                list(task_config.agents),
+                config_path=models_path,
+            )
+            assert claimed.created is True
+            assert claim_run(
+                session,
+                claimed.run.id,
+                process_token=f"{PROCESS_A}-{index}",
+            )
+            completed = execute_claimed_run(
+                ExecutionContext(
+                    session=session,
+                    settings=make_config(),
+                    config_path=str(models_path),
+                    model_transport=_mock_transport(),
+                ),
+                claimed.run.id,
+                process_token=f"{PROCESS_A}-{index}",
+                embed=_fake_embed,
+            )
+            runs.append(completed)
+
+        assert [
+            run.change_scan_progress["after_watermark"] for run in runs
+        ] == [1, 2, 3]
+        assert [
+            run.change_scan_progress["counts"]["pages_scanned"]
+            for run in runs
+        ] == [1, 2, 3]
+        assert [
+            sorted(run.change_scan_progress["scanned_document_ids"])
+            for run in runs
+        ] == [
+            sorted(str(value) for value in expected_documents[:1]),
+            sorted(str(value) for value in expected_documents[:2]),
+            sorted(str(value) for value in expected_documents[:3]),
+        ]
+        assert seen_sources == [("sec",), ("sec",), ("sec",)]
+        assert all(not run.change_scan_completed for run in runs)
+        from stocks.changes import get_cursor
+
+        assert get_cursor(session, task.id, task.run_scope) is None
+
+        # Mutating the live Task query after the first page must not alter the
+        # frozen scan continuation.
+        changed_config = _make_task_config(
+            tmp_path,
+            queries=["different live query"],
+            source_ids=["media"],
+            change_page_limit=99,
+        )
+        changed_task = changed_config.tasks[0]
+        final = create_or_get_run(
+            session,
+            changed_task,
+            list(changed_config.agents),
+            config_path=models_path,
+        )
+        assert claim_run(
+            session,
+            final.run.id,
+            process_token=PROCESS_B,
+        )
+        completed = execute_claimed_run(
+            ExecutionContext(
+                session=session,
+                settings=make_config(),
+                config_path=str(models_path),
+                model_transport=_mock_transport(),
+            ),
+            final.run.id,
+            process_token=PROCESS_B,
+            embed=_fake_embed,
+        )
+        assert completed.change_scan_completed is True
+        assert completed.change_scan_progress["after_watermark"] == 5
+        expected_scanned = sorted(str(value) for value in expected_documents)
+        assert completed.change_scan_progress["scanned_document_ids"] == (
+            expected_scanned
+        )
+        assert completed.change_scan_progress["query_snapshot"][
+            "source_ids"
+        ] == ["sec"]
+        assert completed.change_scan_progress["query_snapshot"][
+            "page_limit"
+        ] == 1
+        assert seen_sources[-1] == ("sec",)
+        cursor = get_cursor(session, task.id, task.run_scope)
+        assert cursor is not None
+        assert cursor.watermark == completed.change_watermark_end
 
 
 def test_fabricated_citation_fails_and_keeps_package_and_previous_report(
@@ -1266,6 +1838,7 @@ def test_fabricated_citation_fails_and_keeps_package_and_previous_report(
             selected_count=0,
             unexamined_count=0,
             retrieval_truncated=False,
+        change_scan=None,
             created_at=previous.run.created_at,
         )
         session.add(earlier_package)

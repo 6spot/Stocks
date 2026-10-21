@@ -23,6 +23,7 @@ from stocks.models import (
     DocumentProcessingState,
     Source,
 )
+from stocks.changes import record_change
 from stocks.processing.stages import (
     STAGE_INDEX,
     STAGE_PARSE,
@@ -217,6 +218,15 @@ def ingest_document(
         session.flush()
         _upsert_collection_state(session, item, document)
         create_stage_states(session, document.id)
+        # The change record joins the same transaction as the new version, so a
+        # research window can never see a Document without its change (or a
+        # change pointing at a Document that is not visible yet).
+        record_change(
+            session,
+            kind="document_ingested",
+            document_id=document.id,
+            recorded_at=item.collected_at,
+        )
         session.commit()
     except IntegrityError:
         session.rollback()
@@ -512,6 +522,15 @@ def persist_embedding_result(
         # the start of this transaction already fenced the writer, so an
         # interrupted stage that was recovered and re-claimed by another
         # executor cannot keep writing results under the old token.
+    if stage_final_batch and status == "completed":
+        # Vectors for the current batch make the Document semantically
+        # researchable, which is a change research must not miss.
+        record_change(
+            session,
+            kind="document_indexed",
+            document_id=document_id,
+            recorded_at=attempted_at,
+        )
     try:
         session.commit()
     except Exception:
@@ -977,6 +996,15 @@ def persist_parse_result(
                 session,
                 _parse_stage_outcome(stage_claim, batch, attempted_at),
                 now=attempted_at,
+            )
+        if status == "completed":
+            # Only a successful attempt makes the now-parseable text researchable.
+            # A failed or unsupported attempt changes nothing research may use.
+            record_change(
+                session,
+                kind="document_parsed",
+                document_id=document_id,
+                recorded_at=attempted_at,
             )
         session.commit()
     except Exception:
