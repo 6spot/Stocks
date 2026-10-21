@@ -26,6 +26,7 @@ FEED_CONTENT_TYPES = frozenset(
 )
 ARTICLE_CONTENT_TYPES = frozenset(
     {
+        "application/pdf",
         "application/xhtml+xml",
         "text/html",
         "text/plain",

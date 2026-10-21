@@ -127,7 +127,7 @@ Stocks 是面向单一 Owner、以美股为主要市场的个人投资情报与�
 | --- | --- |
 | 后端 | Python 3.12、FastAPI、Pydantic 2 |
 | 数据库 | PostgreSQL + pgvector；SQLAlchemy 2、psycopg 3、Alembic |
-| 采集 | httpx、RSS 解析、HTML 提取；按需增加解析器 |
+| 采集 | httpx、RSS 解析、HTML/纯文本/JSON/XML 提取与 PDF 取文（`pypdf`）；按需增加解析器 |
 | S3 | 标准 S3 兼容 HTTP API |
 | MCP | 自研 JSON-RPC/SSE 客户端（`httpx`），远程 Streamable HTTP，协议 `2025-11-25`；不引入 MCP SDK |
 | AI | 配置驱动的 HTTP Provider/协议 Adapter |

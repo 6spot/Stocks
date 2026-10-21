@@ -114,6 +114,11 @@ docker run --rm -d \
   容器名、独立数据目录和独立 bucket；启动参数用 `server -dir=/data -s3 -s3.port=8333`，
   不要额外加 `-ip=`（会让客户端连接在请求中被直接关闭）。
 
+  新建的 seaweedfs 需要先建 bucket（`curl -X PUT http://127.0.0.1:<port>/<bucket>`）：
+  对不存在的 bucket 调用 `PutObject` 返回 `AccessDenied`，那不是凭据错误，也不要据此
+  判成代码缺陷（本任务实测：建 bucket 前 20/20 条采集全部 `INGEST_FAILED`，建好后同一
+  命令 20/20 成功）。`GET /` 的 bucket 列表在 seaweedfs 上为空属正常，不要用它判断 bucket 是否存在。
+
 ```bash
 docker run --rm -d \
   --name stocks-test-<task-slug>-s3 \
@@ -202,6 +207,13 @@ DATABASE_URL='postgresql+psycopg://stocks:<random-test-value>@127.0.0.1:55432/st
   数字/单位时向可切边界挪动，最终仍须 `len(chunk.text) <= chunk_size`。验证重叠应
   比较相邻 Chunk 的 `source_ranges` 交集，而不是要求某段可见字符串原样复制，因为
   系统插入的表格分隔符和语义块换行不来自原文。
+- 定位核验脚本要按定位的实际语义写：`segments[].locator.source_ranges` 与片段文本
+  一一对应，其中**空数组**表示该字符由系统生成（同一索引在 `locator.separators`
+  里声明），扣除后再逐字符回查原文，不能当成越界；HTML 的元素级 `char_start` /
+  `char_end` 落在解码后的原文上，PDF 的页内范围落在**该页文本**而不是片段文本上，
+  边界校验要用页文本长度。PDF 文本层会把一个数字拆成多个 run（实测 `77.` 提取为
+  `7 \n \n7.`），片段文本是去空白归一化结果，真实 PDF 核对应按去除空白后的字符
+  比较，不要断言逐字节相等。
 - 重复与重处理：普通调用应复用相同处理器版本和配置指纹的批次；`--reprocess`
   必须创建新批次。重处理失败不得替换当前成功批次，旧 Chunk 的 ID、文本和定位
   必须保持可读。不要通过删除旧 Chunk 或原地更新来完成“重处理”。

@@ -3,7 +3,7 @@
   "name": "v2-02-source-parser-expansion",
   "title": "V2-02 更多真实来源与内容解析适配",
   "description": "按实际研究缺口扩展来源和内容类型，所有渠道继续共用统一数据流程。",
-  "status": "planning",
+  "status": "in_progress",
   "dev_type": "backend",
   "scope": null,
   "package": null,
@@ -26,15 +26,15 @@
     "docs/research.md",
     "docs/validation.md"
   ],
-  "notes": "本轮仅规划；依赖写入 meta.depends_on 及规划文档，Trellis 父子关系不会自动调度。开工前复核现状和技术细节并取得该子任务的实施确认。",
+  "notes": "Owner 已授权按 V2 任务列表逐个实施。范围：JSON（含 +json）/XML（含 +xml）/PDF 解析适配与定位、PDF 文章获取、公开来源配置样例；XML XPath 映射、OCR、PDF 表格重建留给后续/待验收。实现：新增 stocks.processing.structured（JSON Pointer / XML 元素路径）与 stocks.processing.pdf（页码 + 页内字符范围，pypdf>=5,<7），parse_content() 按 MIME 族分发并把处理器版本升到 semantic-text-v2；ARTICLE_CONTENT_TYPES/ARTICLE_ACCEPT 接受 application/pdf；config/sources.yaml 增加公开 Fed 新闻 RSS（enabled）与需 Owner 确认的 SEC EDGAR submissions 示例（disabled）。验证（测试服务器 100.120.14.84 隔离目录 /tmp/stocks-v2-02-source-parser-expansion + 独立 postgres 55439 + 自有 seaweedfs bucket）：test_parsing_formats 14 passed、test_processing+test_processing_retry 67 passed、test_collection 48 passed、worker_processing/facts/classification/api/report_api 98 passed；全新空库 alembic upgrade head + check 通过；真实来源 drill（10/10 pass）——公开 Fed RSS 真实采集 20 条入库且 20/20 原件哈希与库内一致、真实 HTML 解析 42/42 片段可回查原文并复用/重处理符合批次契约、真实 Fed PDF 189,823 字节经文章获取通道解析为 8 页 15 Chunk 且页内字符一一映射。外部限制（留给最终验收）：Fed/SEC user_agent 仍是占位邮箱、SEC EDGAR 真实映射、调度长期运行与限流未验收。",
   "meta": {
     "milestone": "V2",
     "kind": "delivery",
     "depends_on": [
       ".trellis/tasks/10-20-v2-01-authorized-tools-mcp"
     ],
-    "planning_review": "pending",
+    "planning_review": "approved",
     "planning_depth": "delivery-plan",
-    "implementation_authorized": false
+    "implementation_authorized": true
   }
 }

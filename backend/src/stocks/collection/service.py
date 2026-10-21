@@ -35,7 +35,9 @@ FEED_ACCEPT = (
     "application/rss+xml, application/atom+xml, application/rdf+xml, "
     "application/xml;q=0.9, text/xml;q=0.8"
 )
-ARTICLE_ACCEPT = "text/html, application/xhtml+xml, text/plain;q=0.9"
+ARTICLE_ACCEPT = (
+    "text/html, application/xhtml+xml, text/plain;q=0.9, application/pdf;q=0.8"
+)
 STRUCTURED_ACCEPT = "application/json"
 
 

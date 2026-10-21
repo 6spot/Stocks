@@ -62,6 +62,9 @@ ATOM = b"""\
 
 ARTICLE = b"<html><body><article>Full release text.</article></body></html>"
 TEST_USER_AGENT = "StocksTests/1.0 (owner@example.com)"
+PDF_ARTICLE = (
+    b"%PDF-1.4\n1 0 obj\n<< /Type /Catalog >>\nendobj\ntrailer\n<< >>\n%%EOF\n"
+)
 
 
 def make_source(tmp_path, *, max_items=20, max_bytes=5_000_000, redirects=3):
@@ -286,6 +289,50 @@ def test_content_type_and_size_limits_are_enforced():
             user_agent=TEST_USER_AGENT,
         )
     assert too_large.value.code == "RESPONSE_TOO_LARGE"
+
+
+def test_article_fetch_accepts_a_pdf_original_and_rejects_other_binaries():
+    """A feed entry may point at a filing PDF; the bytes are what gets stored."""
+
+    from stocks.collection.http import ARTICLE_CONTENT_TYPES
+
+    fetcher = safe_fetcher(
+        lambda request: httpx.Response(
+            200,
+            headers={"Content-Type": "application/pdf"},
+            stream=httpx.ByteStream(PDF_ARTICLE),
+        )
+    )
+    response = fetcher.fetch(
+        "https://www.sec.gov/news/filing.pdf",
+        timeout_seconds=5,
+        max_response_bytes=1_000_000,
+        max_redirects=0,
+        accept="application/pdf",
+        allowed_content_types=ARTICLE_CONTENT_TYPES,
+        user_agent=TEST_USER_AGENT,
+    )
+    assert response.content_type == "application/pdf"
+    assert response.payload == PDF_ARTICLE
+
+    binary = safe_fetcher(
+        lambda request: httpx.Response(
+            200,
+            headers={"Content-Type": "image/png"},
+            stream=httpx.ByteStream(b"\x89PNG\r\n\x1a\n"),
+        )
+    )
+    with pytest.raises(CollectionError) as captured:
+        binary.fetch(
+            "https://www.sec.gov/news/chart.png",
+            timeout_seconds=5,
+            max_response_bytes=1_000_000,
+            max_redirects=0,
+            accept="application/pdf",
+            allowed_content_types=ARTICLE_CONTENT_TYPES,
+            user_agent=TEST_USER_AGENT,
+        )
+    assert captured.value.code == "UNSUPPORTED_CONTENT_TYPE"
 
 
 def test_compressed_decoded_size_is_bounded():

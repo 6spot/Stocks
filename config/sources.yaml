@@ -12,6 +12,59 @@ sources:
     max_items: 20
     user_agent: StocksIntelligence/0.1 (owner@example.com)
 
+  # Public macro policy releases. The feed carries the full statement, so a
+  # research Run can cite the original Fed page like any other Source. Replace
+  # the contact email before the first real collection run.
+  - source_id: fed_press_releases
+    name: Federal Reserve Press Releases
+    connector: rss
+    enabled: true
+    publisher: Board of Governors of the Federal Reserve System
+    trust_tier: T1
+    feed_url: https://www.federalreserve.gov/feeds/press_all.xml
+    timeout_seconds: 30
+    max_response_bytes: 5000000
+    max_redirects: 3
+    max_items: 20
+    user_agent: StocksIntelligence/0.1 (owner@example.com)
+
+  # SEC EDGAR submissions API (disabled example). The endpoint needs no API key
+  # but SEC requires a real contact address in the User-Agent and accepts only
+  # modest request rates, so the Owner replaces CIK/contact/query scope and
+  # confirms the access policy before enabling it. The mapper reads the most
+  # recent filing; widen the pointers only together with the request scope.
+  - source_id: sec_edgar_submissions
+    name: SEC EDGAR Submissions (disabled example)
+    connector: http_api
+    enabled: false
+    publisher: U.S. Securities and Exchange Commission
+    trust_tier: T1
+    api_url: https://data.sec.gov/submissions/CIK0000320193.json
+    timeout_seconds: 30
+    max_response_bytes: 5000000
+    max_redirects: 3
+    max_items: 10
+    user_agent: StocksIntelligence/0.1 (owner@example.com)
+    mapper:
+      id: sec-edgar-submissions
+      fields:
+        - kind: text
+          pointer: /name
+          fact_type: issuer_identity
+          metric_id: registrant_name
+        - kind: text
+          pointer: /filings/recent/form/0
+          fact_type: filing_metadata
+          metric_id: latest_filing_form
+        - kind: text
+          pointer: /filings/recent/filingDate/0
+          fact_type: filing_metadata
+          metric_id: latest_filing_date
+        - kind: text
+          pointer: /filings/recent/accessionNumber/0
+          fact_type: filing_metadata
+          metric_id: latest_accession_number
+
   # Structured HTTP API example (disabled). An `http_api` source stores the raw
   # response as a Document version and maps it to Facts through `mapper`; it never
   # configures `feed_url`. A numeric field must declare its unit — a value whose

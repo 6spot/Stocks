@@ -597,7 +597,8 @@ def test_html_locators_use_only_visible_entity_characters():
             "NO_EXTRACTABLE_TEXT",
             "failed",
         ),
-        (b"%PDF-1.7", "application/pdf", "UNSUPPORTED_CONTENT_TYPE", "unsupported"),
+        (b"\x89PNG\r\n\x1a\n", "image/png", "UNSUPPORTED_CONTENT_TYPE", "unsupported"),
+        (b"%PDF-1.7 truncated", "application/pdf", "PDF_DAMAGED", "failed"),
         (b"\xff\xfe", "text/plain; charset=utf-8", "INVALID_ENCODING", "failed"),
     ],
 )
@@ -614,6 +615,40 @@ def test_invalid_or_unsupported_content_is_explicit(
 
     assert captured.value.code == code
     assert captured.value.status == status
+
+
+def test_pdf_document_is_parsed_into_page_located_chunks(engine, monkeypatch):
+    from test_parsing_formats import minimal_pdf
+
+    payload = minimal_pdf(["Fiscal 2026 revenue was 1234.5 million USD."])
+    document = make_document(payload, content_type="application/pdf")
+    monkeypatch.setattr(
+        "stocks.repository.read_snapshot",
+        lambda config, key: payload,
+    )
+
+    with Session(engine) as session:
+        session.add(
+            Source(
+                id="sec",
+                name="SEC",
+                connector="rss",
+                trust_tier="T1",
+            )
+        )
+        session.commit()
+        session.add(document)
+        session.commit()
+
+        summary = process_document(session, make_config(), document)
+
+        assert summary.status == "completed"
+        chunks = list_parse_chunks(session, document.id)
+        assert len(chunks) == 1
+        locator = chunks[0].locator["segments"][0]["locator"]
+        assert locator["kind"] == "pdf_page"
+        assert locator["page"] == 1
+        assert "1234.5 million USD" in chunks[0].text
 
 
 def test_processing_does_not_read_storage_for_a_reused_completed_batch(
@@ -823,8 +858,8 @@ def test_persisted_batches_are_idempotent_and_preserve_referenced_chunks(
 
 
 def test_unsupported_document_records_state_without_chunks(engine, monkeypatch):
-    payload = b"%PDF-1.7"
-    document = make_document(payload, content_type="application/pdf")
+    payload = b"\x89PNG\r\n\x1a\n"
+    document = make_document(payload, content_type="image/png")
     monkeypatch.setattr(
         "stocks.repository.read_snapshot",
         lambda config, key: payload,

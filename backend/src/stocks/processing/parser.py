@@ -2,16 +2,32 @@ from __future__ import annotations
 
 import html
 import re
+from collections.abc import Callable
 from dataclasses import dataclass
 from html.parser import HTMLParser
 
 from stocks.processing.chunking import split_text
+from stocks.processing.pdf import PdfError, pdf_pages
+from stocks.processing.structured import (
+    StructuredError,
+    json_values,
+    xml_values,
+)
 
-PROCESSOR_VERSION = "semantic-text-v1"
+PROCESSOR_VERSION = "semantic-text-v2"
 
 HTML_CONTENT_TYPES = frozenset({"application/xhtml+xml", "text/html"})
 TEXT_CONTENT_TYPES = frozenset({"text/plain"})
-SUPPORTED_CONTENT_TYPES = HTML_CONTENT_TYPES | TEXT_CONTENT_TYPES
+JSON_MEDIA_TYPES = frozenset({"application/json", "text/json"})
+XML_MEDIA_TYPES = frozenset({"application/xml", "text/xml"})
+PDF_CONTENT_TYPES = frozenset({"application/pdf"})
+SUPPORTED_CONTENT_TYPES = (
+    HTML_CONTENT_TYPES
+    | TEXT_CONTENT_TYPES
+    | JSON_MEDIA_TYPES
+    | XML_MEDIA_TYPES
+    | PDF_CONTENT_TYPES
+)
 
 NOISE_ELEMENTS = frozenset(
     {
@@ -157,19 +173,30 @@ def parse_content(
     chunk_overlap: int,
 ) -> tuple[ParsedDocument, tuple[ParsedChunk, ...]]:
     media_type, charset = parse_media_type(content_type)
-    if media_type not in SUPPORTED_CONTENT_TYPES:
+    family = _content_family(media_type)
+    if family is None:
         raise ParseFailure(
             "UNSUPPORTED_CONTENT_TYPE",
             "Document content type is not supported by this parser",
             status="unsupported",
             details={"content_type": media_type[:255]},
         )
+    if family == "pdf":
+        return _parse_pdf(
+            payload,
+            media_type=media_type,
+            chunk_size=chunk_size,
+            chunk_overlap=chunk_overlap,
+        )
     text, encoding = decode_bytes(payload, charset)
-    extracted = (
-        _extract_html(text)
-        if media_type in HTML_CONTENT_TYPES
-        else _extract_plain_text(text)
-    )
+    if family == "html":
+        extracted = _extract_html(text)
+    elif family == "text":
+        extracted = _extract_plain_text(text)
+    elif family == "json":
+        extracted = _structured_segments(json_values, text)
+    else:
+        extracted = _structured_segments(xml_values, text)
     segments = tuple(segment for segment in extracted if segment.text.strip())
     if not segments:
         raise ParseFailure(
@@ -190,6 +217,100 @@ def parse_content(
         )
     return (
         ParsedDocument(media_type, text, encoding, segments),
+        chunks,
+    )
+
+
+def _content_family(media_type: str) -> str | None:
+    """The parser family for one media type, including ``+json``/``+xml``."""
+
+    if media_type in HTML_CONTENT_TYPES:
+        return "html"
+    if media_type in TEXT_CONTENT_TYPES:
+        return "text"
+    if media_type in JSON_MEDIA_TYPES or media_type.endswith("+json"):
+        return "json"
+    if media_type in XML_MEDIA_TYPES or media_type.endswith("+xml"):
+        return "xml"
+    if media_type in PDF_CONTENT_TYPES:
+        return "pdf"
+    return None
+
+
+def _structured_segments(
+    extract: Callable[[str], list[tuple[str, dict]]],
+    text: str,
+) -> list[SourceSegment]:
+    """Located values from a structured original, as parse segments."""
+
+    try:
+        values = extract(text)
+    except StructuredError as exc:
+        raise ParseFailure(
+            exc.code,
+            exc.message,
+            details=exc.details,
+        ) from exc
+    return [
+        SourceSegment(text=value, locator=locator)
+        for value, locator in values
+    ]
+
+
+def _parse_pdf(
+    payload: bytes,
+    *,
+    media_type: str,
+    chunk_size: int,
+    chunk_overlap: int,
+) -> tuple[ParsedDocument, tuple[ParsedChunk, ...]]:
+    """Page text with its page locator; a PDF is never decoded as text."""
+
+    try:
+        pages = pdf_pages(payload)
+    except PdfError as exc:
+        raise ParseFailure(
+            exc.code,
+            exc.message,
+            details=exc.details,
+        ) from exc
+    segments = tuple(
+        SourceSegment(
+            text=page_text,
+            locator=locator,
+            # Only whitespace normalization happens, so every extracted
+            # character keeps its own position inside this page's text.
+            source_ranges=tuple(
+                (index, index + 1) for index in range(len(page_text))
+            ),
+        )
+        for page_text, locator in pages
+        if page_text.strip()
+    )
+    if not segments:
+        raise ParseFailure(
+            "PDF_TEXT_UNAVAILABLE",
+            "Stored PDF has no extractable text layer",
+            details={"bytes": len(payload)},
+        )
+    chunks = build_chunks(
+        segments,
+        chunk_size=chunk_size,
+        chunk_overlap=chunk_overlap,
+    )
+    if not chunks:
+        raise ParseFailure(
+            "NO_EXTRACTABLE_TEXT",
+            "Document did not contain extractable evidence text",
+            details={"content_chars": 0},
+        )
+    return (
+        ParsedDocument(
+            media_type,
+            "\n".join(segment.text for segment in segments),
+            None,
+            segments,
+        ),
         chunks,
     )
 

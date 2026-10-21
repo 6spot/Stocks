@@ -1738,10 +1738,12 @@ def test_unsupported_parse_reason_distinguishes_from_a_repairable_failure(engine
 
     from stocks.processing.processors import build_parse_processor
 
-    pdf_bytes = b"%PDF-1.7 not supported by this parser"
+    unsupported_bytes = b"\x89PNG\r\n\x1a\n not supported by this parser"
     config = make_config()
     document = ingest(
-        engine, config, make_item(payload=pdf_bytes, content_type="application/pdf")
+        engine,
+        config,
+        make_item(payload=unsupported_bytes, content_type="image/png"),
     )
     now = datetime(2026, 10, 21, 23, tzinfo=UTC)
 
@@ -1750,7 +1752,11 @@ def test_unsupported_parse_reason_distinguishes_from_a_repairable_failure(engine
         execution = execute_claimed_stage(
             session,
             config,
-            StageRegistry(parse=build_parse_processor(read_bytes=lambda c, d: pdf_bytes)),
+            StageRegistry(
+                parse=build_parse_processor(
+                    read_bytes=lambda c, d: unsupported_bytes
+                )
+            ),
             claim,
             clock=lambda: now,
         )

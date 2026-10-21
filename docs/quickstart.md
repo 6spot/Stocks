@@ -171,7 +171,16 @@ being returned again. `--reprocess` creates a new batch. If that attempt fails, 
 successful batch and its Chunks remain readable and unchanged; a later success becomes
 the current batch without deleting history. Unsupported formats and documents with no
 extractable evidence text are recorded as `unsupported` or `failed`; they are never
-stored as empty successful chunks. PDF/JSON/XML parsing and OCR remain future work, and the
+stored as empty successful chunks. JSON (including `+json`), XML (including `+xml`) and PDF
+originals are parsed by the same stage since V2-02: JSON values become
+`path = value` chunks located by JSON Pointer, XML element text and attributes become
+chunks located by element path, and PDF text is chunked per page with its page number and
+in-page character ranges. Numbers and units stay as the source wrote them; a PDF without a
+text layer, an encrypted or damaged file, or a response beyond the value/character/page
+limits fails its parse attempt with a stable error code instead of an empty body. OCR and
+PDF table reconstruction remain future work. RSS article fetches accept `application/pdf`
+since V2-02, so a feed entry that links to a filing PDF stores those exact bytes and the
+same stage parses them. PDF originals are served as opaque downloads, never inline.
 The protected Web console exposes this backlog through its Runs page, with stage
 filtering and the same confirmation rules as the CLI.
 The separate Task trigger, scheduler, Worker and unified processing backlog are
