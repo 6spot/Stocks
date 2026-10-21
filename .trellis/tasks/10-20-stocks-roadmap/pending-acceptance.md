@@ -26,13 +26,20 @@
 
 ## PA-2：V0-03 解析器缺陷（正文直接位于 article/main/body 时逐字符换行）
 
-- **状态**：已知未修，V0-08 验收时发现并按当时的改动范围记录而未处理。
-- **对统一验收的影响**：真实 HTML 页面若命中该结构，Chunk 边界与定位质量会下降，
-  进而影响真实闭环的可读证据质量。建议在 PA-1 之前或同时修复。
+- **状态**：2026-10-22 已修复并验证，不再是待验收项。
+- **修复**：`_walk_evidence()` 统一走 `_walk_block()`，并按新增的 `CONTAINER_ELEMENTS`
+  （`article`/`body`/`html`/`main`）把容器自身的连续文本与行内元素合并成同一个证据片段。
+- **验证**：测试服务器 `100.120.14.84` 隔离目录中 `tests/test_processing.py` 38 passed、
+  解析/采集/处理重试/仓库/冲突相关 117 passed、后端全量 475 passed；另取 2 份真实 Fed
+  与 2 份真实 SEC 新闻正文复核：修复前 Fed 两页分别出现 18/17 个单字符片段
+  （`S\nk\ni\np...`），修复后 0 个单字符片段、来源范围回查 0 处不一致。
+- **回归**：`tests/test_processing.py::test_text_directly_inside_container_stays_one_evidence_run`
+  与 `::test_inline_text_directly_inside_container_keeps_order_and_ranges`；契约同步到
+  `docs/data.md` 与 `.trellis/spec/backend/testing-guidelines.md`。
 - **出处**：`.trellis/tasks/archive/2026-10/10-20-v0-08-document-collection-fixes/acceptance.md`
   及 `.trellis/spec/backend/testing-guidelines.md` 的"固定 HTTP 响应"条目。
 
 ## 复用说明
 
-补验收轮次开始前，先读本文件与 V0 父任务 `notes`，再决定是否需要新建任务；
-不要在 V0/V1 子任务里另起一套"真实闭环已验收"的表述。
+补验收轮次开始前，先读本文件、`docs/validation.md` 的「待最终验收」清单与各阶段父任务
+`notes`，再决定是否需要新建任务；不要在 V0/V1 子任务里另起一套"真实闭环已验收"的表述。
