@@ -20,7 +20,36 @@ curl -b stocks-cookie.txt http://127.0.0.1:8000/api/documents
 
 `api` and `worker` are separate processes from the same image and configuration. The API reads console state and queues authorized recovery actions; it never executes a Task Run. The Worker polls PostgreSQL for `queued` Runs and evaluates due schedules, so a restart of either one does not lose queued work. The Worker has no published port.
 
-The current implementation provides Source/Document/Chunk models, fresh-database initialization, a versioned Document repository, configured RSS/Atom discovery, safe HTTP article acquisition, a manual collection CLI, a unified Document processing backlog with manual parse/index commands, pgvector indexing and semantic/exact search CLI, a document-list API, a generic S3 snapshot helper, an HTTP model client, a configured Task runner, a persistent Task scheduler, and an independent Worker with separate Run and document processing slots. The runner persists an Evidence Package with actual Chunk/Document versions, validates structured findings against that snapshot, and saves an Analysis plus a readable Report. The repository checks `(source_id, dedupe_key)` and SHA-256 before writing storage, reuses an immutable Document version and updates a separate collection state for identical bytes, and creates the next immutable Document version for changed bytes. The read-only report and evidence API is implemented; see the next section. Lightweight classification through a configurable Decision Model, generic Fact storage with on-demand extraction, and structured API field mapping are implemented; reliable change watermarks and the Web console remain to be implemented.
+### Web console development
+
+The Web client lives in `frontend/` and requires Node.js 20.19 or newer. Start the API
+first, then install the locked dependencies and start Vite from the repository root:
+
+```bash
+cd frontend
+npm ci --ignore-scripts
+VITE_API_PROXY_TARGET=http://127.0.0.1:8000 npm run dev
+```
+
+Open `http://127.0.0.1:5173` and sign in with `OWNER_PASSWORD`. Vite proxies `/api` and
+`/health` to the API, so development uses the same same-origin cookie and CSRF behavior
+as production. `VITE_API_BASE_URL` must stay empty for this setup.
+
+Run the Web checks from `frontend/` on the isolated test server:
+
+```bash
+npm run typecheck
+npm run test
+npm run build
+```
+
+The client renders report bodies and evidence as text, loads original bytes through the
+protected API, and keeps the session CSRF token in memory. It stores no cookie, token,
+report, evidence, or original content in browser storage. Run IDs, report and document
+selection, collection/search filters, and the active Runs tab are held in the URL so a
+refresh preserves the current reading context.
+
+The current implementation provides Source/Document/Chunk models, fresh-database initialization, a versioned Document repository, configured RSS/Atom discovery, safe HTTP article acquisition, a manual collection CLI, a unified Document processing backlog with manual parse/index commands, pgvector indexing and semantic/exact search CLI, a document-list API, a generic S3 snapshot helper, an HTTP model client, a configured Task runner, a persistent Task scheduler, and an independent Worker with separate Run and document processing slots. The runner persists an Evidence Package with actual Chunk/Document versions, validates structured findings against that snapshot, and saves an Analysis plus a readable Report. The repository checks `(source_id, dedupe_key)` and SHA-256 before writing storage, reuses an immutable Document version and updates a separate collection state for identical bytes, and creates the next immutable Document version for changed bytes. The read-only report and evidence API is implemented; see the next section. Lightweight classification through a configurable Decision Model, generic Fact storage with on-demand extraction, and structured API field mapping are implemented; reliable change watermarks and the responsive, protected Web console are also implemented.
 
 The snapshot helper stores the exact bytes supplied by its caller, computes their SHA-256 hash, and uses the supplied content type; it does not assume XML or a particular collection channel. `stocks.repository.ingest_document()` remains the only Document write entry point.
 
@@ -116,7 +145,8 @@ successful batch and its Chunks remain readable and unchanged; a later success b
 the current batch without deleting history. Unsupported formats and documents with no
 extractable evidence text are recorded as `unsupported` or `failed`; they are never
 stored as empty successful chunks. PDF/JSON/XML parsing and OCR remain future work, and the
-Web console for reading the backlog is not implemented yet.
+The protected Web console exposes this backlog through its Runs page, with stage
+filtering and the same confirmation rules as the CLI.
 The separate Task trigger, scheduler, Worker and unified processing backlog are
 implemented; see [Tasks, scheduling and the Worker](#tasks-scheduling-and-the-worker).
 

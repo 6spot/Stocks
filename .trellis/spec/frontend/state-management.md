@@ -1,6 +1,10 @@
 # 前端状态管理规范
 
-客户端共享状态统一使用 **Zustand**；组件本地状态继续使用 React。当前前端工程尚未建立，这是已确定的实现选型，不代表已经安装依赖或存在 store。
+客户端共享状态统一使用 **Zustand**；组件本地状态继续使用 React。当前只有两个
+页面外共享 store：
+
+- `src/auth/session-store.ts`：Owner 会话状态与内存 CSRF token，不持久化。
+- `src/state/ui-store.ts`：移动导航开关和最多四条非敏感通知，不持久化。
 
 ## 状态归属
 
@@ -20,7 +24,7 @@
 - 持久化仅按需用于无敏感信息的界面偏好，通过 `partialize` 明确白名单；不持久化认证凭据、报告正文、证据内容、运行状态或请求错误。使用后端提供的认证机制，不用 store 或浏览器存储代替访问控制。
 - 退出登录或切换研究上下文时，清理与旧身份、任务或来源关联的状态并取消过期请求；过期响应不得覆盖当前上下文。持久化偏好结构变更时可丢弃并恢复默认值，不为开发期旧结构增加迁移逻辑。
 
-以下只展示已选定的 store 形式，不代表该文件已经存在：
+以下是 store 形状示例，实际实现以对应源码为准：
 
 ```ts
 import { create } from "zustand";
@@ -38,8 +42,24 @@ export const useEvidencePanelStore = create<EvidencePanelState>()((set) => ({
 
 组件内部用 `const open = useEvidencePanelStore((state) => state.open)` 选择所需字段；只有多处共享时才使用此 store。
 
+## 数据读取与会话
+
+页面使用 `src/hooks/use-resource.ts` 读取服务端数据，依赖变化或刷新时取消旧请求，
+并忽略过期响应。该 hook 不缓存跨页面实体，也不推断权限、Run 占用或阶段完成；
+服务端响应仍是权威状态。
+
+所有请求使用 `credentials: "include"`。登录响应和 `/api/session` 返回的 CSRF token
+只保存在内存，所有 `POST` 自动附加 `X-CSRF-Token`。私有请求返回 `401` 时清空
+内存会话并进入登录边界。`SessionGate` 在公共和受保护路由外层统一恢复会话，网络
+错误显示可重试状态，不能凭浏览器存储自行恢复身份。退出登录同时请求服务端清理
+Cookie 并清空内存状态。
+
+搜索、筛选、选中的 Document/Run/Report 和页面页签由 URL 承载。页面数据、会话
+token、证据正文、报告内容和原件均不写入 `localStorage`、`sessionStorage` 或持久化
+store。
+
 ## 时间与完整性
 
 `published_at`、`source_updated_at`、`collected_at` 和报告 `as_of` 分别保留，不能合并为一个含糊的更新时间。`completeness = partial`、失败错误类别、解析/索引状态和来源故障也不能折叠成一个通用“无数据”状态。
 
-前端工程建立后，在本文件记录实际的数据访问边界、已创建的 store 与按需持久化字段；若另有数据获取或缓存机制，明确其边界与清理策略。访问控制和服务端执行规则不由前端状态替代。
+访问控制和服务端执行规则不由前端状态替代。新增数据缓存或持久化字段时，先在本文件记录其失效、清理和白名单边界。

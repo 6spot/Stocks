@@ -1,8 +1,22 @@
 # 前端开发规范
 
-前端选型以 [docs/architecture.md](../../../docs/architecture.md#技术与部署) 为准：React、TypeScript、Vite；UI 使用 shadcn/ui 的 Nova 风格、Base UI 与 Tailwind CSS，图标使用 Lucide，动画使用 Motion，可调整面板使用 react-resizable-panels，拖拽使用 dnd-kit，客户端共享状态使用 Zustand。此目录只规定工程实现方式，不定义页面内容或产品流程。
+前端选型以 [docs/architecture.md](../../../docs/architecture.md#技术与部署) 为准：React、TypeScript、Vite；UI 使用 shadcn/ui 的 Nova 风格、Base UI 与 Tailwind CSS，图标使用 Lucide，动画使用 Motion，客户端共享状态使用 Zustand。出现实际拖拽或可调整面板需求时，统一使用 dnd-kit 与 react-resizable-panels。此目录只规定工程实现方式，不定义页面内容或产品流程。
 
-当前仓库尚未建立 `frontend/` 或 `frontend/package.json`，因此没有可执行的前端安装、lint、类型检查、测试或构建命令，也没有已确认的目录布局、测试框架或浏览器验收工具。以下规范适用于 V1-08 建立前端工程时；在该任务落地前不得声称前端已实现或相关检查已通过。
+当前 Web 客户端位于 `frontend/`，使用 npm 与锁文件安装，要求 Node.js
+20.19 或更高版本。真实命令如下：
+
+```bash
+cd frontend
+npm ci --ignore-scripts
+npm run typecheck
+npm run test
+npm run build
+```
+
+Vitest 使用 jsdom 和 Testing Library 覆盖 API 会话边界、报告证据阅读、停止确认、
+Run 恢复和 Processing 重试。生产构建使用 Vite；页面级路由按需加载。lint 尚未
+单独配置，`typecheck` 与构建共同检查当前代码。浏览器验收可使用测试服务器
+Chromium，但浏览器驱动和截图 fixture 不进入应用依赖。
 
 | 主题 | 适用范围 |
 | --- | --- |
@@ -15,10 +29,15 @@
 
 ## 工程落地门槛
 
-初始化前端时，先读取 `docs/interface.md`、`docs/architecture.md` 和 V1-08 任务，再按实际创建的 `package.json` 记录包管理器、Node 版本、目录、脚本与测试框架。按架构中的统一选型实现，不引入承担相同职责的第二套 UI、图标、动画、面板、拖拽或全局状态库，也不引入全文搜索前端。选型已经确定不代表依赖已经安装；各库的具体版本与 API 以首次落地时的官方文档、实际包配置和锁文件为准。
+新增依赖时先读取 `docs/interface.md`、`docs/architecture.md` 和实际
+`frontend/package.json`。按架构中的统一选型实现，不引入承担相同职责的第二套 UI、
+图标、动画、面板、拖拽或全局状态库，也不引入全文搜索前端。当前页面不需要
+react-resizable-panels、dnd-kit、TanStack Table 或 Recharts；真实需求出现前不安装
+这些库。依赖版本以 `package-lock.json` 为准，升级后重跑类型检查、行为测试和生产
+构建。
 
-V0-03 已提供后端解析状态和可定位 Chunk，但还没有前端读取 API 或页面。V1-08
-实现界面时，必须把 `Document.content_type`、`Document.completeness`、解析最新状态
+V1-08 已实现从 API 读取解析状态和可定位 Chunk 的页面。界面必须把
+`Document.content_type`、`Document.completeness`、解析最新状态
 `latest_batch_id`、当前成功批次 `current_batch_id` 和 Chunk 批次分开呈现；不得把
 “已采集”“解析失败”“解析中/未解析”“当前有可读 Chunk”折叠成一个状态。
 Chunk 详情需显示来源、Document 版本、批次、原始定位和当时的 `as_of` 或处理时间。

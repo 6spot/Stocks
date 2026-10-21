@@ -3,7 +3,7 @@
   "name": "v1-08-web-console",
   "title": "V1-08 受保护的响应式研究控制台",
   "description": "Owner 能在桌面和手机查看情报、报告及运行异常并完成必要恢复操作。",
-  "status": "planning",
+  "status": "in_progress",
   "dev_type": "fullstack",
   "scope": null,
   "package": null,
@@ -12,10 +12,10 @@
   "assignee": "me",
   "createdAt": "2026-10-20",
   "completedAt": null,
-  "branch": null,
+  "branch": "main",
   "base_branch": "main",
   "worktree_path": null,
-  "commit": null,
+  "commit": "pending",
   "pr_url": null,
   "subtasks": [],
   "children": [],
@@ -25,15 +25,15 @@
     "docs/interface.md",
     "docs/validation.md"
   ],
-  "notes": "本轮仅规划；依赖写入 meta.depends_on 及规划文档，Trellis 父子关系不会自动调度。开工前复核现状和技术细节并取得该子任务的实施确认。",
+  "notes": "受保护响应式控制台已实现。远端类型检查、6 文件 10 测试、生产构建、生产依赖审计和 21 项桌面/手机浏览器断言通过。真实 Provider/S3、真实手机视觉、跨设备登录、目标 ARM 与公网部署留待 V1-09/Owner 验收。",
   "meta": {
     "milestone": "V1",
     "kind": "delivery",
     "depends_on": [
-      ".trellis/tasks/10-20-v1-07-owner-console-api"
+      ".trellis/tasks/archive/2026-10/10-20-v1-07-owner-console-api"
     ],
-    "planning_review": "pending",
+    "planning_review": "completed",
     "planning_depth": "delivery-plan",
-    "implementation_authorized": false
+    "implementation_authorized": true
   }
 }
