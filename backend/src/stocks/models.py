@@ -397,6 +397,11 @@ class Document(Base):
     content_hash: Mapped[str] = mapped_column(String(64))
     snapshot_key: Mapped[str] = mapped_column(Text)
     trust_tier_snapshot: Mapped[str] = mapped_column(String(8))
+    # Current classification of this content version. One JSONB column, no
+    # classification history table: an explicit reclassification rewrites it.
+    # ``None`` means no classification result exists yet; the queue/attempt state
+    # lives in ``document_processing_states`` for the ``classify`` stage.
+    classification: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     extra: Mapped[dict] = mapped_column(JSONB, default=dict, server_default=text("'{}'::jsonb"))
 
 

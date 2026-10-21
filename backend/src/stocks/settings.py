@@ -15,6 +15,9 @@ class Settings(BaseSettings):
     parse_chunk_overlap: int = Field(default=150, ge=0, le=1000)
     embedding_batch_size: int = Field(default=32, ge=1, le=256)
     embedding_max_query_characters: int = Field(default=4000, ge=1, le=20000)
+    # Characters of the current parse batch a single classification call may read.
+    # The Decision Model never receives an unbounded full text.
+    classification_max_characters: int = Field(default=6000, ge=200, le=40000)
     worker_max_concurrent_runs: int = Field(default=2, ge=1, le=16)
     worker_max_concurrent_documents: int = Field(default=1, ge=1, le=16)
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")

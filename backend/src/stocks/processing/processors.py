@@ -43,6 +43,9 @@ from stocks.settings import Settings
 # from a MIME type or an empty result.
 APPLICABILITY_REQUIRES_EMBEDDING = "requires_embedding"
 APPLICABILITY_REQUIRES_CLASSIFICATION = "requires_classification"
+# Reported by the classifier only after it produced a real decision, so a failed or
+# missing Decision Model can never be read as "no facts needed".
+APPLICABILITY_REQUIRES_EXTRACTION = "requires_extraction"
 
 
 def _parse_outcome(claim: StageClaim, summary: ParseSummary) -> StageResult:
@@ -254,18 +257,38 @@ def build_stage_registry(
     model_transport=None,
     embed: Callable[..., object] | None = None,
     clock: Callable[[], datetime] | None = None,
+    classify: Callable[..., object] | None = None,
+    taxonomy_path: str | None = None,
 ) -> StageRegistry:
     """The processors this deployment can run.
 
-    Parse and index are wired to the existing implementations; classify and facts
-    stay unregistered until their implementations land, so their stages remain
-    visibly pending with ``PROCESSOR_NOT_AVAILABLE`` instead of being reported as
-    completed, skipped or irrelevant. The embedding route is resolved lazily by
-    ``index_factory`` for the same reason.
+    Parse and index are wired to the existing implementations and ``classify`` to
+    the configured Decision Model. ``facts`` stays unregistered until its own
+    implementation lands, so its stage remains visibly pending with
+    ``PROCESSOR_NOT_AVAILABLE`` instead of being reported as completed, skipped or
+    irrelevant. The decision and embedding routes are resolved lazily by their
+    factories for the same reason: a broken route only fails the attempt that was
+    actually eligible to run.
     """
+
+    from stocks.classification.service import (
+        DEFAULT_TAXONOMY_PATH,
+        load_classify_processor,
+    )
+
+    resolved_taxonomy = taxonomy_path or DEFAULT_TAXONOMY_PATH
+    if classify is not None:
+        classify_factory = lambda: classify  # noqa: E731 - a fixed processor
+    else:
+        classify_factory = lambda: load_classify_processor(  # noqa: E731
+            model_config_path,
+            model_transport=model_transport,
+            taxonomy_path=resolved_taxonomy,
+        )
 
     return StageRegistry(
         parse=build_parse_processor(read_bytes=read_bytes, clock=clock),
+        classify_factory=classify_factory,
         index_factory=lambda: load_index_processor(
             model_config_path,
             model_transport=model_transport,

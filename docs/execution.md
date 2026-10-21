@@ -250,6 +250,8 @@ Agent 配置包括：id、role、prompt、model_ref、tools[]，以及按职责�
 
 Provider 定义 protocol、HTTP endpoint、认证方式、默认超时等。**决策模型的有界问题/选项接口与普通 OpenAI-compatible `chat/completions` 并不必然相同**；按实际 Provider 协议通过薄 Adapter 归一化服务端格式。文中的模型名称仅作可配置角色的示例，不代表协议兼容性已经验证或相应 Adapter 已实现。对于不确定、无效或调用失败的决策，保留原文与未完成状态，不能默认解释成 `should_extract=false`。Provider 不承担 Agent 逻辑，任何私有部署、官方服务或模型聚合服务都只是一个 Provider 配置实例，不构成系统依赖，不引入独立模型调度服务。
 
+**V1-03 决策路由实现：** `config/models.yaml` 的 `agents.classification` 声明 `protocol` 与 `routing`；当前只实现 `openai_compatible` 一个 Adapter（复用 `research_chat` 的有界重试、结构化输出与按序回退），其他 `protocol` 在读取配置时直接报错，不假设兼容。分类业务 Schema、受控词表与 Prompt 约束由 Stocks 在 `config/taxonomy.yaml` 维护，不由 Provider 定义；`required_capabilities` 至少包含 `chat` 与 `structured_output`。决策路由与词表都在真正领取 `classify` 阶段时才读取，缺失或损坏只让该次分类尝试失败（`DECISION_ROUTING_UNAVAILABLE` / `TAXONOMY_UNAVAILABLE`，不自动重试），不影响解析、索引与采集。
+
 Embedding 同样通过 Provider 和模型引用配置，声明向量生成能力，复用现有超时、有限重试和调用记录。入库片段与查询文本使用兼容的模型和维度；回退目标不兼容时记录失败，不混写不同向量空间。索引与模型切换的行为由[数据设计](data.md#检索)维护，不新增模型路由服务。
 
 模型策略只定义 primary 与按顺序排列的 fallback[]：

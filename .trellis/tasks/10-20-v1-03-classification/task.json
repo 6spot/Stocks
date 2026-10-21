@@ -3,7 +3,7 @@
   "name": "v1-03-classification",
   "title": "V1-03 Decision Model 轻量分类与受控标签",
   "description": "用一次正常分类请求得到可检索标签和 should_extract，避免逐篇深度分析。",
-  "status": "planning",
+  "status": "in_progress",
   "dev_type": "backend",
   "scope": null,
   "package": null,
@@ -12,7 +12,7 @@
   "assignee": "me",
   "createdAt": "2026-10-20",
   "completedAt": null,
-  "branch": null,
+  "branch": "main",
   "base_branch": "main",
   "worktree_path": null,
   "commit": null,
@@ -33,8 +33,8 @@
     "depends_on": [
       ".trellis/tasks/10-20-v1-02-processing-recovery"
     ],
-    "planning_review": "pending",
+    "planning_review": "completed",
     "planning_depth": "delivery-plan",
-    "implementation_authorized": false
+    "implementation_authorized": "true"
   }
 }

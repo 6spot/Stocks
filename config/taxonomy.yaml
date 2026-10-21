@@ -1,0 +1,108 @@
+# Controlled classification vocabulary for the Decision Model.
+#
+# `version` and the term `id`s are the query contract used by Tasks and the
+# console: rename a label freely, but changing an `id` or dropping one is a new
+# `version`. `description` only guides the model and is never stored as a fact.
+#
+# The JSON Schema sent to the configured provider is derived from this file, so a
+# category, topic, industry or region outside this vocabulary is a schema
+# violation, not an extra label.
+version: "2026-10-21"
+
+instructions: |
+  You label exactly one saved document for a market-intelligence repository.
+  Choose only values from the supplied vocabulary; never invent new ids.
+  Return `category` (the single main kind of the document), an optional
+  `event_type`, and any `topics`, `related_industries` and `regions` that the
+  document actually supports.
+
+  `companies` lists company names the document explicitly mentions.
+  `symbols` lists ticker symbols that the document explicitly identifies for
+  those companies; never guess a symbol from context, from an industry
+  association or from general knowledge. Leave both empty when the document
+  mentions no company, when the ticker is ambiguous, or when the document only
+  affects an industry or the macro backdrop.
+
+  `related_industries` and `topics` are background relevance, not evidence that
+  a stock was mentioned. A policy or macro document with no company names is a
+  normal, successful classification: set `companies` and `symbols` to empty.
+
+  Set `should_extract` to true only when the document contains concrete
+  statements, numbers, guidance, or events that are worth structuring into
+  reusable facts. Do not write the facts, numbers or conclusions yourself, and
+  do not score sentiment.
+
+categories:
+  - id: macro
+    description: Macroeconomic conditions, indicators, or market-wide developments.
+  - id: policy
+    description: Government, central-bank, regulatory, or legislative action.
+  - id: industry
+    description: Industry structure, demand, supply, pricing, or competition.
+  - id: company
+    description: A specific company's results, guidance, filings, or decisions.
+  - id: other
+    description: Useful intelligence that does not fit the categories above.
+
+event_types:
+  - id: monetary_policy
+    description: Interest-rate, liquidity, or central-bank balance-sheet action.
+  - id: fiscal_policy
+    description: Taxation, spending, or government-budget action.
+  - id: regulation
+    description: Rulemaking, enforcement, approval, or legal action.
+  - id: earnings
+    description: Reported results, guidance, or an earnings event.
+  - id: corporate_action
+    description: Merger, acquisition, divestiture, listing, or capital action.
+  - id: data_release
+    description: A scheduled or unscheduled economic or market data release.
+
+topics:
+  - id: interest_rates
+    description: Policy rates, yields, or rate expectations.
+  - id: inflation
+    description: Consumer, producer, or asset price levels and expectations.
+  - id: liquidity
+    description: Money supply, funding conditions, or balance-sheet capacity.
+  - id: employment
+    description: Labor-market conditions and payroll data.
+  - id: growth
+    description: Output, activity, demand, or recession risk.
+  - id: energy
+    description: Energy prices, supply, or policy.
+  - id: trade
+    description: Tariffs, trade agreements, or cross-border flows.
+  - id: geopolitics
+    description: Political or security events with market relevance.
+  - id: market_sentiment
+    description: Positioning, flows, volatility, or reported market mood.
+  - id: credit
+    description: Credit conditions, spreads, or default risk.
+
+industries:
+  - id: banking
+  - id: real_estate
+  - id: semiconductors
+  - id: software
+  - id: hardware
+  - id: energy
+  - id: utilities
+  - id: industrials
+  - id: healthcare
+  - id: consumer
+  - id: retail
+  - id: transportation
+  - id: materials
+  - id: telecom
+  - id: media
+
+regions:
+  - id: US
+  - id: EU
+  - id: UK
+  - id: China
+  - id: Japan
+  - id: AsiaPacific
+  - id: EmergingMarkets
+  - id: Global

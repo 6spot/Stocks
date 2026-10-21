@@ -153,6 +153,8 @@ V0-03 的后台解析入口是 `stocks.processing`；V1-02 起由 Worker 文档�
 
 **V1-02 后台执行：** 解析与索引由 Worker 的独立文档处理槽位按统一阶段待办执行，`WORKER_MAX_CONCURRENT_DOCUMENTS`（默认 1，1–16）控制同时处理的阶段数，与 Run 槽位互相独立，因此积压不会饿死采集/研究，长 Run 也不会阻止已入库资料被处理。文档处理的 Embedding 路由只在真正执行一个可领取的 index 阶段时读取；`config/models.yaml` 的 Embedding 配置缺失或损坏不会阻止解析，也不会阻止采集 Run，只让该次 index 尝试记录失败且不自动重试。研究 Run 的 Evidence Selection 仍按既有规则读取并核对自身的 Embedding 路由快照，与此互不影响。`stocks.processing status|retry|reprocess` 提供有界的积压查询与恢复入口，`retry` 只重开失败/未完成阶段，`reprocess` 可显式选择已完成阶段，运行中阶段必须 `--confirm-stopped`。手动 `stocks.processing parse` 与 `stocks.indexing` 是同一阶段服务的调用方，不保留绕过所有权的平行执行路径。
 
+**V1-03 分类阶段：** `classify` 与 `index` 一样在真正领取时才读取自己的路由与词表：Decision Model 路由（`config/models.yaml` 的 `agents.classification`）或词表（`config/taxonomy.yaml`）缺失、损坏、协议不支持时只让该次分类尝试以 `DECISION_ROUTING_UNAVAILABLE` / `TAXONOMY_UNAVAILABLE` 失败且不自动重试，不影响解析、索引、采集或研究。分类读取的是当前成功解析批次的片段，新当前批次会把仍在运行的旧分类尝试作废并重新排队（与 index 相同的输入批次规则），旧执行者写入被 token fence 拒绝。
+
 ### 核心数据与公司/股票标签
 
 Stocks 围绕长期积累和研究分析保存资料；公司名称、股票代码只是检索字段，不为公司、证券、代码历史或逐条提及记录建立独立主数据表。
@@ -195,6 +197,10 @@ V1 起的分类是直接保存在 Document 版本中的轻量情报属性，不�
 | `should_extract` | 同一次低成本分类请求给出的布尔抽取决策；表示是否需要后续 LLM 结构化抽取，**不是保留/删除原文的开关** |
 
 标签及类别使用可配置的受控词表，前端与 Task 使用稳定标签 ID 查询。**V1 将当前分类、标签、`should_extract`、模型信息及分类状态保存在相应 Document 版本的 JSONB/必要状态字段中，不新建 `document_classifications` 或分类历史表。** 更换模型配置只影响后续待处理资料；Owner 可显式对已完成资料重新分类并回写当前结果，不自动重跑分类或已成功的 Fact 抽取。报告需要复查时由 Task Run 保存实际采用的输入快照，不为分类历史设计多套有效记录。结构化 API 响应不必强制走文本分类模型，直接由 Source Mapper 解析可用数据。
+
+**V1-03 当前实现：** 词表由 `config/taxonomy.yaml` 维护（`version` 加各节的稳定 `id`），Stocks 从它派生发给模型的 JSON Schema，因此词表外的类别、主题、行业或地域是契约违规而不是额外标签。`documents.classification` 保存当前结果，包含上述业务字段以及 `method`、`model_ref`、`model_alias`、`reported_model_name`、`taxonomy_version`、`taxonomy_fingerprint`、`classified_at`、`usage`，并在 `reason_or_evidence_ref` 中记录模型给出的理由、所用解析批次、`chunk_ids`、输入字符数与是否截断。分类状态沿用统一的 `document_processing_states` 中 `classify` 行，不另建 `classification_status` 列或分类历史表。分类输入是当前成功解析批次按 `CLASSIFICATION_MAX_CHARACTERS`（默认 6000，200–40000）截取的片段，不把任意长度全文交给模型。
+
+Decision Model 通过 `config/models.yaml` 的 `agents.classification` 配置，`protocol` 目前只实现 `openai_compatible`（其余协议在读取配置时即被拒绝，不假装兼容）；`primary`/`fallbacks` 只是模型别名，`retries` 与回退属于同一次业务分类，不构成第二次分类流程。`should_extract` 作为显式适用性写入 `classify` 阶段：`false` 让 `facts` 以 `NOT_APPLICABLE` 跳过，之后若显式重分类得到 `true`，被跳过的 `facts` 会重新回到 `pending`，而已完成的 Fact 不会被重开。分类失败（词表外结果、无效结构、超时、凭据或路由缺失）记录安全错误码并进入既有有限重试，不会写成 `should_extract=false`，也不改写上一次成功保存的分类结果、原件或已建索引。
 
 **自动分类流程与失败边界：**
 

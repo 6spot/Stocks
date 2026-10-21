@@ -12,7 +12,7 @@ Requires Docker Compose. An S3-compatible endpoint is needed to collect and pers
 
 `api` and `worker` are separate processes from the same image and configuration. The API only reads and never executes a Task Run; the Worker polls PostgreSQL for `queued` Runs and evaluates due schedules, so a restart of either one does not lose queued work. The Worker has no published port.
 
-The current implementation provides Source/Document/Chunk models, fresh-database initialization, a versioned Document repository, configured RSS/Atom discovery, safe HTTP article acquisition, a manual collection CLI, a unified Document processing backlog with manual parse/index commands, pgvector indexing and semantic/exact search CLI, a document-list API, a generic S3 snapshot helper, an HTTP model client, a configured Task runner, a persistent Task scheduler, and an independent Worker with separate Run and document processing slots. The runner persists an Evidence Package with actual Chunk/Document versions, validates structured findings against that snapshot, and saves an Analysis plus a readable Report. The repository checks `(source_id, dedupe_key)` and SHA-256 before writing storage, reuses an immutable Document version and updates a separate collection state for identical bytes, and creates the next immutable Document version for changed bytes. The read-only report and evidence API is implemented; see the next section. Classification, Fact extraction, reliable change watermarks, and the Web console remain to be implemented.
+The current implementation provides Source/Document/Chunk models, fresh-database initialization, a versioned Document repository, configured RSS/Atom discovery, safe HTTP article acquisition, a manual collection CLI, a unified Document processing backlog with manual parse/index commands, pgvector indexing and semantic/exact search CLI, a document-list API, a generic S3 snapshot helper, an HTTP model client, a configured Task runner, a persistent Task scheduler, and an independent Worker with separate Run and document processing slots. The runner persists an Evidence Package with actual Chunk/Document versions, validates structured findings against that snapshot, and saves an Analysis plus a readable Report. The repository checks `(source_id, dedupe_key)` and SHA-256 before writing storage, reuses an immutable Document version and updates a separate collection state for identical bytes, and creates the next immutable Document version for changed bytes. The read-only report and evidence API is implemented; see the next section. Lightweight classification through a configurable Decision Model is implemented; Fact extraction, reliable change watermarks, and the Web console remain to be implemented.
 
 The snapshot helper stores the exact bytes supplied by its caller, computes their SHA-256 hash, and uses the supplied content type; it does not assume XML or a particular collection channel. `stocks.repository.ingest_document()` remains the only Document write entry point.
 
@@ -54,8 +54,8 @@ wait/skip reason, safe error, processor version, input batch) plus counts, the
 processor is not registered is reported as `pending` with
 `wait_reason: PROCESSOR_NOT_AVAILABLE` and `processor_available: false`; it is never
 claimed, never consumes an attempt and is never reported as completed or skipped. This
-release registers `parse` and `index`; `classify` and `facts` wait for their own
-implementations.
+release registers `parse`, `classify` and `index`; `facts` waits for its own
+implementation.
 
 Recover or explicitly reprocess work:
 
@@ -108,10 +108,49 @@ being returned again. `--reprocess` creates a new batch. If that attempt fails, 
 successful batch and its Chunks remain readable and unchanged; a later success becomes
 the current batch without deleting history. Unsupported formats and documents with no
 extractable evidence text are recorded as `unsupported` or `failed`; they are never
-stored as empty successful chunks. PDF/JSON/XML parsing, OCR, classification and Facts
-remain future work, and the Web console for reading the backlog is not implemented yet.
+stored as empty successful chunks. PDF/JSON/XML parsing and OCR remain future work, Facts
+are V1-04, and the Web console for reading the backlog is not implemented yet.
 The separate Task trigger, scheduler, Worker and unified processing backlog are
 implemented; see [Tasks, scheduling and the Worker](#tasks-scheduling-and-the-worker).
+
+## Lightweight classification
+
+The `classify` stage reads the current successful parse batch under a character budget
+and makes one Decision Model call that returns the controlled category, tags and
+`should_extract`. Configure the route in `config/models.yaml`:
+
+```yaml
+agents:
+  classification:
+    protocol: openai_compatible   # the only adapter implemented today
+    routing:
+      primary: fast
+      fallbacks: []
+      required_capabilities: [chat, structured_output]
+      timeout_seconds: 30
+      retries: 1
+```
+
+The vocabulary, its `version` and the derived output schema live in
+`config/taxonomy.yaml`; a category, topic, industry or region outside that file is
+rejected as a contract violation. `CLASSIFICATION_MAX_CHARACTERS` (default 6000, bounded
+to 200..40000) caps how much of the current batch one call may read. The result is stored
+in `documents.classification` on the same Document version — there is no classification
+history table, and the `classify` row in `document_processing_states` is the processing
+status.
+
+A Decision Model answer outside the vocabulary, an invalid structure, a timeout, or a
+missing/broken route is a recorded failure with a safe error code. It is never stored as
+`should_extract=false`, and the previously stored classification, the original Document
+and its index stay intact. `should_extract=false` marks the `facts` stage `NOT_APPLICABLE`;
+an explicit reclassification that returns `true` makes that skipped stage runnable again.
+Run a classification through the normal stage path:
+
+```bash
+docker compose run --rm api python -m stocks.processing status --stage classify
+docker compose run --rm api python -m stocks.processing reprocess \
+  --document-id <document-uuid> --stage classify --execute
+```
 
 ## Manual embedding indexing and search
 

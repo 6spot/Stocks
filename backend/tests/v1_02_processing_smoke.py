@@ -271,27 +271,26 @@ def main() -> int:
         status_before if not isinstance(status_before, dict) else "count mismatch",
     )
     check(
-        "status reports classify/facts as unavailable",
+        "status reports facts as unavailable",
         isinstance(status_before, dict)
-        and {"classify", "facts"}
-        <= set(status_before.get("unavailable_stages", [])),
+        and "facts" in set(status_before.get("unavailable_stages", [])),
         status_before if not isinstance(status_before, dict) else None,
     )
     check(
-        "status shows the unavailable stages as waiting, not skipped",
+        "status shows the unavailable stage as waiting, not skipped",
         all(
             status_before["items"] and row["status"] == "pending"
             for row in [
                 item
                 for item in status_before.get("items", [])
-                if item["stage"] in {"classify", "facts"}
+                if item["stage"] == "facts"
             ]
         )
         and all(
             item["wait_reason"] == "PROCESSOR_NOT_AVAILABLE"
             and item["processor_available"] is False
             for item in status_before.get("items", [])
-            if item["stage"] in {"classify", "facts"}
+            if item["stage"] == "facts"
         ),
         status_before if not isinstance(status_before, dict) else None,
     )
@@ -318,6 +317,21 @@ def main() -> int:
 
     stages = stage_map(document_id)
     check("parse completed", stages["parse"]["status"] == "completed", stages["parse"])
+    check(
+        "classify did not fabricate a result without a usable decision route",
+        stages["classify"]["status"] in {"pending", "failed"}
+        and stages["classify"]["status"] != "completed",
+        stages["classify"],
+    )
+    check(
+        "a failed classify attempt is a safe error, never should_extract=false",
+        stages["classify"]["status"] != "failed"
+        or (
+            stages["classify"]["error"] is not None
+            and "code" in stages["classify"]["error"]
+        ),
+        stages["classify"],
+    )
     check(
         "index did not run without a usable embedding route",
         stages["index"]["status"] in {"pending", "failed"},

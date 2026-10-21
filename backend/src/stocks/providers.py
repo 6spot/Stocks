@@ -383,12 +383,16 @@ def load_chat_routing(
     agent = agents.get(agent_alias) if isinstance(agents, dict) else None
     if not isinstance(agent, dict) or not isinstance(agent.get("routing"), dict):
         raise ValueError(f"Unknown Agent routing reference: {agent_alias}")
-    unknown_agent_fields = set(agent) - {"routing"}
+    unknown_agent_fields = set(agent) - {"routing", "protocol"}
     if unknown_agent_fields:
         raise ValueError(
             f"Unknown Agent field for {agent_alias}: "
             f"{sorted(unknown_agent_fields)[0]}"
         )
+    if "protocol" in agent:
+        protocol = agent["protocol"]
+        if not isinstance(protocol, str) or not protocol.strip():
+            raise ValueError(f"Agent {agent_alias} protocol must be a non-empty string")
     route = agent["routing"]
     unknown = set(route) - {
         "primary",

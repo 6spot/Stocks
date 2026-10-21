@@ -1,10 +1,11 @@
 """Bounded execution of one claimed Document processing stage.
 
 Orchestration lives here, not in the processors: parse reuses the existing
-``process_document`` entry point, index reuses ``index_document``, and classify /
-facts use a plain callable contract. Registering a real Decision Provider or Fact
-extractor belongs to a later task; until then those stages stay visibly pending
-with an explicit wait reason instead of being reported as skipped or completed.
+``process_document`` entry point, index reuses ``index_document``, and classify
+reuses ``classify_document_stage``; ``facts`` uses a plain callable contract.
+Registering a real Fact extractor belongs to a later task; until then that stage
+stays visibly pending with an explicit wait reason instead of being reported as
+skipped or completed.
 """
 from __future__ import annotations
 
@@ -70,10 +71,10 @@ class StageProcessor(Protocol):
 class StageRegistry:
     """The processors available in this deployment.
 
-    A ``None`` entry is an unimplemented capability, not an empty result set.
-    ``index_factory`` keeps embedding routing lazy: parsing and Run collection
-    never read ``config/models.yaml``, and a broken embedding route only fails an
-    index attempt that was actually eligible to run.
+    A ``None`` entry is an unimplemented capability, not an empty result set. The
+    ``*_factory`` entries keep a route lazy: parsing and Run collection never read
+    ``config/models.yaml`` or the classification vocabulary, and a broken route
+    only fails the attempt that was actually eligible to run.
     """
 
     parse: StageProcessor | None = None
@@ -81,6 +82,7 @@ class StageRegistry:
     facts: StageProcessor | None = None
     index: StageProcessor | None = None
     index_factory: Callable[[], StageProcessor] | None = None
+    classify_factory: Callable[[], StageProcessor] | None = None
 
     def available_stages(self) -> frozenset[str]:
         return frozenset(
@@ -88,6 +90,7 @@ class StageRegistry:
             for stage in (STAGE_PARSE, STAGE_CLASSIFY, STAGE_FACTS, STAGE_INDEX)
             if getattr(self, stage) is not None
             or (stage == STAGE_INDEX and self.index_factory is not None)
+            or (stage == STAGE_CLASSIFY and self.classify_factory is not None)
         )
 
     def for_stage(self, stage: str) -> StageProcessor | None:
@@ -96,9 +99,12 @@ class StageRegistry:
                 "UNKNOWN_STAGE", "Unknown Document processing stage"
             )
         processor = getattr(self, stage)
-        if processor is None and stage == STAGE_INDEX and self.index_factory is not None:
-            return self.index_factory()
-        return processor
+        if processor is not None:
+            return processor
+        factory = getattr(self, f"{stage}_factory", None)
+        if factory is not None:
+            return factory()
+        return None
 
 
 @dataclass(frozen=True)
@@ -558,9 +564,13 @@ def run_next_document_stage(
     ordered = [stage for stage in DOCUMENT_STAGE_ORDER if stage in available]
     if not ordered:
         return None
+    priority = {stage: index for index, stage in enumerate(DOCUMENT_STAGE_ORDER)}
     with session_factory() as session:
         ages = ready_stage_ages(session, ordered, now=instant)
-    for stage in sorted(ordered, key=lambda item: (ages.get(item, instant), item)):
+    # Oldest ready Document first; on an exact age tie the declared stage order
+    # decides, because parse unblocks everything else and a name-based tie-break
+    # would let ``classify`` run ahead of ``parse`` for equally old Documents.
+    for stage in sorted(ordered, key=lambda item: (ages.get(item, instant), priority[item])):
         if stage not in ages:
             continue
         execution = run_next_stage(

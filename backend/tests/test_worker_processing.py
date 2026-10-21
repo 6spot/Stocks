@@ -425,7 +425,8 @@ def test_cli_status_reports_capability_and_counts(monkeypatch, capsys):
     assert payload["available_stages"] == sorted(
         build_stage_registry("config/models.yaml").available_stages()
     )
-    assert STAGE_CLASSIFY in payload["unavailable_stages"]
+    # Only ``facts`` has no implementation in this deployment.
+    assert payload["unavailable_stages"] == [STAGE_FACTS]
 
 
 def test_cli_status_rejects_an_out_of_range_limit(capsys):
@@ -748,6 +749,39 @@ def test_document_stage_choice_does_not_starve_older_index_work(engine):
     # The older index work is chosen first.
     ordered = sorted(ages, key=lambda item: (ages[item], item))
     assert ordered[0] == STAGE_INDEX
+
+
+def test_stage_choice_breaks_an_age_tie_by_declared_priority(engine):
+    """An exact age tie must not be decided by the stage's name.
+
+    Parse unblocks every other stage, so equally old ready work has to follow
+    ``DOCUMENT_STAGE_ORDER``. Sorting by name instead would let ``classify`` run
+    ahead of the ``parse`` that produces its input.
+    """
+
+    from stocks.processing.runner import DOCUMENT_STAGE_ORDER
+
+    config = make_config()
+    document = ingest(engine, config)
+    now = datetime(2026, 10, 21, 19, tzinfo=UTC)
+    with Session(engine) as session:
+        for stage in (STAGE_PARSE, STAGE_INDEX, STAGE_CLASSIFY):
+            state = get_stage_state(session, document.id, stage)
+            state.status = "pending"
+            state.attempts = 0
+            state.wait_reason = None
+        session.commit()
+
+    priority = {stage: index for index, stage in enumerate(DOCUMENT_STAGE_ORDER)}
+    ages = {
+        stage: document.collected_at
+        for stage in (STAGE_PARSE, STAGE_INDEX, STAGE_CLASSIFY)
+    }
+    ordered = sorted(ages, key=lambda item: (ages[item], priority[item]))
+
+    assert ordered == [STAGE_PARSE, STAGE_INDEX, STAGE_CLASSIFY]
+    # A name-based tie-break would have produced this wrong order.
+    assert sorted(ages, key=lambda item: (ages[item], item))[0] == STAGE_CLASSIFY
 
 
 def test_manual_index_without_ids_targets_only_actionable_documents(

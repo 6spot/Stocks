@@ -355,6 +355,7 @@ def upgrade():
         sa.Column("content_hash", sa.String(64), nullable=False),
         sa.Column("snapshot_key", sa.Text(), nullable=False),
         sa.Column("trust_tier_snapshot", sa.String(8), nullable=False),
+        sa.Column("classification", JSONB()),
         sa.Column("extra", JSONB(), nullable=False, server_default=sa.text("'{}'::jsonb")),
         sa.CheckConstraint(
             "completeness IN ('complete', 'partial')",

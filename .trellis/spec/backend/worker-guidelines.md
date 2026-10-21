@@ -98,6 +98,17 @@ cron/时区语义、漏触发策略、增量水位等产品契约的唯一来源
    区分“空积压”和“处理真的失败”。
 7f. **`execute_next_document_stage` 不向调用方抛异常。** 它自身隔离阶段缺陷并返回安全失败摘要，
    因为 `--once` 在槽位守卫之外直接调用它；槽位路径本来就是每项自己捕获并继续。
+7g. **多阶段就绪时的排序是“最老 Document 优先 + 声明顺序 tie-break”。** `run_next_document_stage`
+   用 `ready_stage_ages` 比较各阶段最老就绪 Document；同一年龄**必须**按 `DOCUMENT_STAGE_ORDER`
+   （parse → index → classify → facts）决定，不能用阶段名（`sorted(..., item)`）。后者会让
+   `classify` 排在产生其输入的 `parse` 之前：一旦 classify 处理器注册，同年龄的新 Document
+   会被反复领取分类而不是先解析。测试见 `test_stage_choice_breaks_an_age_tie_by_declared_priority`。
+7h. **新增阶段处理器时，所有权 fence 要在写入派生结果之前显式校验一次。** 除 `apply_stage_outcome`
+   在行锁内的 token 校验外，处理器还应先调用 `assert_stage_owned(session, claim)` 再改
+   Document/派生行，否则一个已被新解析批次作废的尝试可能先把结果写进 Session，直到提交时才因
+   token 不匹配整体回滚——错误码会变成 `STAGE_NOT_OWNED`，但语义上它本不该走到写结果这一步。
+   同时：处理器的路由/词表必须用 `*_factory` 惰性解析（参照 `index_factory`、`classify_factory`），
+   否则构建 registry 或执行采集 Run 时会读模型凭据，损坏的配置会变成全局故障而不是单次尝试失败。
 8. **重试复制快照与已完成工作，不新建历史表。** `retry_run` 只接受 `failed|cancelled`；复制**被结束 Run 自己的**
    `config_snapshot`/`model_snapshot`/`prompt_snapshot`（`config_path=None`、`upsert_definition=False`），
    只复制**连续成功**且非 `research_agent` 的步骤；Evidence Package 为新 Run 重新建一份，并把
@@ -122,6 +133,9 @@ cron/时区语义、漏触发策略、增量水位等产品契约的唯一来源
 | `--once` 中 Run 失败或调度 `failed` | CLI 退出码 `1`（可观测），空队列正常返回 `0` |
 | `poll_seconds`/并发越界 | CLI exit 2 + `POLL_SECONDS_INVALID`/`CONCURRENCY_INVALID`/`DOCUMENT_CONCURRENCY_INVALID`/`ROUNDS_INVALID`，不静默夹取 |
 | 未注册文档处理器 | status 显示 `pending` + `PROCESSOR_NOT_AVAILABLE`、`processor_available=false`；不自动领取、不消耗尝试 |
+| 多个阶段同时有就绪工作 | 最老就绪 Document 优先；同年龄按 `DOCUMENT_STAGE_ORDER`，`parse` 先于依赖它的阶段 |
+| 阶段路由/词表缺失或损坏 | 该次尝试 `failed` + 稳定错误码且不自动重试；解析、索引、采集与研究不受影响 |
+| 模型返回结果超出受控词表 | 按无效响应有限重试后 `failed`；不得写成 `should_extract=false`，也不得覆盖上次成功结果 |
 | 文档旧 token 或已被新解析批次作废的输入 | `STAGE_NOT_OWNED`，结果事务回滚，不能覆盖新所有者/新输入 |
 | 文档 running 未确认旧进程停止 | `OWNER_CONFIRMATION_REQUIRED`；不解除所有权 |
 | retry 已完成文档阶段 | `STAGE_ALREADY_COMPLETED`；只有 reprocess 可以显式重开 |

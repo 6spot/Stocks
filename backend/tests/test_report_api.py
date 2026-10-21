@@ -12,6 +12,7 @@ from stocks.api import app
 from stocks.models import (
     Analysis,
     Base,
+    Document,
     DocumentEmbeddingState,
     EvidencePackage,
     ModelCall,
@@ -672,3 +673,47 @@ def test_documents_listing_keeps_its_existing_shape(engine, client, snapshot_sto
         assert row["collection_state"]["latest_document_id"] == str(second["document_id"])
         assert UUID(row["collection_state"]["latest_document_id"])
     assert listed[0]["content_hash"] == sha256(ARTICLE_V2).hexdigest()
+
+
+def test_document_payload_exposes_the_current_classification(engine, client, snapshot_store):
+    """The console reads the stored tags from the Document version itself."""
+
+    config = make_config()
+    _objects, store, _read = snapshot_store
+    with Session(engine) as session:
+        persist_source(session)
+        first = persist_parsed_version(
+            session, config, store, make_item(ARTICLE_V1), CHUNK_V1
+        )
+
+    row = client.get("/api/documents").json()[0]
+    assert row["id"] == str(first["document_id"])
+    # No classification result yet is reported as absent, not as an empty tag set.
+    assert row["classification"] is None
+
+    stored = {
+        "category": "macro",
+        "event_type": "monetary_policy",
+        "topics": ["interest_rates"],
+        "related_industries": ["banking"],
+        "regions": ["US"],
+        "companies": [],
+        "symbols": [],
+        "should_extract": True,
+        "method": "decision_model",
+        "model_ref": "classification",
+        "taxonomy_version": "2026-10-21",
+        "classified_at": "2026-10-21T04:00:00+00:00",
+        "reason_or_evidence_ref": {"reason": "policy decision", "chunk_ids": ["c1"]},
+    }
+    with Session(engine) as session:
+        document = session.get(Document, first["document_id"])
+        document.classification = stored
+        session.commit()
+
+    row = client.get("/api/documents").json()[0]
+    assert row["classification"]["category"] == "macro"
+    assert row["classification"]["related_industries"] == ["banking"]
+    assert row["classification"]["companies"] == []
+    detail = client.get(f"/api/documents/{first['document_id']}").json()
+    assert detail["document"]["classification"]["should_extract"] is True

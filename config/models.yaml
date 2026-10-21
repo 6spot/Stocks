@@ -30,3 +30,17 @@ agents:
       timeout_seconds: 60
       retries: 1
       retry_backoff_seconds: 0
+  # Decision Model: a capability category, not a vendor. Point `primary` (and
+  # optional `fallbacks`) at a cheap model that can answer the bounded
+  # classification schema; `protocol` names the adapter, and this deployment only
+  # implements `openai_compatible`. Classification schema and vocabulary are owned
+  # by Stocks in config/taxonomy.yaml.
+  classification:
+    protocol: openai_compatible
+    routing:
+      primary: fast
+      fallbacks: []
+      required_capabilities: [chat, structured_output]
+      timeout_seconds: 30
+      retries: 1
+      retry_backoff_seconds: 0

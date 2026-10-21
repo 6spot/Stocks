@@ -61,12 +61,13 @@ SKIP_NOT_APPLICABLE = "NOT_APPLICABLE"
 # Which explicit applicability fact a processor may use to skip a dependent
 # stage, keyed by ``(skipping stage, dependent stage)``. Absent pairs are never
 # skipped from applicability: the dependent only inherits the skip because its
-# own dependency will not produce a result. The classifier's "no extraction
-# needed" decision belongs to the Decision Provider contract and is added when
-# that processor is registered, not inferred here.
+# own dependency will not produce a result. ``requires_extraction`` is reported by
+# the classifier only after it really produced a decision, so a failed or missing
+# Decision Model can never be read as "no facts needed".
 DIRECT_SKIP_APPLICABILITY: dict[tuple[str, str], str] = {
     (STAGE_PARSE, STAGE_INDEX): "requires_embedding",
     (STAGE_PARSE, STAGE_CLASSIFY): "requires_classification",
+    (STAGE_CLASSIFY, STAGE_FACTS): "requires_extraction",
 }
 
 # Only these stages read the current parse batch and therefore have to run again
@@ -702,22 +703,35 @@ def _propagate_skips(
 
 
 def _reopen_dependency_skips(
-    session: Session, state: DocumentProcessingState
+    session: Session, state: DocumentProcessingState, outcome: StageOutcome
 ) -> None:
-    """Reopen dependents that were skipped only because this stage was skipped.
+    """Reopen dependents whose skip no longer holds after this completion.
 
-    Called when ``state`` completes. A dependent recording
-    :data:`SKIP_DEPENDENCY_SKIPPED` never had its own applicability decided and
-    only waited for this stage's result, which now exists.
+    Two cases reopen:
+
+    * ``SKIP_DEPENDENCY_SKIPPED``: the dependent never had its own applicability
+      decided and only waited for this stage's result, which now exists.
+    * ``SKIP_NOT_APPLICABLE`` inherited from *this* stage when the new outcome
+      explicitly says the dependent is required again. That is how an explicit
+      reclassification flipping ``should_extract`` from false to true makes Facts
+      runnable again. A completed Fact is never reopened this way, because only a
+      ``skipped`` row is touched.
     """
 
+    applicability = outcome.applicability or {}
     for stage, dependencies in STAGE_DEPENDENCIES.items():
         if state.stage not in dependencies:
             continue
         row = session.get(DocumentProcessingState, (state.document_id, stage))
         if row is None or row.status != "skipped":
             continue
-        if row.skip_reason != SKIP_DEPENDENCY_SKIPPED:
+        if row.skip_reason == SKIP_DEPENDENCY_SKIPPED:
+            pass
+        elif row.skip_reason == SKIP_NOT_APPLICABLE:
+            field = DIRECT_SKIP_APPLICABILITY.get((state.stage, stage))
+            if field is None or applicability.get(field) is not True:
+                continue
+        else:
             continue
         row.status = "pending"
         row.attempts = 0
@@ -747,7 +761,7 @@ def _apply_downstream(
         # This stage can now feed the dependents that were only waiting for its
         # result, so an inherited skip no longer applies. Reopening comes first so
         # a fresh applicability verdict below can still skip them again.
-        _reopen_dependency_skips(session, state)
+        _reopen_dependency_skips(session, state, outcome)
     if outcome.status in {OUTCOME_COMPLETED, OUTCOME_SKIPPED}:
         _propagate_skips(session, state, outcome)
     if outcome.stage != STAGE_PARSE:

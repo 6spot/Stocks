@@ -310,6 +310,10 @@ def _document_payload(document: Document) -> dict:
         "content_size": document.content_size,
         "content_hash": document.content_hash,
         "snapshot_key": document.snapshot_key,
+        # The current lightweight classification of this content version, or
+        # ``None`` when no classification result exists yet. It is an attribute of
+        # the stored version, never a replacement for the original text.
+        "classification": document.classification,
     }
 
 

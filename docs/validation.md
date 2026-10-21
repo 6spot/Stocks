@@ -25,7 +25,7 @@ V1 在 V0 的证据链上增加定时采集、定时研究、结构化 Fact、�
 - **运行恢复**：同一 Task 同时最多一份待执行/运行 Run。有限重试后仍失败的采集、解析、分类、抽取、索引或研究可定位并由 Owner 重试；已完成步骤不重复制造资料。中断的 Document 阶段不自动接管，Owner 确认旧进程停止后才释放，已提交的解析批次与向量批次保留并只续做缺失部分。来源无更新、请求失败与处理积压分别呈现。
 - **日常界面与部署**：受保护的 Overview、Intelligence、Tasks、Research 和基础 Runs 视图能查看来源、处理状态、报告及证据，并手动触发/重试。Web/API 跨设备开放前完成访问控制；按目标 ARM + Docker Compose 环境验证部署。报告失败保留最后成功报告。
 
-**已实现与待补的边界（V1-02）：** 独立 API/Worker 进程、manual/schedule/retry 统一原子触发、`cron`+时区与 `every` 固定锚点的持久 due 调度、跨 Task 失败隔离、最小 `collection` Task 接入、Owner 显式确认停机后的结束/重试，以及 Document 四阶段（parse/classify/facts/index）统一待办、独立有界文档处理槽位、有限自动重试、中断恢复与 `stocks.processing status|retry|reprocess` 已在当前代码实现。分类算法与 Decision Provider（V1-03）、Fact 表与抽取/Source Mapper（V1-04）尚未实现：当前部署只注册 parse 与 index，classify/facts 阶段保持可见的 `pending` + `PROCESSOR_NOT_AVAILABLE`，不冒充完成或跳过；数值资料“无需向量”的跳过只由处理器显式适用性产出，真实 Source Mapper 属 V1-04。可靠变化水位归 V1-05，受保护的 Web 控制台归后续任务。本节描述的是阶段目标，具体可运行命令以[开发运行说明](quickstart.md)为准。
+**已实现与待补的边界（V1-03）：** 独立 API/Worker 进程、manual/schedule/retry 统一原子触发、`cron`+时区与 `every` 固定锚点的持久 due 调度、跨 Task 失败隔离、最小 `collection` Task 接入、Owner 显式确认停机后的结束/重试，Document 四阶段（parse/classify/facts/index）统一待办、独立有界文档处理槽位、有限自动重试、中断恢复与 `stocks.processing status|retry|reprocess`，以及轻量分类（受控词表 `config/taxonomy.yaml`、`agents.classification` 的 Decision Model 路由、一次分类请求给出标签与 `should_extract`、当前结果回写 `documents.classification`）已在当前代码实现。Fact 表与抽取/Source Mapper（V1-04）尚未实现：当前部署只注册 parse、classify 与 index，`facts` 阶段保持可见的 `pending` + `PROCESSOR_NOT_AVAILABLE`（或由分类显式 `should_extract=false` 导致的 `NOT_APPLICABLE` 跳过），不冒充完成或跳过；数值资料“无需向量”的跳过只由处理器显式适用性产出，真实 Source Mapper 属 V1-04。可靠变化水位归 V1-05，受保护的 Web 控制台归后续任务。分类算法的真实 Provider 闭环与词表规模仍需在 V1-09 阶段验收中核对。本节描述的是阶段目标，具体可运行命令以[开发运行说明](quickstart.md)为准。
 
 ## V2：研究深化
 
