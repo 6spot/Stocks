@@ -457,3 +457,25 @@ Fixed the four defects found reviewing archived V0-01/V0-02: the latest-content 
 ### Status
 
 [OK] **Completed**
+
+
+## Session 15: Inline Pi Trellis and remove OpenCode integration
+<!-- trellis-session: v=2 fp=2a5ed1f8112ac83d -->
+
+**Date**: 2026-10-21
+**Task**: Inline Pi Trellis and remove OpenCode integration
+**Branch**: `chore/pi-trellis-inline-opencode`
+
+### Summary
+
+Removed Pi Trellis subprocess dispatch, routed Pi workflow through the main session, and deleted the project .opencode integration. Preserved Trellis task context and shared CLI OpenCode support. Archived task 10-21-pi-trellis-inline-workflow; validation limitations are recorded in its acceptance.md.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `86d5376` | chore(pi): inline Trellis and remove OpenCode integration |
+
+### Status
+
+[OK] **Completed**
