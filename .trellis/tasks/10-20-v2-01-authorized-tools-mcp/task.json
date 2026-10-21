@@ -3,7 +3,7 @@
   "name": "v2-01-authorized-tools-mcp",
   "title": "V2-01 授权 Tool MCP 与研究按需补证",
   "description": "资料缺失、过期或冲突时，研究可有界补证并先保存证据再引用。",
-  "status": "planning",
+  "status": "in_progress",
   "dev_type": "backend",
   "scope": null,
   "package": null,
@@ -12,10 +12,10 @@
   "assignee": "me",
   "createdAt": "2026-10-20",
   "completedAt": null,
-  "branch": null,
+  "branch": "main",
   "base_branch": "main",
   "worktree_path": null,
-  "commit": null,
+  "commit": "0359a6f",
   "pr_url": null,
   "subtasks": [],
   "children": [],
@@ -27,15 +27,15 @@
     "docs/data.md",
     "docs/validation.md"
   ],
-  "notes": "本轮仅规划；依赖写入 meta.depends_on 及规划文档，Trellis 父子关系不会自动调度。开工前复核现状和技术细节并取得该子任务的实施确认。",
+  "notes": "Owner 已授权按 V2 任务列表逐个实施。范围：Tool 目录配置与授权快照、远程 MCP Streamable HTTP 客户端、Repository 优先的结构化补证计划与有界执行、统一入库并追加 research_inputs、报告合并视图与重试保留。验证（测试服务器 100.120.14.84 隔离目录 /tmp/stocks-v2-01-tools-mcp）：pytest 覆盖 test_tools/test_research_supplement/test_execution/test_report_api/test_research/test_console_api/test_api/test_scheduler/test_worker_processing/test_collection 共 229 passed（1 个第三方 Starlette 弃用 warning）；全新空库 alembic upgrade head 与 alembic check 均通过；python -m stocks.execution --help 显示新增 --tools-config。验收过程中修复：httpx 0.28 单请求超时需走 build_request/stream、notifications/initialized 接受任意 2xx、httpx logger 降级以避免 endpoint 入日志、多轮补证的 call_purpose 序号续排（新增 test_second_planning_round_continues_the_attempt_sequence）。AC-1/2/3 已在 prd.md 勾选。外部限制：未提供真实远程 MCP 服务与凭据，实际供应商接通、真实原件字节链路与第三方限流行为记为待 Owner 验收，不阻塞后续任务。",
   "meta": {
     "milestone": "V2",
     "kind": "delivery",
     "depends_on": [
       ".trellis/tasks/10-20-v1-09-arm-deployment-acceptance"
     ],
-    "planning_review": "pending",
+    "planning_review": "approved",
     "planning_depth": "delivery-plan",
-    "implementation_authorized": false
+    "implementation_authorized": true
   }
 }
