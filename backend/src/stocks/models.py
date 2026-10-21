@@ -274,7 +274,14 @@ class EvidencePackage(Base):
     selection_policy_version: Mapped[str] = mapped_column(String(120))
     selection_budget: Mapped[dict] = mapped_column(JSONB)
     queries: Mapped[list] = mapped_column(JSONB)
+    # Every selected readable Chunk, kept as the citation unit a Report repeats.
     selected_chunks: Mapped[list] = mapped_column(JSONB)
+    # V1 merged candidates grouped by Document version. One group holds the
+    # Chunks and Facts that belong to the same evidence chain, so a Document and
+    # its Fact are never counted as independent support.
+    evidence_groups: Mapped[list] = mapped_column(
+        JSONB, default=list, server_default=text("'[]'::jsonb")
+    )
     coverage: Mapped[dict] = mapped_column(JSONB)
     candidates_discovered: Mapped[int | None] = mapped_column(Integer, nullable=True)
     candidates_screened: Mapped[int | None] = mapped_column(Integer, nullable=True)

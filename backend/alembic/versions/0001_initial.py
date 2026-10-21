@@ -193,6 +193,12 @@ def upgrade():
         sa.Column("selection_budget", JSONB(), nullable=False),
         sa.Column("queries", JSONB(), nullable=False),
         sa.Column("selected_chunks", JSONB(), nullable=False),
+        sa.Column(
+            "evidence_groups",
+            JSONB(),
+            nullable=False,
+            server_default=sa.text("'[]'::jsonb"),
+        ),
         sa.Column("coverage", JSONB(), nullable=False),
         sa.Column("candidates_discovered", sa.Integer()),
         sa.Column("candidates_screened", sa.Integer()),

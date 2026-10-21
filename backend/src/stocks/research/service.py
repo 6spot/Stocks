@@ -14,13 +14,28 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from stocks.indexing.service import embed_texts
-from stocks.changes import ChangeCursorError, ChangeWindow, search_changes
+from stocks.changes import (
+    ChangeCursorError,
+    ChangeWindow,
+    ChangedCandidate,
+    changed_candidates,
+    search_changes,
+)
+from stocks.facts import facts_for_documents
 from stocks.models import (
     Analysis,
     Document,
     DocumentChunk,
     DocumentParseState,
     EvidencePackage,
+    Fact,
+)
+from stocks.repository import current_document_hits
+from stocks.research.evidence import (
+    HISTORICAL_CONTEXT,
+    NEW_INFORMATION,
+    EvidenceCollector,
+    mark_conflicting_facts,
 )
 from stocks.providers import (
     EmbeddingResponse,
@@ -32,7 +47,7 @@ from stocks.repository import SearchFilters, SearchHit
 from stocks.search.service import semantic_search
 from stocks.settings import Settings
 
-EVIDENCE_SELECTION_POLICY_VERSION = "v0.1"
+EVIDENCE_SELECTION_POLICY_VERSION = "v1.0"
 MAX_EVIDENCE_TOKENS = 64_000
 MAX_QUERIES = 8
 MAX_QUERY_CHARACTERS = 4_000
@@ -163,10 +178,12 @@ def select_evidence(
     query_records: list[dict] = []
     selected: list[dict] = []
     selected_tokens = 0
-    seen_chunks: set[UUID] = set()
-    seen_tokens: set[str] = set()
-    discovered_chunks: set[UUID] = set()
+    # A candidate is one distinct Document+Chunk. A Document reached by both
+    # the incremental and semantic paths still contributes each of its Chunks
+    # once; ``evidence_group_count`` is the smaller, merged chain count.
+    discovered_candidates: set[tuple[UUID, UUID]] = set()
     examined_chunks: set[UUID] = set()
+    examined_candidates: set[tuple[UUID, UUID]] = set()
     retrieval_truncated = False
     query_truncated = False
     coverage_snapshots: list[dict] = []
@@ -174,13 +191,15 @@ def select_evidence(
     accumulated_scanned_documents = {
         str(value) for value in scanned_document_ids
     }
+    changed_documents: dict[UUID, ChangedCandidate] = {}
     if change_window is None:
         change_page = {
             "completed": True,
-            "after_watermark": change_window.end if change_window else None,
+            "after_watermark": None,
             "after_change_id": None,
             "raw_changes_scanned": 0,
             "candidate_documents_scanned": 0,
+            "scanned_document_ids": [],
             "source_ids": list(normalized_sources),
             "kinds": [],
         }
@@ -196,11 +215,20 @@ def select_evidence(
             )
         except ChangeCursorError as exc:
             raise ValueError(exc.message) from exc
-        changed_document_ids = tuple(
-            dict.fromkeys(record.document_id for record in raw_page.records)
-        )
+        # Group this page by Document so one source becomes one evidence chain.
+        # The continuation above still comes from ``raw_page``: a grouped
+        # candidate watermark is only an ordering/display value.
+        for candidate in changed_candidates(
+            session,
+            change_window,
+            source_ids=normalized_scan_sources,
+            limit=scan_page_limit,
+            after_watermark=after_watermark,
+            after_change_id=after_change_id,
+        ):
+            changed_documents[candidate.document_id] = candidate
         accumulated_scanned_documents.update(
-            str(value) for value in changed_document_ids
+            str(value) for value in changed_documents
         )
         change_page = {
             "completed": raw_page.completed,
@@ -211,11 +239,84 @@ def select_evidence(
                 else None
             ),
             "raw_changes_scanned": len(raw_page.records),
-            "candidate_documents_scanned": len(changed_document_ids),
+            "candidate_documents_scanned": len(changed_documents),
             "scanned_document_ids": sorted(accumulated_scanned_documents),
             "source_ids": list(raw_page.source_ids),
             "kinds": list(raw_page.kinds),
         }
+        if not raw_page.completed:
+            retrieval_truncated = True
+
+    collector = EvidenceCollector()
+    incremental_gap_reasons: set[str] = set()
+    if changed_documents:
+        changed_document_ids = tuple(changed_documents)
+        changed_hits = current_document_hits(
+            session,
+            changed_document_ids,
+            per_document_limit=max(1, min(limit_per_query, 8)),
+        )
+        hits_by_document: dict[UUID, list[SearchHit]] = {}
+        for hit in changed_hits:
+            hits_by_document.setdefault(hit.document_id, []).append(hit)
+        facts_by_document: dict[UUID, list[Fact]] = {}
+        for fact in facts_for_documents(session, changed_document_ids):
+            facts_by_document.setdefault(fact.document_id, []).append(fact)
+        documents = {
+            document.id: document
+            for document in session.scalars(
+                select(Document).where(Document.id.in_(changed_document_ids))
+            ).all()
+        }
+        for document_id, candidate in changed_documents.items():
+            document = documents.get(document_id)
+            if document is None:
+                continue
+            fact_refs = mark_conflicting_facts(
+                _unique_facts_by_signature(facts_by_document.get(document_id, []))
+            )
+            hits = hits_by_document.get(document_id, [])
+            kept = False
+            for hit in hits:
+                tokens = estimate_tokens(hit.text)
+                if selected_tokens + tokens > max_tokens:
+                    # The candidate was screened, but its text cannot enter this
+                    # Run input under the stated budget. Record it as excluded
+                    # material; the candidate pool itself stays known.
+                    incremental_gap_reasons.add("token_budget")
+                    examined_chunks.add(hit.chunk_id)
+                    discovered_candidates.add((hit.document_id, hit.chunk_id))
+                    examined_candidates.add((hit.document_id, hit.chunk_id))
+                    break
+                collector.add_hit(
+                    hit,
+                    role=NEW_INFORMATION,
+                    reason=_change_reason(candidate.kinds),
+                    facts=fact_refs,
+                    kinds=candidate.kinds,
+                    watermark=candidate.watermark,
+                )
+                selected_tokens += tokens
+                examined_chunks.add(hit.chunk_id)
+                discovered_candidates.add((hit.document_id, hit.chunk_id))
+                examined_candidates.add((hit.document_id, hit.chunk_id))
+                kept = True
+            if not kept:
+                # No readable Chunk (a structured API response) or no room left
+                # for text: retain the structured evidence instead of dropping
+                # newly available Facts from the Run entirely.
+                collector.add_fact_only(
+                    document_id=document.id,
+                    source_id=document.source_id,
+                    title=document.title,
+                    document_version=document.version,
+                    published_at=document.published_at,
+                    collected_at=document.collected_at,
+                    facts=fact_refs,
+                    kinds=candidate.kinds,
+                    watermark=candidate.watermark,
+                )
+
     for query, role in zip(query_texts, query_roles, strict=True):
         result = semantic_search(
             session,
@@ -232,7 +333,11 @@ def select_evidence(
         query_truncated = query_truncated or truncated
         retrieval_truncated = retrieval_truncated or truncated
         for hit in result.hits:
-            discovered_chunks.add(hit.chunk_id)
+            # A Chunk already discovered through the incremental path is the same
+            # material, not a second candidate; counting it again would inflate
+            # the candidate pool for one evidence chain.
+            if not collector.has_chunk(hit.chunk_id):
+                discovered_candidates.add((hit.document_id, hit.chunk_id))
         gap_reasons: list[str] = []
         if result.coverage is None:
             gap_reasons.append("coverage_unavailable")
@@ -255,27 +360,30 @@ def select_evidence(
             gap_reasons.append("retrieval_truncated")
         for hit_index, hit in enumerate(result.hits, start=1):
             examined_chunks.add(hit.chunk_id)
-            if hit.chunk_id in seen_chunks:
-                continue
-            token_identity = _token_identity(hit)
-            if token_identity in seen_tokens:
+            examined_candidates.add((hit.document_id, hit.chunk_id))
+            if collector.has_chunk(hit.chunk_id):
+                # The same Document + Chunk already entered through the
+                # incremental path. Feeding it again would double count one
+                # evidence chain, but the semantic match still belongs to the
+                # group's provenance.
+                collector.record_match(
+                    hit,
+                    role=role,
+                    reason=_background_reason(role),
+                )
                 continue
             tokens = estimate_tokens(hit.text)
             if selected_tokens + tokens > max_tokens:
                 gap_reasons.append("token_budget")
                 retrieval_truncated = True
                 break
-            ref = _selected_chunk_ref(
+            collector.add_hit(
                 hit,
-                role=role,
-                rank=hit_index,
-                targets=targets,
+                role=HISTORICAL_CONTEXT,
+                reason=_background_reason(role),
+                match_role=role,
             )
-            ref["estimated_tokens"] = tokens
-            selected.append(ref)
             selected_tokens += tokens
-            seen_chunks.add(hit.chunk_id)
-            seen_tokens.add(token_identity)
             selected_in_query += 1
         query_records.append(
             {
@@ -290,35 +398,79 @@ def select_evidence(
             }
         )
 
-    # A query that reached its limit hides the rest of the candidate pool, so
-    # those totals stay unknown instead of being reported as what was returned.
-    # Budget-driven stops are different: the returned set is fully known, so
-    # exactly which chunks were not examined is recorded.
-    candidates_discovered = None if query_truncated else len(discovered_chunks)
-    candidates_screened = len(examined_chunks)
+    groups = collector.groups()
+    for group in groups:
+        for index, chunk in enumerate(group.chunks, start=1):
+            ref = _selected_chunk_ref(
+                chunk,
+                role=group.match_role or (
+                    "direct" if group.role == NEW_INFORMATION else "background"
+                ),
+                rank=index,
+                targets=targets,
+            )
+            ref["evidence_role"] = group.role
+            ref["estimated_tokens"] = estimate_tokens(chunk.text)
+            ref["chunk_ids"] = group.chunk_ids
+            ref["fact_ids"] = group.fact_ids
+            ref["reasons"] = list(dict.fromkeys(group.reasons))
+            ref["kinds"] = list(group.kinds)
+            selected.append(ref)
+    evidence_groups = [group.to_ref() for group in groups]
+    # Counts describe what the queries actually did. ``candidates_discovered``
+    # stays unknown as soon as a bounded query (or the raw change page) may hide
+    # more material; an empty ``unexamined_count`` means the pool is unknown,
+    # which is different from "everything was screened".
+    # ``discovered_candidates`` is the union of incremental and semantic
+    # candidates, so a Document reached by both paths contributes once.
+    if (change_window is not None and not change_page["completed"]) or query_truncated:
+        candidates_discovered = None
+    else:
+        candidates_discovered = len(discovered_candidates)
+    candidates_screened = len(examined_candidates)
     unexamined_total = (
-        None if query_truncated else len(discovered_chunks - examined_chunks)
+        None
+        if candidates_discovered is None
+        else max(0, candidates_discovered - candidates_screened)
     )
+    filtered_out = max(0, candidates_screened - len(selected))
     coverage = {
         "current_query_only": False if change_window is not None else True,
         "change_scan": deepcopy(change_page),
         "candidates_discovered": candidates_discovered,
         "candidates_screened": candidates_screened,
         "selected_count": len(selected),
+        "evidence_group_count": len(evidence_groups),
+        "fact_count": collector.fact_count,
+        "filtered_out_count": filtered_out,
         "unexamined_count": unexamined_total,
         "retrieval_truncated": retrieval_truncated,
-        "gaps": _coverage_gaps(
-            query_records,
-            selected=selected,
-            config=config,
-            targets=targets,
+        "gaps": list(
+            dict.fromkeys(
+                [
+                    *_coverage_gaps(
+                        query_records,
+                        selected=selected,
+                        groups=evidence_groups,
+                        config=config,
+                        targets=targets,
+                    ),
+                    *sorted(incremental_gap_reasons),
+                ]
+            )
         ),
         "index": coverage_snapshots,
+        "new_information_group_count": sum(
+            group["role"] == NEW_INFORMATION for group in evidence_groups
+        ),
+        "historical_context_group_count": sum(
+            group["role"] == HISTORICAL_CONTEXT for group in evidence_groups
+        ),
         "direct_match_count": sum(
-            item["role"] == "direct" for item in selected
+            group["role"] == NEW_INFORMATION for group in evidence_groups
         ),
         "background_match_count": sum(
-            item["role"] == "background" for item in selected
+            group["role"] == HISTORICAL_CONTEXT for group in evidence_groups
         ),
     }
     package = EvidencePackage(
@@ -337,6 +489,7 @@ def select_evidence(
         },
         queries=query_records,
         selected_chunks=selected,
+        evidence_groups=evidence_groups,
         coverage=coverage,
         candidates_discovered=coverage["candidates_discovered"],
         candidates_screened=coverage["candidates_screened"],
@@ -504,10 +657,49 @@ def _token_identity(hit: SearchHit) -> str:
     ).hexdigest()
 
 
+def _change_reason(kinds: tuple[str, ...] | list[str]) -> str:
+    """Name the strongest reason a changed Document entered this window."""
+
+    for kind in (
+        "fact_extracted",
+        "fact_mapped",
+        "document_indexed",
+        "document_classified",
+        "document_parsed",
+        "document_ingested",
+    ):
+        if kind in kinds:
+            return f"new_{kind}"
+    return "new_change"
+
+
+def _background_reason(role: str) -> str:
+    return (
+        "direct_scope_match"
+        if role == "direct"
+        else "background_scope_match"
+    )
+
+
+def _unique_facts_by_signature(facts: list[Fact]) -> list[Fact]:
+    """Collapse a Fact reached through more than one structured path.
+
+    Database idempotency already prevents duplicate rows for one content
+    version. This guard is for callers that pass the same Fact twice, and keeps
+    the package deterministic without discarding genuinely different Facts.
+    """
+
+    unique: dict[UUID, Fact] = {}
+    for fact in facts:
+        unique.setdefault(fact.id, fact)
+    return list(unique.values())
+
+
 def _coverage_gaps(
     queries: list[dict],
     *,
     selected: list[dict],
+    groups: list[dict],
     config: Settings,
     targets: EmbeddingTargets,
 ) -> list[str]:
@@ -526,7 +718,10 @@ def _coverage_gaps(
             continue
         if not any(item["result_count"] for item in queries_for_role):
             gaps.append(f"no_{role}_matches")
-        elif not any(item["role"] == role for item in selected):
+        elif not any(
+            group.get("match_role") == role
+            for group in groups
+        ):
             gaps.append(f"no_{role}_selected")
     if any(item["completeness"] == "partial" for item in selected):
         gaps.append("partial_source_content")
@@ -588,6 +783,14 @@ def validate_selected_versions(
             "collected_at": row[1].collected_at.isoformat(),
             "completeness": row[1].completeness,
             "locator": deepcopy(row[0].locator),
+            # V1 evidence-group context travels with the readable Chunk so the
+            # Agent receives the structured Fact beside the text it came from
+            # instead of two unrelated evidence entries.
+            "role": item.get("role"),
+            "reasons": deepcopy(item.get("reasons", [])),
+            "kinds": deepcopy(item.get("kinds", [])),
+            "chunk_ids": deepcopy(item.get("chunk_ids", [str(chunk_id)])),
+            "fact_ids": deepcopy(item.get("fact_ids", [])),
         }
     return allowed
 

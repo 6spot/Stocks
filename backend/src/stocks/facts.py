@@ -292,6 +292,39 @@ def list_document_facts(session: Session, document_id: UUID) -> list[Fact]:
     )
 
 
+def facts_for_documents(
+    session: Session,
+    document_ids: tuple[UUID, ...] | list[UUID],
+    *,
+    limit: int = MAX_FACT_QUERY_LIMIT,
+) -> list[Fact]:
+    """Read the bounded set of Facts derived from a page of Documents.
+
+    Incremental Evidence Selection already holds a page of changed Documents. It
+    needs their structured Facts in one query rather than one query per Document;
+    the ordering keeps the result deterministic so repeated runs over the same
+    window form the same evidence groups.
+    """
+
+    if not 1 <= limit <= MAX_FACT_QUERY_LIMIT:
+        raise ValueError(f"limit must be between 1 and {MAX_FACT_QUERY_LIMIT}")
+    normalized = tuple(dict.fromkeys(document_ids))
+    if not normalized:
+        return []
+    return list(
+        session.scalars(
+            select(Fact)
+            .where(Fact.document_id.in_(normalized))
+            .order_by(
+                Fact.available_at.nulls_last(),
+                Fact.created_at,
+                Fact.id,
+            )
+            .limit(limit)
+        ).all()
+    )
+
+
 def fact_to_dict(fact: Fact) -> dict:
     """The read shape shared by the CLI and the read-only API."""
 

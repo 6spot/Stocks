@@ -704,6 +704,46 @@ def get_chunk_context(
     ]
 
 
+def current_document_hits(
+    session: Session,
+    document_ids: tuple[UUID, ...] | list[UUID],
+    *,
+    per_document_limit: int = 8,
+) -> list[SearchHit]:
+    """Read readable Chunks from each Document's current successful batch.
+
+    Incremental selection already has a page of changed Documents but no vector
+    query for them. This reads what is actually available now without rebuilding
+    an index or treating an older parse batch as current evidence.
+    """
+
+    if not 1 <= per_document_limit <= 200:
+        raise ValueError("per_document_limit must be between 1 and 200")
+    normalized = tuple(dict.fromkeys(document_ids))
+    if not normalized:
+        return []
+    rows = session.execute(
+        select(DocumentChunk, Document)
+        .join(Document, Document.id == DocumentChunk.document_id)
+        .join(
+            DocumentParseState,
+            and_(
+                DocumentParseState.document_id == Document.id,
+                DocumentParseState.current_batch_id
+                == DocumentChunk.parse_batch_id,
+            ),
+        )
+        .where(Document.id.in_(normalized))
+        .order_by(Document.id, DocumentChunk.position)
+    ).all()
+    grouped: dict[UUID, list[SearchHit]] = {}
+    for chunk, document in rows:
+        bucket = grouped.setdefault(document.id, [])
+        if len(bucket) < per_document_limit:
+            bucket.append(_search_hit(chunk, document, similarity=None))
+    return [hit for document_id in normalized for hit in grouped.get(document_id, ())]
+
+
 def search_chunks_exact(
     session: Session,
     term: str,

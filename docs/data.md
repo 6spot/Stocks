@@ -296,11 +296,11 @@ V0 的 Repository 查询 Document Chunk：使用 **pgvector 语义召回**，结
 
 当前 `stocks.search` 提供两条读取路径。语义查询只为本次查询文本生成向量，通过当前模型和维度的 HNSW 余弦索引结合来源、发布时间或采集时间过滤，返回当前解析批次中的持久 Chunk、Document 版本、来源和相似度；精确查询只接受 64 字符以内的股票代码或指标编号形式，使用词边界正则在有界结果集中匹配已存 Chunk，不依赖 Embedding 或分类。两条路径都返回实际过滤条件和 `truncated`；语义查询还返回当前解析批次的向量索引覆盖，精确查询不需要 Provider 或向量空间，因此不报告由模型决定的向量覆盖。`truncated` 表示返回数量达到上限，未扫描数量在未知时保持未知；精确查询要求至少存在已解析的当前 Chunk。Document 命中后可用 `--chunk-id` 读取当前批次的相邻已存片段。`stocks.research.select_evidence` 基于这些结果形成持久 Evidence Package。
 
-**V1-05 当前实现：** `stocks.changes.search_changes()` 是原始变化页的公开读取入口。它在同一条 PostgreSQL 查询中按固定 `(start,end]`、可选 `kind` 与 `Document.source_id` 条件先过滤，再执行 `LIMIT`，并以 `(watermark, change_record.id)` 返回原始续点；额外读取一行只用于判断该筛选条件在原窗口内是否还有记录，因此不会被候选按 Document 聚合后的水位推进分页。`ChangePage.completed` 只表示本页已耗尽当前固定查询条件，`TaskRun.change_scan_progress.status='scanned'` 也只表示原始页耗尽；二者都不表示最终报告成功或成功游标已经推进。当前边界是原始 change scan 与 checkpoint，尚未实现把增量 Document/Fact 与历史背景证据统一合并、去重并覆盖统计的 V1-06 能力，也尚未提供公开证据 API。
+**V1-05 当前实现：** `stocks.changes.search_changes()` 是原始变化页的公开读取入口。它在同一条 PostgreSQL 查询中按固定 `(start,end]`、可选 `kind` 与 `Document.source_id` 条件先过滤，再执行 `LIMIT`，并以 `(watermark, change_record.id)` 返回原始续点；额外读取一行只用于判断该筛选条件在原窗口内是否还有记录，因此不会被候选按 Document 聚合后的水位推进分页。`ChangePage.completed` 只表示本页已耗尽当前固定查询条件，`TaskRun.change_scan_progress.status='scanned'` 也只表示原始页耗尽；二者都不表示最终报告成功或成功游标已经推进。当前边界是原始 change scan 与 checkpoint；增量 Document/Fact 与历史背景证据的统一合并、同 Document 证据组去重与覆盖统计自 V1-06 起由 `stocks.research.select_evidence()` 完成，`EvidencePackage.evidence_groups` 保存合并后的证据链。跨 Document 的转载识别仍未实现，公开证据 API 已在 V0-07 提供。
 
 Embedding 模型引用、维度及分块参数通过配置指定；首版使用一个当前模型及其对应向量索引即可。模型切换后的重建属于后台处理，完成前明确显示索引覆盖状态，不以无结果掩盖重建缺口。结构化 Fact 查询不以其是否已生成向量为前提。
 
-**取材查询边界：** `stocks.changes.search_changes()` 按固定 Run 窗口读取新增 Document/Fact 变化原始页，`stocks.repository.search` 对应路径不受增量窗口限制、读取适用历史证据。当前 Evidence Selection 已接入前者，记录原始页续点与已扫描 Document 身份，但仍分别形成语义背景 Chunk 候选；把两者统一合并、关联 Fact/Document 并去重属于 V1-06，不得把本任务的分页状态描述成已完成统一证据合并。两类读取都不修改全局 Document 消费状态。
+**取材查询边界：** `stocks.changes.search_changes()` 按固定 Run 窗口读取新增 Document/Fact 变化原始页，`stocks.repository.search` 对应路径不受增量窗口限制、读取适用历史证据。当前 Evidence Selection 已接入前者并在 V1-06 中与后者统一合并：同一 Document 的增量与背景命中折成一个证据组，Fact 关联到来源 Document/Chunk，`EvidencePackage.evidence_groups` 保存合并结果与 `new_information` / `historical_context` 角色。仍分别记录的 `candidates_discovered`、`candidates_screened`、`selected_count`、`evidence_group_count` 与 `filtered_out_count` 用于区分原始候选、筛选、入选和独立证据组。跨 Document 转载识别仍属后续能力；两类读取都不修改全局 Document 消费状态。
 
 ## 来源可信度、证据与安全
 

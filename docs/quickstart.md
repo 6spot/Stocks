@@ -311,10 +311,15 @@ routing, and `config/sources.yaml` defines Sources. A Task is either:
   still produce a successful report, but `change_scan_completed` stays `false`, the
   checkpoint remains for a later Run, and the cursor does not move; a skipped final Agent,
   missing/invalid report, unfinished scan or ownership loss cannot advance the cursor.
-  This scans changes and exposes their selected/scanned state; it does not yet merge
-  incremental Document/Fact evidence with historical evidence under V1-06. It does not
-  collect, parse, index, or call external Tools; the Agent input is untrusted JSON data
-  and the configured `tools` list must be empty.
+  V1-06 merges this Run's incremental Documents and Facts with historical semantic
+  evidence into one set of `evidence_groups`; a Document reached through both paths is
+  one chain, and its Facts travel with the readable Chunk the Agent cites. Coverage
+  distinguishes `candidates_discovered`, `candidates_screened`, `selected_count`
+  (Chunks), `evidence_group_count` (chains), `filtered_out_count` (screened but not
+  chosen) and `unexamined_count` (not scanned; `null` when the bounded pool is unknown).
+  Cross-Document reprint detection is not implemented. It does not collect, parse,
+  index, or call external Tools; the Agent input is untrusted JSON data and the
+  configured `tools` list must be empty.
 * `type: collection` — a single `collect_sources` step plus `sources: [id, ...]`. It
   reuses `stocks.collection.service.collect_source`, `config/sources.yaml` and the
   existing Repository idempotency, and never resolves a chat or embedding route, so a

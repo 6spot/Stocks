@@ -551,6 +551,7 @@ def _copy_evidence_package(
         selection_budget=deepcopy(package.selection_budget),
         queries=deepcopy(package.queries),
         selected_chunks=deepcopy(package.selected_chunks),
+        evidence_groups=deepcopy(package.evidence_groups),
         coverage=deepcopy(package.coverage),
         candidates_discovered=package.candidates_discovered,
         candidates_screened=package.candidates_screened,
@@ -1723,6 +1724,7 @@ def _evidence_package_output(package: EvidencePackage) -> dict:
         "selection_budget": deepcopy(package.selection_budget),
         "queries": deepcopy(package.queries),
         "items": deepcopy(package.selected_chunks),
+        "evidence_groups": deepcopy(package.evidence_groups),
         "coverage": deepcopy(package.coverage),
         "truncated": package.retrieval_truncated,
     }
@@ -1925,6 +1927,20 @@ def _run_agent(
             "Evidence Package does not match saved Document and Chunk versions",
         ) from exc
     evidence = list(allowed_refs.values())
+    groups_by_document: dict[str, dict] = {}
+    for group in package.evidence_groups or ():
+        if isinstance(group, dict) and isinstance(group.get("document_id"), str):
+            groups_by_document.setdefault(group["document_id"], group)
+    for item in evidence:
+        group = groups_by_document.get(item["document_id"])
+        if group is not None:
+            # Attach the structured Facts and the reported role to the readable
+            # Chunk the Agent already cites, so one evidence chain arrives once.
+            item["evidence_role"] = group.get("role")
+            item["kinds"] = deepcopy(group.get("kinds", []))
+            item["reasons"] = deepcopy(group.get("reasons", []))
+            item["fact_refs"] = deepcopy(group.get("fact_refs", []))
+            item["chunk_ids"] = deepcopy(group.get("chunk_ids", []))
     if not evidence:
         raise _StepFailure(
             "EVIDENCE_UNAVAILABLE",
