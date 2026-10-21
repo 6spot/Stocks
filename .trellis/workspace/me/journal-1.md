@@ -330,7 +330,28 @@ Fixed the four defects found reviewing archived V0-01/V0-02: the latest-content 
 | Hash | Message |
 |------|---------|
 | `bc70735` | feat: read reports and the exact evidence they cited |
+| `01b7cc4` | docs(trellis): record the V0-07 evidence API contracts and acceptance |
+| `9f9e26b` | chore: record journal |
+| `5c0def3` | docs(task): record V0-07 acceptance with AC-1 still unverified |
+| `2d7f296` | chore(task): archive 10-20-v0-07-evidence-api-acceptance |
+| `fbc5381` | docs(trellis): keep V0 open until the real closed loop is accepted |
+
+### Notes
+
+- 分支 `feat/v0-07-evidence-api-acceptance` 已推送到 origin；远程资源（本任务自建的
+  postgres/seaweedfs 容器与隔离目录）已全部清理，其他任务容器未动。
+- V0-07 已归档，但 V0 父任务故意保持 `planning`：`task.py list` 的 8/8 done 只反映子任务
+  归档，不代表阶段退出条件达成。
+- Owner 决定将真实闭环延后到最后统一验收，登记于
+  `.trellis/tasks/10-20-stocks-roadmap/pending-acceptance.md`（PA-1 真实模型闭环、
+  PA-2 解析器逐字符换行缺陷）。
 
 ### Status
 
-[OK] **Completed**
+[OK] **Completed**（V0-07 API 与 AC-2/AC-3 已验收；AC-1 转统一验收轮次）
+
+### Next Steps
+
+- V1-01 独立 Worker 定时调度与 Run 恢复：开工前需与 Owner 确认 V1-01/V1-02 边界
+  （采集步骤种类归属 V1-02，V1-01 只做 trigger schedule + Worker 进程 + 异常 Run 结束）。
+- 统一验收轮次：补模型凭据与 SEC 联系邮箱后，按 PA-1 跑 V0 真实闭环并回填记录。
