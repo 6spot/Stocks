@@ -626,3 +626,43 @@ Implemented deny-by-default Tool catalog, remote MCP Streamable HTTP client, bou
 
 - 待 Owner 最终验收：真实多来源转载成对样例与真实同指标冲突值；事件关系库、来源真值评分与独立核查平台不在范围内
 - 继续按任务列表实施 V2-04 历史报告对照与 V2-05 覆盖与费用验收
+
+
+## Session 21: V2-04 基于原始证据的历史报告比较
+<!-- trellis-session: v=2 fp=e7662ed8fd0957ef -->
+
+**Date**: 2026-10-22
+**Task**: V2-04 基于原始证据的历史报告比较
+**Branch**: `main`
+
+### Summary
+
+按 V2 任务列表逐个实施：报告对照只读两份已保存报告各自的快照（Analysis 的 findings/open questions、Evidence Package 的 scope/as_of/coverage、引用 Document 版本与 Fact），不重新研究、不调用 Tool、不改写旧报告。结论按 (kind, 规范化 statement) 全等才算持续，改写按消失+新增呈现；Document 按来源声明的原件合并并标版本/内容变化，两侧原件都可打开；同指标 Fact 按 (subject_name, symbol, metric_id) 标 value/basis/period 变化并给出真实取值，不平均不覆盖；覆盖缺口增减、未知未扫描数量保持未知，晚于较早 as_of 的资料单列为真实来源变化。自比 400、未知 404、失败 Run 409，每组差异截断 50 条。无数据库结构变更。
+
+### Main Changes
+
+- 新增 research/comparison.py compare_report_sides()：结论/问题/Document/Fact/覆盖/晚到资料/警告分项比较，每组 _bounded(MAX_COMPARISON_ITEMS=50) 带 truncated
+- api.py 新增 GET /api/reports/{report_id}/comparison?other_report_id=...：按 created_at 排序并给出 ordering.swapped，自比 400、未知报告 404、Run 非 succeeded 409；_report_side() 复用 _report_chain/_research_ledger/_report_research_refs/_resolve_evidence 读取两侧快照
+- 前端新增报告对照卡片（默认预选同一 Task 最近的成功报告、两侧原件链接、指标修订与晚到资料展示）、api/schemas.ts 与 dashboardApi.reportComparison，并接入研究页报告阅读区
+- 新增 backend/tests/test_report_comparison.py 与 frontend report-comparison.test.tsx；docs/research.md、docs/interface.md、docs/validation.md、docs/quickstart.md 同步对照契约与待验收边界
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `511b677` | feat(research): compare saved reports against their own evidence |
+
+### Testing
+
+- [OK] [OK] 测试服务器隔离目录：test_report_comparison 4 passed；test_report_api+test_api+test_research+test_execution+test_evidence_conflicts 94 passed
+- [OK] [OK] 该任务无结构变更：全新空库 alembic upgrade head + alembic check 无差异
+- [OK] [OK] 前端 npm run typecheck 通过、npm run test 7 文件 14 tests passed（含报告对照默认预选、两侧原件链接、无对照对象时不渲染）
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- 待 Owner 最终验收：真实连续 Run 的两份报告人工对照，真实同一 Document 新版本被后续报告引用与同一指标跨报告修订的成对样例；逐条 Finding 关系图、严格历史知识回放不在范围内
+- 继续按任务列表实施 V2-05 覆盖费用与异常分析及 V2 验收
