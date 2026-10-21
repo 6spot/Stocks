@@ -14,7 +14,10 @@ from stocks.processing.structured import (
     xml_values,
 )
 
-PROCESSOR_VERSION = "semantic-text-v2"
+# v3: container (article/main/body) text and inline runs merge into one segment
+# instead of one segment per character; the version change re-parses documents
+# whose completed batches were produced by the previous parser.
+PROCESSOR_VERSION = "semantic-text-v3"
 
 HTML_CONTENT_TYPES = frozenset({"application/xhtml+xml", "text/html"})
 TEXT_CONTENT_TYPES = frozenset({"text/plain"})

@@ -28,11 +28,13 @@
 
 - **状态**：2026-10-22 已修复并验证，不再是待验收项。
 - **修复**：`_walk_evidence()` 统一走 `_walk_block()`，并按新增的 `CONTAINER_ELEMENTS`
-  （`article`/`body`/`html`/`main`）把容器自身的连续文本与行内元素合并成同一个证据片段。
+  （`article`/`body`/`html`/`main`）把容器自身的连续文本与行内元素合并成同一个证据片段；
+  处理器版本提升为 `semantic-text-v3`，已完成的旧批次不会被复用，下一次解析会生成新批次。
 - **验证**：测试服务器 `100.120.14.84` 隔离目录中 `tests/test_processing.py` 38 passed、
-  解析/采集/处理重试/仓库/冲突相关 117 passed、后端全量 475 passed；另取 2 份真实 Fed
-  与 2 份真实 SEC 新闻正文复核：修复前 Fed 两页分别出现 18/17 个单字符片段
-  （`S\nk\ni\np...`），修复后 0 个单字符片段、来源范围回查 0 处不一致。
+  解析/采集/处理重试/仓库/冲突相关 117 passed、后端全量 475 passed、版本提升后
+  批次复用相关 5 个文件 151 passed；另取 2 份真实 Fed 与 2 份真实 SEC 新闻正文复核：
+  修复前 Fed 两页分别出现 18/17 个单字符片段（`S\nk\ni\np...`），修复后 0 个单字符片段、
+  来源范围回查 0 处不一致。
 - **回归**：`tests/test_processing.py::test_text_directly_inside_container_stays_one_evidence_run`
   与 `::test_inline_text_directly_inside_container_keeps_order_and_ranges`；契约同步到
   `docs/data.md` 与 `.trellis/spec/backend/testing-guidelines.md`。
