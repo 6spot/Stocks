@@ -13,8 +13,43 @@ import {
 } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useResource } from "@/hooks/use-resource";
-import { formatDateTime, formatDuration, formatNumber, formatValue } from "@/lib/format";
+import {
+  formatCost,
+  formatDateTime,
+  formatDuration,
+  formatNumber,
+  formatValue,
+} from "@/lib/format";
 import { RunActions } from "@/features/runs/run-actions";
+import { UsageSummaryCard } from "@/components/usage-summary";
+
+/**
+ * Step usage is an internal, persisted summary; read only the known numeric
+ * fields and let a missing provider-reported cost stay unknown.
+ */
+function stepUsageLine(usage: unknown): string | null {
+  if (!usage || typeof usage !== "object") {
+    return null;
+  }
+  const record = usage as Record<string, unknown>;
+  const number = (key: string): number | null =>
+    typeof record[key] === "number" ? (record[key] as number) : null;
+  const parts: string[] = [];
+  const totalTokens = number("total_tokens");
+  if (totalTokens !== null) {
+    parts.push(`Tokens ${formatNumber(totalTokens)}`);
+  }
+  const duration = number("duration_ms");
+  if (duration !== null) {
+    parts.push(`耗时 ${formatDuration(duration)}`);
+  }
+  parts.push(`费用 ${formatCost(number("cost_usd"))}`);
+  const unknownCosts = number("cost_unknown_attempts");
+  if (unknownCosts) {
+    parts.push(`${unknownCosts} 次未提供费用`);
+  }
+  return parts.join(" · ");
+}
 
 export function RunDetailView({
   runId,
@@ -140,6 +175,11 @@ export function RunDetailView({
                   <p className="mt-2 text-xs text-muted-foreground">
                     {step.step_id} · {formatDateTime(step.created_at)}
                   </p>
+                  {stepUsageLine(step.usage) ? (
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      {stepUsageLine(step.usage)}
+                    </p>
+                  ) : null}
                   {step.error?.message || step.error?.code ? (
                     <p className="mt-2 text-xs text-destructive">
                       {step.error.message ?? step.error.code}
@@ -171,7 +211,7 @@ export function RunDetailView({
         <CardHeader>
           <CardTitle>模型调用</CardTitle>
           <CardDescription>
-            显示模型别名、耗时、用量、回退原因与去敏错误。
+            显示实际 Provider、模型、耗时、用量、供应商提供的费用与回退原因。
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -184,6 +224,7 @@ export function RunDetailView({
                   <TableHead>状态</TableHead>
                   <TableHead>耗时</TableHead>
                   <TableHead>Tokens</TableHead>
+                  <TableHead>费用</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -197,6 +238,9 @@ export function RunDetailView({
                         call.attempt_model_name ??
                         call.attempt_alias ??
                         "未记录"}
+                      <span className="mt-1 block text-muted-foreground">
+                        Provider {call.provider ?? "未记录"}
+                      </span>
                       {call.fallback_reason ? (
                         <span className="mt-1 block text-amber-700">
                           回退：{call.fallback_reason}
@@ -216,6 +260,9 @@ export function RunDetailView({
                         {formatNumber(call.completion_tokens)}
                       </span>
                     </TableCell>
+                    <TableCell className="text-xs">
+                      {formatCost(call.cost_usd)}
+                    </TableCell>
                   </TableRow>
                 ))}
               </TableBody>
@@ -225,6 +272,21 @@ export function RunDetailView({
           )}
         </CardContent>
       </Card>
+
+      <UsageSummaryCard
+        usage={data.usage}
+        description="按本次 Run 已保存的模型调用汇总；未提供费用的调用保持未知，不按 0 计算。"
+        footer={
+          data.report ? (
+            <Link
+              to={`/research?report=${data.report.report_id}`}
+              className="text-sm font-medium text-primary underline-offset-4 hover:underline"
+            >
+              查看此 Run 的覆盖与报告
+            </Link>
+          ) : null
+        }
+      />
     </article>
   );
 }

@@ -7,6 +7,12 @@ const numberFormatter = new Intl.NumberFormat("zh-CN", {
   maximumFractionDigits: 2,
 });
 
+const costFormatter = new Intl.NumberFormat("en-US", {
+  // Significant digits keep a tiny non-zero cost visible instead of rounding
+  // it to a misleading "$0".
+  maximumSignificantDigits: 6,
+});
+
 export function formatDateTime(value: string | null | undefined): string {
   if (!value) {
     return "未记录";
@@ -53,6 +59,17 @@ export function formatDuration(milliseconds: number | null | undefined): string 
     return `${Math.round(milliseconds)} ms`;
   }
   return `${(milliseconds / 1000).toFixed(1)} s`;
+}
+
+/**
+ * Provider-reported cost in USD. A missing cost stays "未知" so the console
+ * never shows an unreported cost as a zero amount.
+ */
+export function formatCost(value: number | null | undefined): string {
+  if (value === null || value === undefined || !Number.isFinite(value)) {
+    return "未知";
+  }
+  return `$${costFormatter.format(value)}`;
 }
 
 export function formatValue(value: unknown): string {

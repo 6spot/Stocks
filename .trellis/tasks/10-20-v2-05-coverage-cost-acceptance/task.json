@@ -3,7 +3,7 @@
   "name": "v2-05-coverage-cost-acceptance",
   "title": "V2-05 覆盖费用与异常分析及 V2 验收",
   "description": "Owner 能理解研究覆盖、模型使用和异常成本，完成研究深化的阶段验收。",
-  "status": "planning",
+  "status": "in_progress",
   "dev_type": "fullstack",
   "scope": null,
   "package": null,
@@ -27,7 +27,7 @@
     "docs/execution.md",
     "docs/validation.md"
   ],
-  "notes": "本轮仅规划；依赖写入 meta.depends_on 及规划文档，Trellis 父子关系不会自动调度。开工前复核现状和技术细节并取得该子任务的实施确认。",
+  "notes": "Owner 已授权按 V2 任务列表逐个实施。范围：从已存记录展示研究覆盖与模型用量，未知的候选剩余与未提供的费用保持未知；异常/积压继续复用既有重试、续扫、结束 Run 与处理积压服务，不新增调度或告警平台。实现：ModelCall 新增 provider 与 cost_usd（numeric(14,6)，只改 0001 初始化定义）；providers 解析供应商返回的 usage.cost/usage.cost_usd（非数值拒绝，未返回为 None），执行服务落库并在步骤 usage 里带 cost_usd/cost_unknown_attempts；api._usage_summary() 只从 ModelCall 行确定性汇总，api._latest_research_coverage() 读最近一份成功报告的证据包，/api/overview 增加 research（latest 覆盖 + 近期 Run 用量），/api/runs/{id} 与 /api/reports/{id} 增加 usage、model_calls 增加 provider/cost_usd；前端新增共享用量组件、Overview 研究覆盖与近期用量卡片、Run 详情步骤用量与 Provider/费用列、报告页本次研究用量与 Run 入口。验证（测试服务器 100.120.14.84 隔离目录 /tmp/stocks-v2-05-coverage-usage + 独立 postgres 55442 + 自有 seaweedfs bucket 18339）：test_coverage_usage_api+test_providers 12 passed、test_execution 63 passed（含新全流程 Provider/费用用例）、test_console_api+test_report_api+test_report_comparison+test_evidence_conflicts+test_collection+test_research+test_api 通过；全新空库 alembic upgrade head + check 无差异；前端 typecheck、8 文件 15 tests、生产构建通过。真实第三方端点费用、真实 MCP 与人工报告对照复核留给最终验收。",
   "meta": {
     "milestone": "V2",
     "kind": "delivery",
@@ -35,8 +35,8 @@
       ".trellis/tasks/10-20-v2-02-source-parser-expansion",
       ".trellis/tasks/10-20-v2-04-report-comparison"
     ],
-    "planning_review": "pending",
+    "planning_review": "approved",
     "planning_depth": "delivery-plan",
-    "implementation_authorized": false
+    "implementation_authorized": true
   }
 }

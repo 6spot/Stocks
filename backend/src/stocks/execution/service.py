@@ -2471,6 +2471,7 @@ def _run_agent(
         **response.usage,
         "duration_ms": sum(attempt.duration_ms for attempt in response.attempts),
         "model_attempts": len(response.attempts),
+        **_cost_from_attempts(response.attempts),
     }
     return output, refs, usage
 
@@ -2529,12 +2530,14 @@ def _persist_model_attempts(
                 attempt_alias=attempt.attempt_alias,
                 requested_model_name=targets[routing.primary].name,
                 attempt_model_name=attempt.attempt_model_name,
+                provider=targets[attempt.attempt_alias].provider,
                 reported_model_name=attempt.reported_model_name,
                 status=attempt.status,
                 duration_ms=attempt.duration_ms,
                 prompt_tokens=attempt.prompt_tokens,
                 completion_tokens=attempt.completion_tokens,
                 total_tokens=attempt.total_tokens,
+                cost_usd=attempt.cost_usd,
                 fallback_reason=attempt.fallback_reason,
                 error=deepcopy(attempt.error),
                 created_at=_now(),
@@ -2577,6 +2580,26 @@ def _usage_from_attempts(attempts) -> dict:
         "total_tokens": sum(total_tokens) if total_tokens else None,
         "duration_ms": sum(attempt.duration_ms for attempt in attempts),
         "model_attempts": len(attempts),
+        **_cost_from_attempts(attempts),
+    }
+
+
+def _cost_from_attempts(attempts) -> dict:
+    """Provider-reported cost, summed only over attempts that reported one.
+
+    Unknown cost stays ``None`` so the console never shows a fabricated zero;
+    ``cost_unknown_attempts`` counts the succeeded attempts without a cost.
+    """
+
+    succeeded = [attempt for attempt in attempts if attempt.status == "succeeded"]
+    costs = [
+        attempt.cost_usd
+        for attempt in succeeded
+        if attempt.cost_usd is not None
+    ]
+    return {
+        "cost_usd": float(sum(costs)) if costs else None,
+        "cost_unknown_attempts": len(succeeded) - len(costs),
     }
 
 

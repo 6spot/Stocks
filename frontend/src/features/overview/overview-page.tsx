@@ -22,8 +22,9 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { useResource } from "@/hooks/use-resource";
-import { formatDateTime, shortId } from "@/lib/format";
-import { statusLabel } from "@/lib/labels";
+import { formatDateTime, formatNumber, shortId } from "@/lib/format";
+import { gapLabel, statusLabel } from "@/lib/labels";
+import { UsageModels, UsageStats } from "@/components/usage-summary";
 
 export function OverviewPage() {
   const overview = useResource(
@@ -150,6 +151,109 @@ export function OverviewPage() {
             </CardContent>
           </Card>
         ))}
+      </section>
+
+      <section className="grid gap-5 xl:grid-cols-2">
+        <Card>
+          <CardHeader>
+            <CardTitle>研究覆盖</CardTitle>
+            <CardDescription>
+              最近一份成功报告的证据包；未扫描候选与来源缺口保持未知。
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {data.research.latest ? (
+              <>
+                <dl className="grid gap-3 text-xs sm:grid-cols-2 lg:grid-cols-4">
+                  <div>
+                    <dt className="text-muted-foreground">候选发现 / 筛选</dt>
+                    <dd className="mt-0.5">
+                      {formatNumber(
+                        data.research.latest.candidates_discovered,
+                        "未知",
+                      )}{" "}
+                      /{" "}
+                      {formatNumber(
+                        data.research.latest.candidates_screened,
+                        "未知",
+                      )}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt className="text-muted-foreground">入选证据 / 独立原件</dt>
+                    <dd className="mt-0.5">
+                      {data.research.latest.selected_count} 组 /{" "}
+                      {formatNumber(
+                        data.research.latest.origin_group_count,
+                        "未知",
+                      )}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt className="text-muted-foreground">未扫描候选</dt>
+                    <dd className="mt-0.5">
+                      {formatNumber(
+                        data.research.latest.unexamined_count,
+                        "未知",
+                      )}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt className="text-muted-foreground">补证输入</dt>
+                    <dd className="mt-0.5">
+                      {data.research.latest.research_input_count} 条
+                    </dd>
+                  </div>
+                </dl>
+                {data.research.latest.retrieval_truncated ? (
+                  <p className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-950">
+                    本次检索达到预算并截断；未扫描候选数量未知时仍显示未知。
+                  </p>
+                ) : null}
+                {data.research.latest.gaps.length ? (
+                  <ul className="flex flex-wrap gap-2 text-xs">
+                    {data.research.latest.gaps.map((gap) => (
+                      <li
+                        key={gap}
+                        className="rounded-lg bg-amber-50 px-2 py-1 text-amber-950"
+                      >
+                        {gapLabel(gap)}
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="text-xs text-muted-foreground">
+                    证据包未记录来源或索引缺口。
+                  </p>
+                )}
+                <Link
+                  to={`/research?report=${data.research.latest.report_id}`}
+                  className="text-sm font-medium text-primary underline-offset-4 hover:underline"
+                >
+                  打开 {data.research.latest.title}
+                </Link>
+              </>
+            ) : (
+              <EmptyPanel
+                title="尚无成功研究报告"
+                description="生成报告后，这里显示候选扫描、独立原件与缺口。"
+              />
+            )}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>近期模型用量</CardTitle>
+            <CardDescription>
+              最近 {data.research.usage.run_count} 个 Run 已保存的模型调用；未提供费用的调用保持未知。
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <UsageStats usage={data.research.usage} />
+            <UsageModels usage={data.research.usage} />
+          </CardContent>
+        </Card>
       </section>
 
       <div className="grid gap-5 xl:grid-cols-[minmax(0,1.3fr)_minmax(18rem,0.7fr)]">

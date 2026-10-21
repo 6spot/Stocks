@@ -33,6 +33,30 @@ const report = {
     evidence_refs: [],
     created_at: "2026-10-20T05:00:00Z",
   },
+  usage: {
+    call_count: 2,
+    succeeded_calls: 2,
+    failed_calls: 0,
+    fallback_calls: 1,
+    prompt_tokens: 1200,
+    completion_tokens: 300,
+    total_tokens: 1500,
+    duration_ms: 4200,
+    cost_usd: null,
+    cost_known_calls: 0,
+    cost_unknown_calls: 2,
+    models: [
+      {
+        provider: "default",
+        model_name: "research-model",
+        calls: 2,
+        total_tokens: 1500,
+        cost_usd: null,
+        cost_unknown_calls: 2,
+      },
+    ],
+    models_truncated: false,
+  },
   evidence_package: {
     evidence_package_id: "p1",
     run_id: "run1",
@@ -136,6 +160,13 @@ describe("ReportReader", () => {
       evidenceText.compareDocumentPosition(original) &
         Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
+
+    // Unreported cost stays unknown and the Run stays reachable from the report.
+    expect(screen.getByText("本次研究用量")).toBeVisible();
+    expect(screen.getByText("2 次调用未提供费用")).toBeVisible();
+    expect(
+      screen.getByRole("link", { name: /查看 Run 步骤与模型调用/ }),
+    ).toHaveAttribute("href", "/runs?run=run1");
   });
 
   it("counts confirmed reprints once and lists conflicting values as published", async () => {

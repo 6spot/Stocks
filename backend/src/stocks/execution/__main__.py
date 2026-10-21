@@ -102,11 +102,15 @@ def _run_payload(
                 "requested_model_name": item.requested_model_name,
                 "attempt_model_name": item.attempt_model_name,
                 "reported_model_name": item.reported_model_name,
+                "provider": item.provider,
                 "status": item.status,
                 "duration_ms": item.duration_ms,
                 "prompt_tokens": item.prompt_tokens,
                 "completion_tokens": item.completion_tokens,
                 "total_tokens": item.total_tokens,
+                "cost_usd": (
+                    float(item.cost_usd) if item.cost_usd is not None else None
+                ),
                 "fallback_reason": item.fallback_reason,
                 "error": item.error,
             }

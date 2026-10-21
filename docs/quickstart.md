@@ -669,6 +669,21 @@ Evidence Selection recorded and adds what reading the evidence shows now
 `chunk_not_in_current_index`, `run_not_succeeded`); missing material is reported as a gap,
 never rewritten as "the fact does not exist".
 
+The report response also carries `usage`: the deterministic summary of that Run's stored
+`model_calls` (`call_count`, `succeeded_calls`, `failed_calls`, `fallback_calls`, token
+totals, `duration_ms`, `cost_usd`, `cost_known_calls`, `cost_unknown_calls` and a bounded
+per-model breakdown). `cost_usd` only sums amounts the provider itself returned in
+`usage.cost` / `usage.cost_usd`; an unreported cost stays `null`, is counted as unknown and
+is never priced from a local table or shown as `0`. `/api/runs/{run_id}` returns the same
+`usage` summary next to its `steps` and `model_calls`, where each call now names the
+`provider` that served it and its own `cost_usd`. `/api/overview` adds a `research`
+section: `latest` is the coverage of the newest successful report's Evidence Package
+(candidate discovery/screening/selection counts, evidence and independent origin group
+counts, `unexamined_count`, `retrieval_truncated`, adopted `research_input_count` and the
+recorded gaps) and stays `null` until a report exists, while `usage` aggregates the stored
+model calls of the recent Runs with their `run_count`. Unknown candidate counts and
+unknown costs are returned as `null`, never as `0`.
+
 `/api/documents/{document_id}/original` returns the stored bytes for that one version
 unchanged. `X-Content-Sha256` is the hash of the bytes actually returned, and
 `X-Content-Hash-Match` reports whether it still equals the Document's recorded

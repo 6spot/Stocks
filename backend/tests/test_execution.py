@@ -4,6 +4,7 @@ import os
 from copy import deepcopy
 from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime
+from decimal import Decimal
 from pathlib import Path
 from threading import Barrier, Lock
 from uuid import UUID, uuid4
@@ -1717,6 +1718,92 @@ def test_second_planning_round_continues_the_attempt_sequence(engine, tmp_path):
         ).all()
         assert [row.attempt_number for row in rows] == [1, 2]
         assert [row.total_tokens for row in rows] == [15, 15]
+
+def test_full_run_records_provider_and_provider_reported_cost(engine, tmp_path):
+    """A real Run keeps the serving provider and the cost the provider reported."""
+    config = _make_task_config(tmp_path)
+    task = config.tasks[0]
+    models_path = write_models_config(tmp_path)
+    os.environ["TEST_MODEL_KEY"] = "secret-key-never-persist"
+
+    def handler(request):
+        return httpx.Response(
+            200,
+            json={
+                "model": "research-model",
+                "choices": [
+                    {
+                        "message": {
+                            "content": json.dumps(
+                                {
+                                    "summary": "summary",
+                                    "findings": [],
+                                    "open_questions": [],
+                                    "evidence_refs": [],
+                                }
+                            )
+                        }
+                    }
+                ],
+                "usage": {
+                    "prompt_tokens": 10,
+                    "completion_tokens": 5,
+                    "total_tokens": 15,
+                    "cost": 0.00042,
+                },
+            },
+        )
+
+    with Session(engine) as session:
+        claimed = create_or_get_run(
+            session, task, list(config.agents), config_path=models_path
+        )
+        run_id = claimed.run.id
+        assert claim_run(session, run_id, process_token=PROCESS_A)
+        _add_saved_evidence(session)
+        selected_chunk = _selected_evidence_chunk()
+
+        def fake_search(session, settings, config_path, step, *, run, **kwargs):
+            return _evidence_selection_result(
+                session, run, selected_chunks=[selected_chunk], gaps=[]
+            )
+
+        original_search = execution_service._run_evidence_selection
+        execution_service._run_evidence_selection = fake_search
+        try:
+            completed = execute_claimed_run(
+                ExecutionContext(
+                    session=session,
+                    settings=make_config(),
+                    config_path=str(models_path),
+                    model_transport=httpx.MockTransport(handler),
+                ),
+                run_id,
+                process_token=PROCESS_A,
+            )
+        finally:
+            execution_service._run_evidence_selection = original_search
+
+        assert completed.status == "succeeded"
+        call = session.scalar(
+            select(ModelCall).where(
+                ModelCall.run_id == run_id,
+                ModelCall.call_purpose == "research",
+            )
+        )
+        assert call is not None
+        assert call.provider == "default"
+        assert call.cost_usd == Decimal("0.000420")
+        step = session.scalar(
+            select(TaskStepResult).where(
+                TaskStepResult.run_id == run_id,
+                TaskStepResult.step_id == "research",
+            )
+        )
+        assert step is not None
+        assert step.usage["cost_usd"] == 0.00042
+        assert step.usage["cost_unknown_attempts"] == 0
+        assert step.usage["total_tokens"] == 15
 
 
 def test_skipped_step_is_persisted(engine, tmp_path):
@@ -3686,4 +3773,7 @@ def test_unavailable_attempt_usage_is_not_reported_as_zero():
         "total_tokens": None,
         "duration_ms": 12,
         "model_attempts": 1,
+        # The failed attempt reported no cost, so it stays unknown.
+        "cost_usd": None,
+        "cost_unknown_attempts": 0,
     }

@@ -1,8 +1,101 @@
 import asyncio
+import json
+from decimal import Decimal
 
 import httpx
 import pytest
-from stocks.providers import EmbeddingError, ModelClient, ModelTarget
+from stocks.providers import (
+    ChatRouting,
+    EmbeddingError,
+    ModelClient,
+    ModelError,
+    ModelTarget,
+)
+
+ANSWER_SCHEMA = {
+    "type": "object",
+    "additionalProperties": False,
+    "required": ["answer"],
+    "properties": {"answer": {"type": "string"}},
+}
+
+
+def answer_targets() -> dict:
+    return {
+        "a": ModelTarget(
+            "https://primary.example/v1",
+            "key",
+            "one",
+            capabilities=("chat", "text", "structured_output"),
+        )
+    }
+
+
+def answer_routing() -> ChatRouting:
+    return ChatRouting(
+        primary="a",
+        fallbacks=(),
+        required_capabilities=("chat", "text", "structured_output"),
+        timeout_seconds=5,
+        max_attempts=1,
+        retry_backoff_seconds=0,
+    )
+
+
+def answer_payload(usage: dict) -> dict:
+    return {
+        "model": "one",
+        "choices": [{"message": {"content": json.dumps({"answer": "ok"})}}],
+        "usage": usage,
+    }
+
+
+def research_answer(usage: dict):
+    def handler(request):
+        return httpx.Response(200, json=answer_payload(usage))
+
+    return asyncio.run(
+        ModelClient(
+            answer_targets(), httpx.MockTransport(handler)
+        ).research_chat(
+            answer_routing(),
+            [{"role": "user", "content": "hi"}],
+            schema_name="answer",
+            schema=ANSWER_SCHEMA,
+        )
+    )
+
+
+def test_provider_reported_cost_is_kept_on_the_attempt():
+    response = research_answer(
+        {
+            "prompt_tokens": 10,
+            "completion_tokens": 5,
+            "total_tokens": 15,
+            "cost": 0.001234,
+        }
+    )
+
+    assert response.cost_usd == Decimal("0.001234")
+    assert response.attempts[0].cost_usd == Decimal("0.001234")
+    assert response.attempts[0].to_dict()["cost_usd"] == "0.001234"
+
+
+def test_provider_without_a_cost_keeps_it_unknown():
+    response = research_answer(
+        {"prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15}
+    )
+
+    assert response.cost_usd is None
+    assert response.attempts[0].cost_usd is None
+
+
+def test_provider_rejects_a_non_numeric_cost():
+    with pytest.raises(ModelError) as excinfo:
+        research_answer({"total_tokens": 15, "cost": "free"})
+
+    assert excinfo.value.code == "MODEL_RESPONSE_INVALID"
+    assert excinfo.value.attempts[0].cost_usd is None
 
 
 def test_retryable_status_uses_configured_backup():

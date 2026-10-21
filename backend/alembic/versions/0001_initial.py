@@ -388,12 +388,14 @@ def upgrade():
         sa.Column("attempt_alias", sa.String(120), nullable=False),
         sa.Column("requested_model_name", sa.String(255), nullable=False),
         sa.Column("attempt_model_name", sa.String(255), nullable=False),
+        sa.Column("provider", sa.String(80)),
         sa.Column("reported_model_name", sa.String(255)),
         sa.Column("status", sa.String(16), nullable=False),
         sa.Column("duration_ms", sa.Integer(), nullable=False),
         sa.Column("prompt_tokens", sa.Integer()),
         sa.Column("completion_tokens", sa.Integer()),
         sa.Column("total_tokens", sa.Integer()),
+        sa.Column("cost_usd", sa.Numeric(14, 6)),
         sa.Column("fallback_reason", sa.String(80)),
         sa.Column("error", JSONB()),
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
@@ -420,6 +422,10 @@ def upgrade():
         sa.CheckConstraint(
             "total_tokens IS NULL OR total_tokens >= 0",
             name="ck_model_calls_total_tokens",
+        ),
+        sa.CheckConstraint(
+            "cost_usd IS NULL OR cost_usd >= 0",
+            name="ck_model_calls_cost",
         ),
         sa.UniqueConstraint(
             "run_id",

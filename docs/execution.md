@@ -48,6 +48,8 @@ StepResult:
   error: structured error | null
 ~~~
 
+`usage` 只汇总已保存的调用记录：`cost_usd` 与 `cost_unknown_attempts` 一起出现，费用只来自供应商在本次响应中返回的金额（当前实现读取 `usage.cost` / `usage.cost_usd`，按 `numeric(14, 6)` 保存），**没有返回时保持未知，不用本地价格表推算，也不显示为 0**。Token 与耗时同样只取实际记录；缺失就是缺失。
+
 V0 `EvidencePackage` 的持久字段为：Run、objective、scope、`as_of`、`selection_policy_version`、selection budget、实际执行的 queries、所选持久 Chunk 的 Document/Chunk/parse batch 版本、选择角色与理由、候选/筛选/选中/未检查数量和索引覆盖。候选总数无法从当前有界查询确定时为 `null`，不得填零；每条 Query 单独记录截断及缺口原因。
 
 StepResult、Analysis 与 finding 保存的证据引用只保留可回查的身份字段：`chunk_id`、`document_id`、`parse_batch_id`、`document_version`、`source_id`、`position`。正文、标题、定位器与来源时间通过该引用从 Repository 读取，不在运行结果里复制原文，避免同一份证据随 Run、Analysis 与 Report 重复堆积。
@@ -58,7 +60,7 @@ StepResult、Analysis 与 finding 保存的证据引用只保留可回查的身�
 
 按任务记录配置/策略/模型/提示词快照，便于解释历史研究结果。Task 使用独立运行记录，Worker 与 Web API 分进程；待执行记录及任务运行占用保存在 PostgreSQL。外部调用需有超时、有限重试和幂等键。原始资料及处理状态成功持久化后，Worker 才处理相应待办步骤；这不触发逐篇研究，综合研究仍由自身的 manual/schedule 触发。
 
-V0 Run 在创建时快照 Task 的 objective、strategy、scope、步骤/Agent 配置、research prompt 和 Research Agent 模型路由，也快照 Repository 搜索使用的 Embedding 路由（别名、模型、维度、能力、超时及可用于核对配置是否有变化的端点哈希）。排队与执行解耦后，执行只使用 Run 自己的快照，不静默用新任务定义替换；Evidence Selection 的 `as_of` 取 Run 实际开始执行时间（`started_at`），而非队列创建时间。执行时重新取得环境凭据，并核对当前路由与快照；发生不兼容变化时步骤失败，不静默换成另一模型或向量空间。Task 和 Run 不保存 endpoint 明文、API key 或 Authorization；Agent 的 Tool 授权快照只保存工具 ID 与配置身份哈希，不含 endpoint、凭据或目录原文。每个 StepResult 保存结构化 output、持久证据引用、usage 和结构化 error；ModelCall 保存请求/实际 alias 与模型名、供应商返回模型名、耗时、Token、回退原因和安全错误，不保存请求或响应正文。
+V0 Run 在创建时快照 Task 的 objective、strategy、scope、步骤/Agent 配置、research prompt 和 Research Agent 模型路由，也快照 Repository 搜索使用的 Embedding 路由（别名、模型、维度、能力、超时及可用于核对配置是否有变化的端点哈希）。排队与执行解耦后，执行只使用 Run 自己的快照，不静默用新任务定义替换；Evidence Selection 的 `as_of` 取 Run 实际开始执行时间（`started_at`），而非队列创建时间。执行时重新取得环境凭据，并核对当前路由与快照；发生不兼容变化时步骤失败，不静默换成另一模型或向量空间。Task 和 Run 不保存 endpoint 明文、API key 或 Authorization；Agent 的 Tool 授权快照只保存工具 ID 与配置身份哈希，不含 endpoint、凭据或目录原文。每个 StepResult 保存结构化 output、持久证据引用、usage 和结构化 error；ModelCall 保存请求/实际 alias 与模型名、生成该调用的 Provider 键与供应商返回模型名、耗时、Token、供应商返回的费用（没有返回时为空）、回退原因和安全错误，不保存请求或响应正文。
 
 ### 同一任务运行与异常处理
 

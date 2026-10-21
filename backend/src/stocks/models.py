@@ -1,4 +1,5 @@
 from datetime import datetime
+from decimal import Decimal
 from uuid import UUID, uuid4
 
 from pgvector.sqlalchemy import Vector
@@ -11,6 +12,7 @@ from sqlalchemy import (
     ForeignKey,
     Index,
     Integer,
+    Numeric,
     PrimaryKeyConstraint,
     String,
     Text,
@@ -450,6 +452,10 @@ class ModelCall(Base):
             "total_tokens IS NULL OR total_tokens >= 0",
             name="ck_model_calls_total_tokens",
         ),
+        CheckConstraint(
+            "cost_usd IS NULL OR cost_usd >= 0",
+            name="ck_model_calls_cost",
+        ),
     )
     id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, default=uuid4)
     run_id: Mapped[UUID] = mapped_column(
@@ -467,6 +473,9 @@ class ModelCall(Base):
     attempt_alias: Mapped[str] = mapped_column(String(120))
     requested_model_name: Mapped[str] = mapped_column(String(255))
     attempt_model_name: Mapped[str] = mapped_column(String(255))
+    # Provider key from the Run's frozen model snapshot, stored per attempt so a
+    # later config change cannot relabel what actually served the call.
+    provider: Mapped[str | None] = mapped_column(String(80), nullable=True)
     reported_model_name: Mapped[str | None] = mapped_column(
         String(255), nullable=True
     )
@@ -475,6 +484,11 @@ class ModelCall(Base):
     prompt_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)
     completion_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)
     total_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # Provider-reported cost when the response carried one. NULL means unknown,
+    # never zero and never an estimate from a local price table.
+    cost_usd: Mapped[Decimal | None] = mapped_column(
+        Numeric(14, 6), nullable=True
+    )
     fallback_reason: Mapped[str | None] = mapped_column(String(80), nullable=True)
     error: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))

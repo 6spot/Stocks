@@ -8,6 +8,7 @@ import re
 import time
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
+from decimal import Decimal, InvalidOperation
 from urllib.parse import urlsplit
 
 import httpx
@@ -19,6 +20,9 @@ RETRYABLE_STATUS = {402, 408, 429, 500, 502, 503, 504}
 PLACEHOLDER = re.compile(r"^\$\{([A-Z][A-Z0-9_]*)\}$")
 CONFIG_SECTIONS = {"providers", "models", "embedding", "agents"}
 POSTGRES_INTEGER_MAX = 2_147_483_647
+# Provider-reported cost is stored in ``numeric(14, 6)``; anything beyond this
+# is a provider defect, not a real single call.
+MAX_MODEL_COST_USD = Decimal("1000000")
 
 
 class _UniqueKeySafeLoader(yaml.SafeLoader):
@@ -111,6 +115,7 @@ class ModelAttempt:
     prompt_tokens: int | None = None
     completion_tokens: int | None = None
     total_tokens: int | None = None
+    cost_usd: Decimal | None = None
     fallback_reason: str | None = None
     error: dict[str, str] | None = None
 
@@ -125,6 +130,9 @@ class ModelAttempt:
             "prompt_tokens": self.prompt_tokens,
             "completion_tokens": self.completion_tokens,
             "total_tokens": self.total_tokens,
+            "cost_usd": (
+                str(self.cost_usd) if self.cost_usd is not None else None
+            ),
             "fallback_reason": self.fallback_reason,
             "error": self.error,
         }
@@ -138,6 +146,9 @@ class ChatResponse:
     content: str
     usage: dict[str, int | None]
     attempts: tuple[ModelAttempt, ...]
+    # Provider-reported cost for the accepted attempt, when the response
+    # carried one. Unknown cost stays ``None``; Stocks never prices tokens.
+    cost_usd: Decimal | None = None
 
 
 class ModelError(RuntimeError):
@@ -701,10 +712,29 @@ def _parse_chat_payload(payload: object, schema: dict) -> dict:
         ):
             raise ValueError("invalid usage")
         usage[key] = value
+    raw_cost = raw_usage.get("cost_usd")
+    if raw_cost is None:
+        raw_cost = raw_usage.get("cost")
+    cost_usd: Decimal | None = None
+    if raw_cost is not None:
+        if isinstance(raw_cost, bool) or isinstance(raw_cost, str):
+            raise ValueError("invalid usage")
+        if not isinstance(raw_cost, (int, float)):
+            raise ValueError("invalid usage")
+        if isinstance(raw_cost, float) and not math.isfinite(raw_cost):
+            raise ValueError("invalid usage")
+        value = Decimal(str(raw_cost))
+        if value < 0 or value > MAX_MODEL_COST_USD:
+            raise ValueError("invalid usage")
+        try:
+            cost_usd = value.quantize(Decimal("0.000001"))
+        except InvalidOperation as exc:
+            raise ValueError("invalid usage") from exc
     return {
         "reported_model_name": reported_model,
         "content": content,
         "usage": usage,
+        "cost_usd": cost_usd,
     }
 
 
@@ -938,6 +968,7 @@ class ModelClient:
                                     "completion_tokens"
                                 ],
                                 total_tokens=parsed["usage"]["total_tokens"],
+                                cost_usd=parsed["cost_usd"],
                             )
                         )
                         return ChatResponse(
@@ -947,6 +978,7 @@ class ModelClient:
                             content=parsed["content"],
                             usage=parsed["usage"],
                             attempts=tuple(attempts),
+                            cost_usd=parsed["cost_usd"],
                         )
                     except ModelError as exc:
                         raise ModelError(
@@ -981,6 +1013,11 @@ class ModelClient:
                                 ),
                                 total_tokens=(
                                     parsed["usage"]["total_tokens"]
+                                    if parsed is not None
+                                    else None
+                                ),
+                                cost_usd=(
+                                    parsed["cost_usd"]
                                     if parsed is not None
                                     else None
                                 ),

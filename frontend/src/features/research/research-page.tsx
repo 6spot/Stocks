@@ -7,7 +7,7 @@ import {
   ShieldCheck,
 } from "lucide-react";
 import { useEffect } from "react";
-import { useSearchParams } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { dashboardApi } from "@/api/dashboard";
 import type { ReportEvidence } from "@/api/schemas";
 import { EmptyPanel, ErrorPanel, LoadingPanel } from "@/components/async-state";
@@ -20,6 +20,7 @@ import { OriginalLinks } from "@/components/original-links";
 import { PageHeader } from "@/components/page-header";
 import { ReportComparisonCard } from "@/components/report-comparison";
 import { StatusBadge } from "@/components/status-badge";
+import { UsageSummaryCard } from "@/components/usage-summary";
 import type { OriginGroup, ReportListItem } from "@/api/schemas";
 import { evidenceCoverageSchema } from "@/api/schemas";
 import { Badge } from "@/components/ui/badge";
@@ -290,6 +291,20 @@ export function ReportReader({
       />
 
       <MetricComparisonsCard comparisons={comparisons} />
+
+      <UsageSummaryCard
+        usage={data.usage}
+        title="本次研究用量"
+        description="来自本 Run 已保存的模型调用；未提供费用的调用保持未知，不按 0 计算。"
+        footer={
+          <Link
+            to={`/runs?run=${data.report.run_id}`}
+            className="text-sm font-medium text-primary underline-offset-4 hover:underline"
+          >
+            查看 Run 步骤与模型调用
+          </Link>
+        }
+      />
 
       <Card>
         <CardHeader>

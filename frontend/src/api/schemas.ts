@@ -56,6 +56,39 @@ const pageSchema = <T extends z.ZodType>(item: T) =>
     })
     .passthrough();
 
+const usageModelSchema = z
+  .object({
+    provider: nullableString,
+    model_name: nullableString,
+    calls: z.number().int().nonnegative(),
+    total_tokens: nullableNumber,
+    cost_usd: nullableNumber,
+    cost_unknown_calls: z.number().int().nonnegative(),
+  })
+  .passthrough();
+
+// Deterministic usage from stored ModelCall rows. cost_usd = null means the
+// provider reported no cost, so the console shows it as unknown instead of 0.
+export const usageSummarySchema = z
+  .object({
+    call_count: z.number().int().nonnegative(),
+    succeeded_calls: z.number().int().nonnegative(),
+    failed_calls: z.number().int().nonnegative(),
+    fallback_calls: z.number().int().nonnegative(),
+    prompt_tokens: nullableNumber,
+    completion_tokens: nullableNumber,
+    total_tokens: nullableNumber,
+    duration_ms: nullableNumber,
+    cost_usd: nullableNumber,
+    cost_known_calls: z.number().int().nonnegative(),
+    cost_unknown_calls: z.number().int().nonnegative(),
+    models: z.array(usageModelSchema).optional(),
+    models_truncated: z.boolean().optional(),
+  })
+  .passthrough();
+
+export type UsageSummary = z.infer<typeof usageSummarySchema>;
+
 export const changeScanSchema = z
   .object({
     change_watermark_start: z.number().nullable(),
@@ -282,6 +315,35 @@ export const overviewSchema = z
       })
       .passthrough(),
     reports: z.array(recentReportSchema),
+    research: z
+      .object({
+        latest: z
+          .object({
+            report_id: z.string(),
+            run_id: z.string(),
+            task_id: z.string(),
+            title: z.string(),
+            created_at: nullableString,
+            as_of: nullableString,
+            candidates_discovered: nullableNumber,
+            candidates_screened: nullableNumber,
+            selected_count: z.number().int().nonnegative(),
+            evidence_group_count: nullableNumber,
+            origin_group_count: nullableNumber,
+            merged_origin_group_count: nullableNumber,
+            fact_count: nullableNumber,
+            unexamined_count: nullableNumber,
+            retrieval_truncated: z.boolean(),
+            research_input_count: z.number().int().nonnegative(),
+            gaps: z.array(z.string()),
+          })
+          .passthrough()
+          .nullable(),
+        usage: usageSummarySchema.extend({
+          run_count: z.number().int().nonnegative(),
+        }),
+      })
+      .passthrough(),
     recent_documents: z.array(documentSummarySchema),
     task_count: z.number().int().nonnegative(),
     configuration_errors: z
@@ -344,11 +406,13 @@ export const modelCallSchema = z
     requested_model_name: nullableString,
     attempt_model_name: nullableString,
     reported_model_name: nullableString,
+    provider: nullableString,
     status: z.string(),
     duration_ms: nullableNumber,
     prompt_tokens: nullableNumber,
     completion_tokens: nullableNumber,
     total_tokens: nullableNumber,
+    cost_usd: nullableNumber,
     fallback_reason: nullableString,
     error: safeErrorSchema,
     created_at: nullableString,
@@ -371,6 +435,7 @@ export const runDetailSchema = runSummarySchema
     model_snapshot: z.unknown(),
     steps: z.array(stepSchema),
     model_calls: z.array(modelCallSchema),
+    usage: usageSummarySchema,
     retry_of: z
       .object({
         run_id: z.string(),
@@ -792,6 +857,7 @@ export const reportDetailSchema = z
       .passthrough(),
     evidence: z.array(reportEvidenceSchema),
     cited_chunk_ids: z.array(z.string()),
+    usage: usageSummarySchema,
     coverage_gaps: z.array(z.string()),
     latest_collection_states: z.array(collectionStateSchema),
   })

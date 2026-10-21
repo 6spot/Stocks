@@ -6,6 +6,7 @@ import secrets
 from collections import defaultdict
 from copy import deepcopy
 from datetime import UTC, datetime
+from decimal import Decimal
 from functools import lru_cache
 from heapq import merge
 from pathlib import Path
@@ -381,6 +382,16 @@ def overview() -> dict:
             or 0
         )
         backlog = _backlog_counts(session)
+        recent_calls = (
+            session.scalars(
+                select(ModelCall)
+                .where(ModelCall.run_id.in_(recent_run_ids))
+                .order_by(ModelCall.created_at.desc(), ModelCall.id.desc())
+                .limit(500)
+            ).all()
+            if recent_run_ids
+            else []
+        )
         return {
             "collection": {
                 "configured_sources": len(configured_sources),
@@ -404,6 +415,13 @@ def overview() -> dict:
                 ],
             },
             "reports": _recent_reports(session),
+            "research": {
+                "latest": _latest_research_coverage(session),
+                "usage": {
+                    **_usage_summary(list(recent_calls)),
+                    "run_count": len(recent_run_rows),
+                },
+            },
             "recent_documents": [
                 {
                     **_document_payload(document),
@@ -696,6 +714,7 @@ def run_detail(run_id: UUID) -> dict:
             "model_snapshot": _safe_model_snapshot(run.model_snapshot),
             "steps": [_step_payload(step) for step in steps],
             "model_calls": [_model_call_payload(call) for call in calls],
+            "usage": _usage_summary(calls),
             "retry_of": (
                 {
                     "run_id": str(retry_of.id),
@@ -1608,6 +1627,11 @@ def report_detail(report_id: UUID) -> dict:
     with session_factory()() as session:
         report, analysis, package = _report_chain(session, report_id)
         run = session.get(TaskRun, report.run_id)
+        calls = session.scalars(
+            select(ModelCall)
+            .where(ModelCall.run_id == report.run_id)
+            .order_by(ModelCall.step_id, ModelCall.attempt_number)
+        ).all()
         entries, states = _resolve_evidence(
             session, config, _report_research_refs(analysis, package, run)
         )
@@ -1638,6 +1662,7 @@ def report_detail(report_id: UUID) -> dict:
                 for entry in entries
                 if (entry["chunk_id"], entry["document_id"]) in cited
             ],
+            "usage": _usage_summary(list(calls)),
             "coverage_gaps": _gaps(
                 package, entries, run, analysis.research_inputs
             ),
@@ -3027,14 +3052,109 @@ def _model_call_payload(call: ModelCall) -> dict:
         "requested_model_name": call.requested_model_name,
         "attempt_model_name": call.attempt_model_name,
         "reported_model_name": call.reported_model_name,
+        "provider": call.provider,
         "status": call.status,
         "duration_ms": call.duration_ms,
         "prompt_tokens": call.prompt_tokens,
         "completion_tokens": call.completion_tokens,
         "total_tokens": call.total_tokens,
+        "cost_usd": (
+            float(call.cost_usd) if call.cost_usd is not None else None
+        ),
         "fallback_reason": call.fallback_reason,
         "error": _safe_error(call.error),
         "created_at": _iso(call.created_at),
+    }
+
+
+def _usage_summary(calls: list[ModelCall]) -> dict:
+    """Deterministic usage built only from recorded ModelCall rows.
+
+    Sums come from stored attempts, provider labels come from the Run's frozen
+    model snapshot, and a missing provider-reported cost stays ``null`` instead
+    of a fabricated zero. ``cost_unknown_calls`` counts the calls without one.
+    """
+
+    totals = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
+    recorded = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
+    for call in calls:
+        for field in totals:
+            value = getattr(call, field)
+            if value is not None:
+                totals[field] += value
+                recorded[field] += 1
+
+    costs = [call.cost_usd for call in calls if call.cost_usd is not None]
+    grouped: dict[tuple[str | None, str], dict] = {}
+    for call in calls:
+        entry = grouped.setdefault(
+            (call.provider, call.attempt_model_name),
+            {
+                "provider": call.provider,
+                "model_name": call.attempt_model_name,
+                "calls": 0,
+                "recorded_tokens": 0,
+                "total_tokens": 0,
+                "cost_usd": Decimal("0"),
+                "cost_known_calls": 0,
+                "cost_unknown_calls": 0,
+            },
+        )
+        entry["calls"] += 1
+        if call.total_tokens is not None:
+            entry["total_tokens"] += call.total_tokens
+            entry["recorded_tokens"] += 1
+        if call.cost_usd is not None:
+            entry["cost_usd"] += call.cost_usd
+            entry["cost_known_calls"] += 1
+        else:
+            entry["cost_unknown_calls"] += 1
+    models = [
+        {
+            "provider": entry["provider"],
+            "model_name": entry["model_name"],
+            "calls": entry["calls"],
+            "total_tokens": (
+                entry["total_tokens"] if entry["recorded_tokens"] else None
+            ),
+            "cost_usd": (
+                float(entry["cost_usd"]) if entry["cost_known_calls"] else None
+            ),
+            "cost_unknown_calls": entry["cost_unknown_calls"],
+        }
+        for entry in sorted(
+            grouped.values(),
+            key=lambda item: (
+                -item["calls"],
+                str(item["model_name"]),
+                str(item["provider"]),
+            ),
+        )
+    ]
+    return {
+        "call_count": len(calls),
+        "succeeded_calls": sum(
+            1 for call in calls if call.status == "succeeded"
+        ),
+        "failed_calls": sum(1 for call in calls if call.status == "failed"),
+        "fallback_calls": sum(1 for call in calls if call.fallback_reason),
+        "prompt_tokens": (
+            totals["prompt_tokens"] if recorded["prompt_tokens"] else None
+        ),
+        "completion_tokens": (
+            totals["completion_tokens"]
+            if recorded["completion_tokens"]
+            else None
+        ),
+        "total_tokens": (
+            totals["total_tokens"] if recorded["total_tokens"] else None
+        ),
+        "duration_ms": sum(call.duration_ms for call in calls),
+        "cost_usd": float(sum(costs)) if costs else None,
+        "cost_known_calls": len(costs),
+        "cost_unknown_calls": len(calls) - len(costs),
+        "models": models[:10],
+        "models_truncated": len(models) > 10,
     }
 
 
@@ -3264,6 +3384,53 @@ def _recent_reports(session: Session, limit: int = 5) -> list[dict]:
         }
         for report in rows
     ]
+
+
+def _latest_research_coverage(session: Session) -> dict | None:
+    """Coverage of the newest successful research Run, read from its package.
+
+    Unknown counts stay ``null``: the Overview must not present an unscanned
+    candidate pool as a completed one.
+    """
+
+    row = session.execute(
+        select(EvidencePackage, Report, TaskRun)
+        .join(Report, Report.run_id == EvidencePackage.run_id)
+        .join(TaskRun, TaskRun.id == EvidencePackage.run_id)
+        .where(TaskRun.status == "succeeded")
+        .order_by(Report.created_at.desc(), Report.id.desc())
+        .limit(1)
+    ).first()
+    if row is None:
+        return None
+    package, report, run = row
+    coverage = package.coverage if isinstance(package.coverage, dict) else {}
+    ledger = _research_ledger(None, run)
+    return {
+        "report_id": str(report.id),
+        "run_id": str(run.id),
+        "task_id": report.task_id,
+        "title": report.title,
+        "created_at": _iso(report.created_at),
+        "as_of": _iso(package.as_of),
+        "candidates_discovered": package.candidates_discovered,
+        "candidates_screened": package.candidates_screened,
+        "selected_count": package.selected_count,
+        "evidence_group_count": coverage.get("evidence_group_count"),
+        "origin_group_count": coverage.get("origin_group_count"),
+        "merged_origin_group_count": coverage.get("merged_origin_group_count"),
+        "fact_count": coverage.get("fact_count"),
+        "unexamined_count": package.unexamined_count,
+        "retrieval_truncated": package.retrieval_truncated,
+        "research_input_count": sum(
+            1
+            for item in ledger
+            if isinstance(item, dict) and item.get("kind") == "input"
+        ),
+        "gaps": [
+            gap for gap in coverage.get("gaps") or [] if isinstance(gap, str)
+        ],
+    }
 
 
 def _backlog_counts(session: Session) -> dict:
