@@ -43,10 +43,11 @@ From Step 1 you know the current task and status. Check the task directory:
 
 - **Active task status `planning` + no `prd.md`** → Phase 1.1. Load the `trellis-brainstorm` skill.
 - **Active task status `planning` + `prd.md` exists** → stay in Phase 1. Lightweight tasks can be PRD-only; complex tasks need `design.md` + `implement.md`. Load the relevant Phase 1 step detail before `task.py start`.
-- **Active task status `in_progress`** → Phase 2 step 2.1. Load the step detail:
+- **Active task status `in_progress`** → Phase 2 step 2.1. Load the step detail using the actual host platform (`pi` in Pi Coding Agent, `codex` in Codex). Do not infer the platform from the model name or provider:
   ```bash
-  python3 ./.trellis/scripts/get_context.py --mode phase --step 2.1 --platform codex
+  python3 ./.trellis/scripts/get_context.py --mode phase --step 2.1 --platform <platform>
   ```
+  In Pi, use `--platform pi`. The main session dispatches implementation through the native `trellis_subagent` tool; it does not switch its own model when a task starts.
 - **No active task** → classify first. For simple conversation / small task, ask only whether this turn should create a Trellis task. For complex work, ask whether you may create a Trellis task and enter planning. If the user says no, skip Trellis for this session.
 
 ---

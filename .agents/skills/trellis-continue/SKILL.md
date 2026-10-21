@@ -48,9 +48,15 @@ Phase rules (full detail in `.trellis/workflow.md`):
 
 Once you know which step to resume at:
 
+Use the actual host platform (`pi` in Pi Coding Agent, `codex` in Codex), independent of the selected model or provider. Replace `<platform>` accordingly:
+
 ```bash
-python3 ./.trellis/scripts/get_context.py --mode phase --step <X.X> --platform codex
+python3 ./.trellis/scripts/get_context.py --mode phase --step <X.X> --platform <platform>
 ```
+
+In Pi, use `--platform pi` and dispatch implementation/check through the native `trellis_subagent` tool after the existing task review/start gate. Set `agent` to `trellis-implement` or `trellis-check` and normally omit `model` so the Agent frontmatter selects its role group. The main session keeps its own model for coordination; `task.py start` changes task state, not the main model.
+
+For a request to execute an existing task, the main session reviews task artifacts and obtains any still-required start approval, then starts that task and delegates. Delegate execution-environment probes (including SSH), builds, tests, and implementation to Implement; do not perform those inline as a prerequisite to dispatch. If a prerequisite is unclear, communicate it without beginning implementation. An explicit user request for the main session to perform a particular action remains authoritative.
 
 Follow the loaded instructions. After each `[required]` step completes, move to the next.
 

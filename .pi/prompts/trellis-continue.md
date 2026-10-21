@@ -49,6 +49,8 @@ python3 ./.trellis/scripts/get_context.py --mode phase --step <X.X> --platform p
 
 Follow the loaded instructions. After each `[required]` step completes, move to the next.
 
+In Pi, after the existing task review/start gate, use `trellis_subagent` with `agent: trellis-implement` for execution and `agent: trellis-check` for checking. Normally omit `model` so Agent frontmatter selects the role group; the main session keeps its model for coordination. Review task artifacts in the main session, but delegate execution-environment probes (including SSH), builds, tests, and implementation instead of performing them inline before dispatch. Explicit user instructions to have the main session perform a particular action take precedence.
+
 ---
 
 ## Reference

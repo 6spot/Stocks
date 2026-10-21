@@ -32,6 +32,9 @@ interface PiExtensionContext {
     provider?: string;
     id?: string;
   };
+  modelRegistry?: {
+    find: (provider: string, modelId: string) => unknown;
+  };
   sessionManager?: {
     getSessionId?: () => string;
     getSessionFile?: () => string | undefined;
@@ -93,7 +96,6 @@ const TRELLIS_AGENT_JSONL: Record<string, string> = {
   "trellis-check": "check.jsonl",
   check: "check.jsonl",
 };
-const MAX_STDOUT = 8 * 1024 * 1024;
 const MAX_STDERR = 1024 * 1024;
 const MAX_TAIL = 256 * 1024;
 const MAX_LINE_BUFFER = 1024 * 1024;
@@ -103,6 +105,9 @@ const MAX_PARALLEL_PROMPTS = 6;
 const ABORT_KILL_GRACE_MS = 1500;
 const SESSION_OVERVIEW_TIMEOUT_MS = 1500;
 const THROTTLE_MS = 500;
+const PROGRESS_REFRESH_MS = 5000;
+const SILENT_NOTICE_MS = 60_000;
+const MAX_DIAGNOSTIC_CHARS = 500;
 const FIRST_REPLY_NOTICE = `<first-reply-notice>
 On the first visible assistant reply in this session, briefly acknowledge that Trellis SessionStart context loaded.
 Choose the acknowledgment language in this order:
@@ -134,6 +139,7 @@ interface ToolTrace {
   status: ToolStatus;
   startedAt: number;
   finishedAt?: number;
+  errorMessage?: string;
 }
 interface RunState {
   id: string;
@@ -152,6 +158,10 @@ interface RunState {
   model?: string;
   thinking?: string;
   errorMessage?: string;
+  lastEventAt?: number;
+  lastStopReason?: string;
+  retry?: { attempt: number; maxAttempts: number; delayMs: number };
+  compacting?: boolean;
 }
 interface ProgressDetails {
   kind: "trellis-subagent-progress";
@@ -250,9 +260,13 @@ function thinkingIntent(text: string) {
   return "";
 }
 function behaviorSummary(r: RunState) {
-  if (r.status === "succeeded") return "Task completed and result returned";
+  if (r.status === "succeeded") return "Child finished and returned its report";
   if (r.status === "failed")
-    return "Task failed and error details were retained";
+    return "Task failed or blocked; see the reason below";
+  if (r.status === "cancelled") return "Cancelled; partial work may remain";
+  if (r.retry)
+    return `Model retry ${r.retry.attempt}/${r.retry.maxAttempts} · delay ${fmtDur(r.retry.delayMs)}`;
+  if (r.compacting) return "Compacting context before continuing";
 
   const runningTool = r.tools.findLast((t) => t.status === "running");
   if (runningTool) {
@@ -289,13 +303,16 @@ function behaviorSummary(r: RunState) {
 function progressState(d: ProgressDetails) {
   const running = d.runs.filter((r) => r.status === "running").length;
   const failed = d.runs.some((r) => r.status === "failed");
+  const cancelled = d.runs.some((r) => r.status === "cancelled");
   return failed
     ? "failed"
-    : d.final
-      ? "completed"
-      : running
-        ? `${running} running`
-        : "pending";
+    : cancelled
+      ? "cancelled"
+      : d.final
+        ? "completed"
+        : running
+          ? `${running} running`
+          : "pending";
 }
 function progressDone(d: ProgressDetails) {
   return d.runs.filter((r) => r.status !== "pending" && r.status !== "running")
@@ -341,11 +358,29 @@ function renderRunBlock(
   lines.push(`  - ${step}${runHeader(d, run)}`);
   const summary = behaviorSummary(run);
   if (summary) lines.push(`    › ${summaryText(summary)}`);
+  if (run.status === "running" && run.textTail) {
+    const progress = latest(safeDiagnostic(run.textTail), 1)[0];
+    if (progress) lines.push(`    Progress: ${oneLine(progress, 160)}`);
+  }
   const visibleTools = expanded ? run.tools.slice(-8) : run.tools.slice(-1);
-  for (const t of visibleTools)
-    lines.push(`    ${toolIcon(t.status)} ${toolBrief(t)}`);
-  if (expanded && run.errorMessage) {
-    lines.push(`    ✗ ${oneLine(run.errorMessage, 120)}`);
+  for (const t of visibleTools) {
+    const elapsed = fmtDur((t.finishedAt ?? Date.now()) - t.startedAt);
+    lines.push(`    ${toolIcon(t.status)} ${toolBrief(t)} · ${elapsed}`);
+    if (t.errorMessage)
+      lines.push(`      ✗ ${oneLine(t.errorMessage, 160)}`);
+  }
+  const failure = run.tools.findLast((t) => t.status === "failed");
+  if (failure?.errorMessage && !visibleTools.includes(failure))
+    lines.push(`    Last tool failure: ${failure.name}: ${oneLine(failure.errorMessage, 160)}`);
+  if (run.errorMessage)
+    lines.push(`    ✗ ${oneLine(run.errorMessage, 160)}`);
+  else if (run.stderrTail)
+    lines.push(`    stderr: ${oneLine(latest(run.stderrTail, 1)[0], 160)}`);
+  if (run.status === "running" && run.lastEventAt) {
+    const silent = Math.max(0, Date.now() - run.lastEventAt);
+    lines.push(silent >= SILENT_NOTICE_MS
+      ? `    ⚠ No child events for ${fmtDur(silent)}; Esc cancels the call`
+      : `    Last child event ${fmtDur(silent)} ago`);
   }
 }
 function renderProgressCard(
@@ -359,7 +394,7 @@ function renderProgressCard(
   const icon = d.final
     ? d.runs.some((x) => x.status === "failed")
       ? "✗"
-      : "✓"
+      : d.runs.some((x) => x.status === "cancelled") ? "⊘" : "✓"
     : spinner;
   const totalElapsed = fmtDur(
     (d.final ? d.updatedAt : Date.now()) - d.startedAt,
@@ -370,6 +405,9 @@ function renderProgressCard(
 
   if (!expanded) {
     renderRunBlock(lines, d, r, false);
+    const failed = d.runs.findLast((run) => run.status === "failed" || run.status === "cancelled");
+    if (failed && failed !== r)
+      lines.push(`    ✗ ${failed.id}: ${oneLine(failed.errorMessage || failed.status, 160)}`);
     lines.push("  Alt+O expand latest subagent card");
     return lines.map((l) => trunc(l, w));
   }
@@ -405,9 +443,14 @@ function progressKey(d: ProgressDetails) {
         r.model ?? "",
         r.thinking ?? "",
         r.errorMessage ?? "",
+        Math.floor((r.lastEventAt ?? 0) / PROGRESS_REFRESH_MS),
+        r.textTail.slice(-160),
+        r.stderrTail,
+        r.retry?.attempt ?? "",
+        r.compacting ?? false,
       ].join("~");
     })
-    .join("|");
+    .join("|") + `|${Math.floor(d.updatedAt / PROGRESS_REFRESH_MS)}`;
 }
 
 // ── Utilities ─────────────────────────────────────────────────────────
@@ -593,12 +636,23 @@ function oneLine(v: unknown, max = 80) {
     .trim()
     .slice(0, max);
 }
+function safeDiagnostic(text: string): string {
+  // Keep short public diagnostics, not complete tool output or credentials.
+  return text
+    .replace(/\x1b\[[0-?]*[ -/]*[@-~]/g, "")
+    .split(/\r?\n/)
+    .map((line) => /(?:api[_-]?key|(?:access[_-]?|refresh[_-]?)?token|private[_-]?key|password|passwd|authorization|secret|cookie)\s*[:=]|\b(?:Bearer|Basic)\s+\S+|sshpass\s+-p|\bsend\s+["']/i.test(line)
+      ? "[redacted diagnostic line]"
+      : line)
+    .join("\n")
+    .slice(-MAX_DIAGNOSTIC_CHARS);
+}
 function summarizeToolArgs(name: string, args: unknown): string {
   const a = isObj(args) ? args : {};
   const summary: JsonObject = {};
   if ("path" in a) summary.path = oneLine(a.path, 240);
   if ("file_path" in a) summary.file_path = oneLine(a.file_path, 240);
-  if ("command" in a) summary.command = oneLine(a.command, 240);
+  if ("command" in a) summary.command = safeDiagnostic(oneLine(a.command, 240));
   if ("pattern" in a) summary.pattern = oneLine(a.pattern, 120);
   if ("limit" in a) summary.limit = a.limit;
   if ("offset" in a) summary.offset = a.offset;
@@ -1289,6 +1343,12 @@ function buildPrompt(
     "",
     ctx,
     "",
+    "## Progress and Blocker Reporting",
+    "You run headless: the parent is waiting for this tool call and cannot answer an interactive question until you return.",
+    "Give concise public progress at stage changes, before long operations, and when a tool fails: what completed, what you are doing, and any problem. Do not expose credentials or private reasoning.",
+    "Use bounded command timeouts for SSH and validation. Diagnose recoverable failures within scope; do not repeat an unchanged command when a required credential, permission, environment, or user decision is missing.",
+    "If you cannot proceed, END the invocation with a final reply whose FIRST line is BLOCKED: <reason>. Include completed work, unverified or unfinished work, and the exact prerequisite needed. Do not wait for user input inside the child or claim the task passed. The parent will handle the blocker.",
+    "",
     "## Delegated Task",
     input.prompt ?? "",
   ].join("\n");
@@ -1311,9 +1371,16 @@ function parseJsonEvent(line: string): JsonObject | null {
 function applyEvent(r: RunState, evt: JsonObject): boolean {
   const type = typeof evt.type === "string" ? evt.type : "";
   if (!type) return false;
+  r.lastEventAt = Date.now();
   if (type === "agent_start" || type === "turn_start") {
     r.status = "running";
+    r.finishedAt = undefined;
     r.startedAt ??= Date.now();
+    return true;
+  }
+  if (type === "message_start" && isObj(evt.message) && evt.message.role === "assistant") {
+    r.textTail = "";
+    r.thinkingTail = "";
     return true;
   }
   if (type === "message_update") {
@@ -1346,7 +1413,7 @@ function applyEvent(r: RunState, evt: JsonObject): boolean {
     const thinking = extractThinking(msg.content);
     if (thinking) r.thinkingTail = appendTail("", thinking, MAX_TAIL);
     const text = extractText(msg.content);
-    if (text) {
+    if (text || msg.stopReason === "stop") {
       r.finalText = text;
       r.textTail = appendTail("", text, MAX_TAIL);
     }
@@ -1355,7 +1422,9 @@ function applyEvent(r: RunState, evt: JsonObject): boolean {
       r.model = parsed.model;
       r.thinking = parsed.thinking;
     }
-    if (typeof msg.errorMessage === "string") r.errorMessage = msg.errorMessage;
+    r.lastStopReason = typeof msg.stopReason === "string" ? msg.stopReason : undefined;
+    r.errorMessage = typeof msg.errorMessage === "string"
+      ? safeDiagnostic(msg.errorMessage) : undefined;
     return true;
   }
   if (type === "tool_execution_start") {
@@ -1367,7 +1436,7 @@ function applyEvent(r: RunState, evt: JsonObject): boolean {
     const args = summarizeToolArgs(name, evt.args);
     const existing = r.tools.findIndex((t) => t.id === id);
     if (existing >= 0)
-      r.tools[existing] = { ...r.tools[existing]!, args, status: "running" };
+      r.tools[existing] = { ...r.tools[existing]!, args, status: "running", errorMessage: undefined, finishedAt: undefined };
     else
       r.tools.push({
         id,
@@ -1380,44 +1449,95 @@ function applyEvent(r: RunState, evt: JsonObject): boolean {
       r.tools.splice(0, r.tools.length - MAX_TOOLS);
     return true;
   }
+  if (type === "tool_execution_update") {
+    // The tool may be producing output while its command is still running.
+    // Track activity without retaining its potentially sensitive full result.
+    return true;
+  }
   if (type === "tool_execution_end") {
     const id = typeof evt.toolCallId === "string" ? evt.toolCallId : "";
     const idx = r.tools.findIndex((t) => t.id === id);
+    const result = isObj(evt.result) ? evt.result : null;
     if (idx >= 0)
       r.tools[idx] = {
         ...r.tools[idx]!,
         status: evt.isError ? "failed" : "succeeded",
         finishedAt: Date.now(),
+        errorMessage: evt.isError
+          ? safeDiagnostic(extractText(result?.content)) || "Tool failed without an error summary"
+          : undefined,
       };
     return true;
   }
-  if (type === "agent_end") {
+  if (type === "auto_retry_start" || type === "summarization_retry_scheduled") {
+    r.status = "running";
+    r.finishedAt = undefined;
+    r.retry = { attempt: num(evt.attempt), maxAttempts: num(evt.maxAttempts), delayMs: num(evt.delayMs) };
+    r.errorMessage = safeDiagnostic(String(evt.errorMessage ?? "Retry scheduled"));
+    return true;
+  }
+  if (type === "auto_retry_end") {
+    r.retry = undefined;
+    if (evt.success === false) {
+      r.lastStopReason = "error";
+      r.errorMessage = safeDiagnostic(String(evt.finalError ?? "Model retries exhausted"));
+    } else {
+      r.errorMessage = undefined;
+    }
+    return true;
+  }
+  if (type === "compaction_start" || type === "summarization_retry_attempt_start") {
+    r.compacting = true;
+    r.retry = undefined;
+    return true;
+  }
+  if (type === "compaction_end" || type === "summarization_retry_finished") {
+    r.compacting = false;
+    r.retry = undefined;
+    if (typeof evt.errorMessage === "string") r.errorMessage = safeDiagnostic(evt.errorMessage);
+    else if (type === "compaction_end" && isObj(evt.result)) r.errorMessage = undefined;
+    return true;
+  }
+  // agent_end closes a low-level run; Pi can still retry or compact afterwards.
+  if (type === "agent_end") return true;
+  if (type === "agent_settled") {
     r.finishedAt = Date.now();
-    if (r.status === "running" || r.status === "pending")
-      r.status = "succeeded";
+    if (evt.aborted || r.lastStopReason === "aborted") {
+      r.status = "cancelled";
+      r.errorMessage ??= "cancelled";
+    } else if (r.lastStopReason === "error") {
+      r.status = "failed";
+      r.errorMessage ??= "Child model failed";
+    }
+    // Success is decided on process exit, after checking the final report.
     return true;
   }
   return false;
 }
 
 function finalize(r: RunState, fallback: string): string {
-  return r.finalText || fallback.trim() || r.stderrTail.trim();
+  const text = r.finalText.trim();
+  const reason = r.errorMessage?.trim();
+  if (reason)
+    return text.startsWith(reason) ? text : text ? `${reason}\n\nLast child message:\n${text}` : reason;
+  return text || fallback.trim() || r.stderrTail.trim();
 }
-function formatPiOutput(stdout: string, stderr: string): string {
-  let ft = "";
-  for (const line of stdout.split(/\r?\n/)) {
-    const t = line.trim();
-    if (!t) continue;
-    try {
-      const evt = JSON.parse(t) as JsonObject;
-      const msg = isObj(evt.message) ? evt.message : null;
-      if (msg?.role === "assistant") {
-        const txt = extractText(msg.content);
-        if (txt) ft = txt;
-      }
-    } catch {}
+function finishRun(r: RunState, code: number | null, stderr: string) {
+  r.finishedAt = Date.now();
+  const blocked = /^\s*BLOCKED:[^\r\n]*/i.exec(r.finalText);
+  const incomplete = r.lastStopReason && r.lastStopReason !== "stop";
+  const failed = code !== 0 || r.status === "failed" || r.status === "cancelled"
+    || Boolean(r.errorMessage) || Boolean(blocked) || Boolean(incomplete) || !r.finalText.trim();
+  if (failed) {
+    r.status = r.status === "cancelled" || r.lastStopReason === "aborted" ? "cancelled" : "failed";
+    r.errorMessage = r.errorMessage || (blocked ? safeDiagnostic(blocked[0]) : "")
+      || safeDiagnostic(stderr)
+      || (code !== 0 ? `Child process exited with code ${code ?? "unknown"}`
+        : incomplete ? `Child model ended with ${r.lastStopReason}` : "Child exited without a final report");
+  } else {
+    r.status = "succeeded";
   }
-  return ft || stdout || stderr;
+  return { output: finalize(r, ""), failed };
 }
 
 // ── Permission-forwarding parent session (issue #610) ───────────
@@ -1535,24 +1655,29 @@ function runPi(
       stdio: ["pipe", "pipe", "pipe"],
       windowsHide: true,
     });
-    const stdout = new BBC(MAX_STDOUT);
     const stderr = new BBC(MAX_STDERR);
     let buf = "";
     let settled = false;
     let aborted = false;
     let killTimer: ReturnType<typeof setTimeout> | null = null;
-    const abort = () => {
-      aborted = true;
+    let progressTimer: ReturnType<typeof setInterval> | null = null;
+    const stopChild = () => {
       cli.kill();
+      if (killTimer) return;
       killTimer = setTimeout(() => {
         if (!settled && cli.exitCode === null) cli.kill("SIGKILL");
       }, ABORT_KILL_GRACE_MS);
       killTimer?.unref?.();
     };
+    const abort = () => {
+      aborted = true;
+      stopChild();
+    };
     const done = (v: { output: string; failed: boolean }) => {
       if (settled) return;
       settled = true;
       if (killTimer) clearTimeout(killTimer);
+      if (progressTimer) clearInterval(progressTimer);
       signal?.removeEventListener("abort", abort);
       emit();
       resolve(v);
@@ -1560,14 +1685,17 @@ function runPi(
     signal?.addEventListener("abort", abort, { once: true });
     state.status = "running";
     state.startedAt = Date.now();
+    state.lastEventAt = state.startedAt;
+    progressTimer = setInterval(emit, PROGRESS_REFRESH_MS);
+    progressTimer.unref?.();
     emit();
     const processLine = (line: string) => {
       const evt = parseJsonEvent(line);
       if (evt && applyEvent(state, evt)) emit();
     };
-    cli.stdout?.on("data", (d: Buffer) => {
-      stdout.append(d);
-      buf += d.toString("utf-8");
+    cli.stdout?.setEncoding("utf8");
+    cli.stdout?.on("data", (chunk: string) => {
+      buf += chunk;
       if (buf.length > MAX_LINE_BUFFER) buf = buf.slice(-MAX_LINE_BUFFER);
       const lines = buf.split(/\r?\n/);
       buf = lines.pop() ?? "";
@@ -1575,27 +1703,29 @@ function runPi(
     });
     cli.stderr?.on("data", (d: Buffer) => {
       stderr.append(d);
-      state.stderrTail = appendTail(
-        state.stderrTail,
-        d.toString("utf-8"),
-        MAX_TAIL,
-      );
+      state.stderrTail = safeDiagnostic(stderr.toString());
+      state.lastEventAt = Date.now();
+      emit();
     });
     cli.stdin?.on("error", (e: Error & { code?: string }) => {
-      if (!aborted && e.code !== "EPIPE")
-        done({ output: e.message, failed: true });
+      if (!aborted && e.code !== "EPIPE") {
+        state.lastStopReason = "error";
+        state.errorMessage = safeDiagnostic(e.message);
+        stopChild();
+        emit();
+      }
     });
     cli.on("error", (e) => {
       state.status = aborted ? "cancelled" : "failed";
-      state.errorMessage = e instanceof Error ? e.message : String(e);
+      state.errorMessage = safeDiagnostic(e instanceof Error ? e.message : String(e));
       state.finishedAt = Date.now();
       done({ output: finalize(state, state.errorMessage), failed: true });
     });
     cli.on("close", (code) => {
+      if (settled) return;
       if (buf.trim()) processLine(buf);
-      const out = stdout.toString();
       const err = stderr.toString();
-      state.stderrTail = appendTail("", err, MAX_TAIL);
+      state.stderrTail = safeDiagnostic(err);
       state.finishedAt = Date.now();
       if (aborted) {
         state.status = "cancelled";
@@ -1603,18 +1733,7 @@ function runPi(
         done({ output: finalize(state, "cancelled"), failed: true });
         return;
       }
-      if (code === 0) {
-        if (state.status === "pending" || state.status === "running")
-          state.status = "succeeded";
-        done({
-          output: finalize(state, formatPiOutput(out, err)),
-          failed: false,
-        });
-        return;
-      }
-      state.status = "failed";
-      state.errorMessage = err || out || `exit ${code ?? "?"}`;
-      done({ output: finalize(state, state.errorMessage), failed: true });
+      done(finishRun(state, code, err));
     });
     cli.stdin?.end(prompt);
   });
@@ -1641,6 +1760,29 @@ async function runSubagent(
     inheritedThinking,
     inheritedModel,
   );
+  // Project role bindings must be explicit: a TODO must never select the
+  // planner's model or the child Pi's global default. Keep other agents native.
+  if (agentName === "trellis-implement" || agentName === "trellis-check") {
+    const explicitModel = str(input.model) ?? str(agentCfg.model);
+    if (!explicitModel)
+      throw new Error(
+        `${agentName} 尚未配置路由组。请在 .pi/agents/${agentName}.md 设置 model，` +
+          "或显式传入 model；参见 .trellis/model-routing.md。不会继承主会话模型。",
+      );
+    // Check the resolved value that will actually be passed to the child CLI.
+    const { model } = splitModelThinking(runCfg.model);
+    if (!model?.startsWith("magpie/group/") || model === "magpie/group/")
+      throw new Error(
+        `${agentName} 必须使用完整的 magpie/group/<组 ID>，具体模型由 Magpie 管理。`,
+      );
+    if (!ctx?.modelRegistry)
+      throw new Error(`${agentName} 无法读取 Pi 模型注册表，已停止派发。`);
+    if (!ctx.modelRegistry.find("magpie", model.slice("magpie/".length)))
+      throw new Error(
+        `${agentName} 的路由组 ${model} 未在 Pi 注册，已停止派发。` +
+          "请通过 /model 核对模型清单。",
+      );
+  }
   const mode = input.mode ?? "single";
   const startedAt = Date.now();
   const details: ProgressDetails = {
@@ -1873,6 +2015,8 @@ export default function trellisExtension(pi: {
       'Sub-agent dispatch protocol (Trellis): your dispatch prompt MUST start with one line "Active task: <task path from `task.py current`>" before any other instructions.',
     promptGuidelines: [
       'Use subagent for task delegation. Your dispatch prompt MUST start with "Active task: <task path from `task.py current`>".',
+      "This host is Pi Coding Agent, independent of the model/provider. Use --platform pi for Trellis phase guidance. After the user-approved task start, dispatch implementation/check with agent trellis-implement/trellis-check; normally omit model to use the Agent frontmatter group. The main session remains on its own model for coordination. For task execution, delegate SSH environment probes, builds, tests, and implementation to Implement instead of performing them inline before dispatch, unless the user explicitly requests a main-session action.",
+      "When a child returns BLOCKED or fails, explain the blocker and completed/unfinished work to the user before taking another step. Do not repeatedly redispatch against an unchanged missing prerequisite or mark blocked verification as passed.",
     ],
     parameters: {
       type: "object",

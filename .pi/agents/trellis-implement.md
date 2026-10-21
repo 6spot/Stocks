@@ -3,6 +3,9 @@ name: trellis-implement
 description: |
   Code implementation expert. Understands Trellis specs and requirements, then implements features. No git commit allowed.
 tools: read, write, edit, bash, find, grep
+# Implement：Deepseek 路由组，具体模型由 Magpie 管理。
+model: magpie/group/deepseek
+# 模型选择和更新保留说明：.trellis/model-routing.md
 ---
 
 ## Required: Load Trellis Context First

@@ -3,6 +3,10 @@ name: trellis-check
 description: |
   Code quality check expert. Reviews changes against Trellis specs, fixes issues directly, and verifies quality gates.
 tools: read, write, edit, bash, find, grep
+# Check：Qwen 路由组，具体模型由 Magpie 管理。
+model: magpie/group/qwen
+# 原生 Check 会直接修复代码，保留 write / edit / bash，并非只读审计。
+# 模型选择和更新保留说明：.trellis/model-routing.md
 ---
 
 ## Required: Load Trellis Context First
