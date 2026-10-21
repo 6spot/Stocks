@@ -707,3 +707,44 @@ Implemented deny-by-default Tool catalog, remote MCP Streamable HTTP client, bou
 
 - 待 Owner 最终验收：真实第三方端点返回费用、真实远程 MCP 服务与凭据、真实多来源转载与冲突指标样例、两份真实连续报告用于对照卡、真机移动/ARM 部署验收；V2-01~V2-05 其余待验收边界见 docs/validation.md
 - V2-01~V2-05 已全部交付并归档，V2 进入最终验收阶段
+
+
+## Session 23: 修复解析器容器文本逐字符换行并整理待验收清单
+<!-- trellis-session: v=2 fp=4bac9ee6f94ce43c -->
+
+**Date**: 2026-10-22
+**Task**: 修复解析器容器文本逐字符换行并整理待验收清单
+**Branch**: `main`
+
+### Summary
+
+V2 任务列表已全部交付归档后，处理跨任务待验收登记中的 PA-2 解析器缺陷：正文直接位于 article/main/body 时，逐字符文本节点被当成逐字符证据片段，Chunk 文本变成逐字符换行。修复后容器自身的连续文本与行内元素合并为一个证据片段，并把处理器版本提升为 semantic-text-v3，使旧批次不被复用。同时把各阶段人工/第三方待验收项集中到 docs/validation.md 的「待最终验收」清单。
+
+### Main Changes
+
+- parser._walk_evidence() 统一走 _walk_block()，新增 CONTAINER_ELEMENTS（article/body/html/main）按结构元素递归，容器直接文本与行内元素合并为一个证据片段；PROCESSOR_VERSION 提升为 semantic-text-v3
+- 新增回归用例 test_text_directly_inside_container_stays_one_evidence_run（body/main/article 三种容器）与 test_inline_text_directly_inside_container_keeps_order_and_ranges
+- 契约与规范同步：docs/data.md 写明容器连续文本合并规则，.trellis/spec/backend/testing-guidelines.md 移除“正文必须放在内层块元素”的规避说明
+- docs/validation.md 新增「待最终验收」清单（真实模型闭环、远程 MCP、SEC/Fed 联系方式、同源冲突样例、连续两份报告、真实费用端点、调度限流、移动/ARM、第三方闭环与发布），并在 .trellis/tasks/10-20-stocks-roadmap/pending-acceptance.md 记录 PA-2 修复与清单入口
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `fbc6c4a` | docs(validation): consolidate pending human and third-party acceptance items |
+| `6f4ffb7` | fix(parsing): merge container text instead of one segment per character |
+| `79875f1` | docs(trellis): record the PA-2 parser fix and the pending acceptance list |
+| `46e200e` | chore(parsing): bump the parse processor version to semantic-text-v3 |
+
+### Testing
+
+- [OK] 测试服务器 100.120.14.84 隔离目录：test_processing.py 38 passed；解析/采集/处理重试/仓库/冲突 117 passed；批次复用相关 5 文件 151 passed；后端全量 475 passed（1 个既有 Starlette 弃用告警）
+- [OK] 真实来源复核：2 份真实 Fed 与 2 份真实 SEC 新闻正文，修复前 Fed 两页分别出现 18/17 个单字符片段（S\nk\ni\np...），修复后 0 个单字符片段、来源范围回查 0 处不一致
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- 待 Owner 最终验收：真实模型 Provider 凭据与真实外网闭环（PA-1）、真实远程 MCP 与凭据、真实返回费用的端点、SEC/Fed 真实联系邮箱、真实转载与冲突样例、连续两份真实报告人工对照、真机移动/ARM 与公网发布
