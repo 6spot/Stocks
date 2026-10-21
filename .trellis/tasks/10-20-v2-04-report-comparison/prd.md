@@ -23,9 +23,9 @@ Owner 可比较前后报告及其真实依据，理解结论、修订和不确�
 
 ## 验收条件
 
-- [ ] AC-1: 选择两份成功报告可看到结论/风险及证据差异并打开两次实际原件版本。
-- [ ] AC-2: 指标修订和晚到资料解释为真实来源变化，不虚构先前已知；缺资料/不同覆盖如实显示。
-- [ ] AC-3: 失败 Run 不充当成功历史报告，旧报告和引用始终不变。
+- [x] AC-1: `GET /api/reports/{report_id}/comparison?other_report_id=...` 与 Web 报告页「历史报告对照」卡片可选择两份成功报告，逐项看到结论新增/消失/持续（含不确定性与引用变化）、Document 新增/消失/同一来源新版本、同指标取值修订、覆盖缺口增减与晚到资料；`documents.persisting[].earlier/later` 分别给出两侧可打开的 Document 版本（测试断言两次实际原件入口）。
+- [x] AC-2: 同指标 Fact 按 `(subject_name, symbol, metric_id)` 比较，标出 `value_changed`/`basis_changed`/`period_changed` 并给出两侧真实取值（示例 2.4 → 2.1，不出现中间值）；晚于较早报告 `as_of` 发布或采集的 Document 列在 `late_material`，说明为真实来源变化；`unexamined_count` 只从 Evidence Package 读取，未知保持 `null` 不补 0，两侧 coverage 与缺口增减分开显示，Task/Scope 不同或 `as_of` 未推进时给出 `warnings[]`。
+- [x] AC-3: 失败或未完成 Run 的报告返回 409，不能充当成功历史报告；同一报告自比返回 400、未知报告返回 404；比较只读两份报告各自保存的 Analysis/Evidence Package/引用版本，不重新研究、不改写旧报告，测试断言较早报告在新版本入库后仍引用当时版本。
 
 ## 不在范围内
 
@@ -33,4 +33,4 @@ Owner 可比较前后报告及其真实依据，理解结论、修订和不确�
 
 ## 约束与规划状态
 
-只改当前设计与初始化，不做旧库迁移或旧版兼容；运行期证据和历史引用仍须保留。此任务保持 planning；本轮未实施。开工前复核前置交付、实际文件和配置，再对本任务规划进行实施确认。
+只改当前设计与初始化，不做旧库迁移或旧版兼容；运行期证据和历史引用仍须保留。本任务已在 Owner「按任务列表逐个实施」的授权下完成：无数据库结构变更，契约写入 `docs/research.md`、`docs/interface.md`、`docs/validation.md`，运行说明写入 `docs/quickstart.md`；验证只在测试服务器 `100.120.14.84` 隔离目录执行。真实连续 Run 报告的人工对照复核留给最终验收，不阻塞后续任务。

@@ -111,13 +111,20 @@ V0 当前实现使用每次 Run 一份持久 Evidence Package：保存 objective
 
 统计同时记录 `candidates_discovered`、`candidates_screened`、`selected_count`（实际选入的 Chunk 数）、`evidence_group_count`（合并后的证据链组数）、`filtered_out_count`（已筛选但未入选）与 `unexamined_count`（未扫描）。筛选后未入选与未扫描分开表达；任一查询或原始变化页触顶时 `candidates_discovered` / `unexamined_count` 保持 `null`，不填 0。`selected_count` 与 `evidence_group_count` 不同正是转载/合并后的结果，报告不能把组数当作独立来源数。分类失败不参与召回过滤：只要存在可读当前 Chunk 或结构化 Fact，资料仍可进入研究。
 
-纯结构化 API 响应（无可用 Chunk）只以 Fact 组出现，`ref` 为 `null` 并保留每个 Fact 的 `evidence_ref`。仅凭标题或向量相似不做转载合并；V2-03 起按来源自己声明的原件合并，见下。历史报告比较 UI 仍未实现。
+纯结构化 API 响应（无可用 Chunk）只以 Fact 组出现，`ref` 为 `null` 并保留每个 Fact 的 `evidence_ref`。仅凭标题或向量相似不做转载合并；V2-03 起按来源自己声明的原件合并，见下；基于已存快照的历史报告比较由 V2-04 实现，同样见下。
 
 **V2-03 当前实现：** 采集时把来源声明的原件记在 Document 内容版本上（[来源声明](data.md#来源关联去重与政策资料)），取材阶段只用这个声明合并，不做相似度猜测。`document_origins()` 一次读回本次选中 Document 的声明，`group_origins()` 据此把多份资料归为一个 **origin group**：`coverage.origin_groups[]` 记录 `origin_id`、`kind`、`key`、`url`、`declared_sources`、`document_ids`、`source_ids`、`document_count`、固定的 `independent_source_count = 1` 与 `merged`；每条 `selected_chunks[]` 与 `evidence_groups[]` 另带 `origin_id`（组内还有 `origin_group_size`），所以报告和证据详情既能说明「这是同一原件」，也仍能逐份打开各副本。覆盖统计新增 `origin_group_count` 与 `merged_origin_group_count`：`selected_count`、`evidence_group_count`、`origin_group_count` 是三个不同数量，报告不能用前两个冒充独立来源数。**没有声明的资料记为 `kind = single_document`、`key = document:<id>`，表示来源关系未知，不等于已确认唯一。**
 
 **同指标比较（V2-03）：** Evidence Package 另存 `metric_comparisons[]`。同一 `(subject_name, symbol, metric_id)` 出现两个及以上 Fact 时生成一条对比，分别标记 `value_conflict`（同一 unit/currency/观测期下取值不同）、`basis_mismatch`（单位或币种不同）与 `period_mismatch`（观测期不同），并逐个列出各来源的 `value`、`unit`、`currency`、`period_start`、`period_end`、`available_at`、`statement` 与 `document_id`。同一个 Fact 在 `evidence_groups[].fact_refs` 中带上 `comparison_id` 与三个标记，模型输入与报告看到的是并列值本身。**不做平均、不做静默覆盖、不把冲突或未确认值标为已核实**；只有一条 Fact 的指标不生成对比，也不因此被判定为「已核实」。
 
 **报告呈现（V2-03）：** `render_report()` 在 Coverage 之前确定性生成 `## Sources and Conflicts`：先写本次选中的独立原件数与覆盖的 Document 版本数、列出确认同源的合并组，再逐个列出同指标取值与差异类型，并明确说明这些值按发布原样并列、未平均、未标记已核实。该段落来自已保存的 Evidence Package 与 Analysis.coverage，不依赖模型输出；模型只负责解释影响与不确定性。段落在 20 个 origin group / 20 条对比处截断，其余仍保存在 Evidence Package 中。
+
+**历史报告比较（V2-04）：** `GET /api/reports/{report_id}/comparison?other_report_id=...` 只比较两份**已保存**报告各自的快照：Analysis 的 findings / open questions、Evidence Package 的 `scope`、`as_of` 与 coverage，以及各报告真实引用的 Document 版本与 Fact。它**不重新研究、不调用 Tool、不读取当前最新数据、不改写旧报告**，响应 `notes[]` 也把这个边界写明。两侧按 `created_at`、`report_id` 排序，`ordering.requested_report_id` 与 `ordering.swapped` 说明请求的报告是否就是较早一侧；失败或未完成的 Run 不能充当成功历史报告（409），同一报告自比返回 400，未知报告返回 404。
+
+- **结论差异**：只有 `kind` 与规范化 `statement` **完全相同**的 finding 才算持续，改写过的条目按「一条消失、一条新增」处理；持续项标记 `uncertainty_changed`、`rationale_changed`、`evidence_changed` 并给出两侧的 uncertainty。比较只说明差异，不把后来的结论说成较早 Run 已经知道的内容。
+- **证据差异**：Document 以来源自己声明的原件（V2-03 的 `source_id` + `dedupe_key`）为键，来源没有声明时退回 `document:<id>`；同一 Document 被多段引用只出现一次，标出 `version_changed` 与 `content_changed`，并分别列出两侧可打开的 Document 版本。Fact 差异按 `(subject_name, symbol, metric_id)` 分组，标出 `value_changed`、`basis_changed`、`period_changed` 并给出两侧的真实取值、单位、币种与观测期；**不平均、不覆盖、不标为已核实**。
+- **覆盖与晚到资料**：两侧分别给出 `selected_count`、`evidence_group_count`、`origin_group_count`、`merged_origin_group_count`、`fact_count`、候选统计、`research_input_count` 与缺口，并给出 `gaps_added` / `gaps_removed`；`unexamined_count` 只从 Evidence Package 读取，未知保持未知、不补 0。`late_material` 列出晚到一侧在较早报告 `as_of` 之后发布或采集的 Document，把差异解释为真实来源变化。两侧 Task 或 Scope 不同、或较早 `as_of` 未推进时给出 `warnings[]`。
+- **边界**：每组差异最多返回 50 条并带 `truncated`，完整快照仍在各自报告与 Evidence Package 中；不建 Finding 主数据或长期关系图，市场、行业与个股共用同一接口。
 
 **V2-01 起的可引用边界：** 补充检索取得的资料只有在统一入库、解析并成为持久 Chunk 后才能支撑 finding；Fact-only 的补充组（例如纯 JSON 响应）仍进入证据组与覆盖统计，但不能作为引用对象，相关内容只能以 open questions 或覆盖说明表达。该限制对初始选择与补充输入一视同仁。
 
@@ -182,6 +189,6 @@ Research Agent 从去重后的 Evidence Package 形成 Analysis，再生成 Repo
 
 **Report 保存：** 标题、研究范围、时间、可阅读正文/章节、真实数据引用和必要的来源/版本。市场、行业和个股共用报告契约，不强制固定栏目；无显著变化时可以如实说明。将原始数据、媒体观点与模型推断明确区分，资料缺失或冲突时直接说明，不能自动宣称“已核实”。
 
-报告在成功保存后可被后续 Task 参考，失败不覆盖最后成功报告；V2 的历史报告对照可以从简单比较开始，不为复杂关系提前建表或设计 UI。图表如需生成，数字必须来自 Repository 实际记录，而非 LLM 虚构。
+报告在成功保存后可被后续 Task 参考，失败不覆盖最后成功报告；V2-04 的历史报告对照按本文契约实现，只比较两份已保存报告的自身快照，不建 Finding 主数据或长期关系表。图表如需生成，数字必须来自 Repository 实际记录，而非 LLM 虚构。
 
 当前实现要求每个 finding 明确标记为 `fact`、`source_opinion` 或 `model_inference`，至少引用一个本轮可用持久 Chunk（初始 Evidence Package 选择或 V2-01 授权补证追加的输入），并保存理由与不确定性；只有 Fact 或只有摘要的补充内容不可引用。输出结构和引用在模型调用内校验；非法引用按 Research Agent 路由有限重试或回退，最终仍非法则 Run/Step 失败，不静默写报告。初始选择与追加输入的合法引用都为空时 Run 仍可成功，但报告只能表达缺口与不确定性，不得出现裸 finding。Analysis 与由其确定性生成的 Markdown Report 在同一成功事务中保存；下游失败保留 Evidence Package 和此前成功的 Analysis/Report。新 Document 版本不会改变旧报告记录的 Document/Chunk 版本与原件。

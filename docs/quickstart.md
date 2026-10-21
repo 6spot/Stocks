@@ -401,6 +401,13 @@ routing, and `config/sources.yaml` defines Sources. A Task is either:
   Report ends with a deterministic `## Sources and Conflicts` section built from the
   saved Evidence Package, not from model text. Reprint merging is limited to what the
   sources themselves declared; title or vector similarity never merges anything.
+  V2-04 adds `GET /api/reports/{report_id}/comparison?other_report_id=...`: it compares
+  the two saved snapshots side by side (findings, cited Document versions, same-metric
+  values, coverage gaps and Documents published or collected after the earlier `as_of`),
+  orders them by `created_at` with `ordering.swapped` telling the caller whether the
+  requested report is the earlier side, and never re-runs research or rewrites the older
+  report. Self-comparison returns 400, an unknown report 404, and a report whose Run did
+  not succeed 409.
   It does not collect, parse,
   or index Documents, and it does not call external Tools unless its Agent declares an
   authorized `tools` list. The Agent input is untrusted JSON data. A research Agent may

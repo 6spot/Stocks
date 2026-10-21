@@ -56,6 +56,15 @@ V2 在日常运行稳定后改善资料缺口、来源冲突和历史比较的�
 
 **已实现与待补的边界（截至 V2-03）：** 来源声明的采集与归一化（`stocks.origins`，含 canonical 链接解析）、`Document.extra.origin` 存储与 `document_origins()` 读回、`group_origins()` 与 `metric_comparisons()`、Evidence Package 的 `origin_groups` / `origin_group_count` / `merged_origin_group_count` / `metric_comparisons` 字段、报告确定性段落，以及 Web 报告页的来源独立性卡片、同指标取值对比卡片和「同一原件（N 份）」标记已在当前代码实现。测试服务器 `100.120.14.84` 的隔离目录中以 PostgreSQL/pgvector 集成测试覆盖确认转载合并、标题相似但不误合并、未声明来源记为未知、数值冲突与口径/观测期差异、报告段落内容，及报告详情接口的来源字段；全新开发库 `alembic upgrade head` + `alembic check` 无差异；前端通过类型检查与行为测试。真实来源核对（只读取公开页面、不写库）确认合并键在真实数据上的行为：Fed 与 SEC 公开 RSS 各 20 条真实条目分别得到 20 个互不相同的结果原件键，没有误合并；两份真实文章正文中，Fed 页面（85,178 字节）未声明 canonical，落到 `article_url` 且与条目地址一致，SEC 新闻页（64,615 字节）声明了 canonical 链接并与文章地址一致，因此记为 `canonical_url`；两个 feed 都未提供 `<source>` 转载说明。**待补验收：** 真实「多来源转载同一原文」的成对样例与真实来源给出的同一指标冲突值本轮没有取到（公开来源通常不声明 canonical，也很少给出相互矛盾的同一指标），真实采集端的同源合并与冲突取值呈现仍需 Owner 用实际来源复核；事件关系库、来源真值评分与独立核查平台明确不在范围内。以上验证只在测试服务器隔离目录执行，不把未运行的检查写成通过。
 
+### V2-04 基于原始证据的历史报告比较
+
+- **只读已存快照**：`GET /api/reports/{report_id}/comparison?other_report_id=...` 只读取两份报告各自的 Analysis、Evidence Package 与引用 Document 版本，不重新研究、不调用 Tool、不改写旧报告；失败或未完成的 Run 不能充当成功历史报告（409），同一报告自比返回 400，未知报告返回 404。
+- **结论与证据差异**：只有 `kind` 与规范化 statement 完全相同的 finding 才算持续，改写过的条目按「一条消失、一条新增」显示，持续项标记不确定性与引用变化。Document 按来源自己声明的原件合并，同一版本被多段引用只出现一次，标出 `version_changed` / `content_changed`，两侧各自的原件都可打开。
+- **修订与晚到资料**：同指标 Fact 按 `(subject_name, symbol, metric_id)` 比较，标出 `value_changed` / `basis_changed` / `period_changed` 并给出两侧真实取值，不平均、不静默覆盖；晚于较早报告 `as_of` 发布或采集的 Document 列在 `late_material`，解释为真实来源变化而不是先前已知。
+- **覆盖如实呈现**：两侧 coverage、缺口增减与 `unexamined_count` 分开显示，未知保持未知；Task 或 Scope 不同、较早 `as_of` 未推进时给出 `warnings[]`；每组差异截断于 50 条并带 `truncated`，完整快照仍在各自报告与 Evidence Package 中。
+
+**已实现与待补的边界（截至 V2-04）：** 后端 `compare_report_sides()` 与上述报告对照接口、Web 报告页的「历史报告对照」卡片（默认选中同一 Task 中最近的一份成功报告）已在当前代码实现。测试服务器 `100.120.14.84` 的隔离目录中以 PostgreSQL/pgvector 集成测试覆盖两侧排序与请求侧交换、结论新增/消失/持续与不确定性变化、Document 版本与内容变化、同指标修订取值、覆盖缺口与未知未扫描数量、晚到资料、自比 400、未知报告 404、失败 Run 409 及旧报告引用不变；前端通过类型检查与行为测试（默认预选、两侧原件链接、无对照对象时不显示卡片）。该任务不涉及数据库结构变更，全新开发库 `alembic upgrade head` + `alembic check` 无差异。**待补验收：** Owner 尚未用真实连续 Run 的两份报告做人工对照复核（需要至少两次成功的真实研究运行）；真实场景中「同一 Document 新版本被后续报告引用」与「同一指标跨报告修订」的成对样例仍需 Owner 用实际来源确认；逐条 Finding 关系图、严格历史知识回放与虚构价格/收益对比明确不在范围内。以上验证只在测试服务器隔离目录执行，不把未运行的检查写成通过。
+
 ## 所有阶段共同遵守
 
 - 原文、RSS、网页和工具返回都是数据，不能改变系统指令或扩大 Tool 权限；来源等级、媒体观点和模型推断均不能冒充已核实事实。

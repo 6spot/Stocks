@@ -799,6 +799,185 @@ export const reportDetailSchema = z
 
 export type ReportDetail = z.infer<typeof reportDetailSchema>;
 
+const comparisonGroupSchema = <T extends z.ZodType>(item: T) =>
+  z
+    .object({
+      count: z.number().int().nonnegative(),
+      items: z.array(item),
+      truncated: z.boolean(),
+    })
+    .passthrough();
+
+export const comparisonSideSchema = z
+  .object({
+    report_id: z.string(),
+    run_id: z.string(),
+    analysis_id: z.string(),
+    task_id: z.string(),
+    title: z.string(),
+    created_at: z.string(),
+    run_status: nullableString,
+    as_of: nullableString,
+    evidence_package_id: nullableString,
+    selection_policy_version: nullableString,
+    scope: z.unknown(),
+    summary: nullableString,
+    analysis_created_at: nullableString,
+    coverage: z
+      .object({
+        selected_count: nullableNumber,
+        evidence_group_count: nullableNumber,
+        origin_group_count: nullableNumber,
+        merged_origin_group_count: nullableNumber,
+        fact_count: nullableNumber,
+        candidates_discovered: nullableNumber,
+        candidates_screened: nullableNumber,
+        unexamined_count: nullableNumber,
+        retrieval_truncated: z.boolean().nullable().optional(),
+        research_input_count: nullableNumber,
+        gaps: z.array(z.string()).optional(),
+      })
+      .passthrough(),
+  })
+  .passthrough();
+
+export type ComparisonSide = z.infer<typeof comparisonSideSchema>;
+
+const comparisonDocumentSchema = z
+  .object({
+    report_id: nullableString,
+    document_id: z.string(),
+    version: nullableNumber,
+    content_hash: nullableString,
+    source_id: nullableString,
+    dedupe_key: nullableString,
+    title: nullableString,
+    original_url: nullableString,
+    published_at: nullableString,
+    collected_at: nullableString,
+    origin: documentOriginSchema.nullable().optional(),
+    origin_id: nullableString,
+    chunk_ids: z.array(z.string()).optional(),
+    fact_ids: z.array(z.string()).optional(),
+    role: nullableString,
+    version_matches: z.boolean().nullable().optional(),
+    only_in_report_id: nullableString,
+    compared_report_id: nullableString,
+    earlier_as_of: nullableString,
+    collected_after_as_of: z.boolean().optional(),
+    published_after_as_of: z.boolean().optional(),
+  })
+  .passthrough();
+
+const comparisonFactSchema = z
+  .object({
+    fact_id: nullableString,
+    document_id: nullableString,
+    subject_name: nullableString,
+    symbol: nullableString,
+    metric_id: nullableString,
+    fact_type: nullableString,
+    value: z.unknown(),
+    unit: nullableString,
+    currency: nullableString,
+    period_start: nullableString,
+    period_end: nullableString,
+    available_at: nullableString,
+    statement: nullableString,
+    report_id: nullableString,
+  })
+  .passthrough();
+
+const metricChangeSchema = z
+  .object({
+    subject_name: nullableString,
+    symbol: nullableString,
+    metric_id: nullableString,
+    value_changed: z.boolean(),
+    basis_changed: z.boolean(),
+    period_changed: z.boolean(),
+    earlier: z.array(comparisonFactSchema),
+    later: z.array(comparisonFactSchema),
+  })
+  .passthrough();
+
+export const reportComparisonSchema = z
+  .object({
+    earlier: comparisonSideSchema,
+    later: comparisonSideSchema,
+    ordering: z.object({ by: z.string(), swapped: z.boolean() }).passthrough(),
+    warnings: z.array(
+      z.object({ code: z.string(), message: z.string() }).passthrough(),
+    ),
+    findings: z.object({
+      appeared: comparisonGroupSchema(z.unknown()),
+      disappeared: comparisonGroupSchema(z.unknown()),
+      persisting: comparisonGroupSchema(
+        z
+          .object({
+            kind: nullableString,
+            statement: nullableString,
+            earlier_uncertainty: nullableString,
+            later_uncertainty: nullableString,
+            uncertainty_changed: z.boolean(),
+            rationale_changed: z.boolean(),
+            evidence_changed: z.boolean(),
+          })
+          .passthrough(),
+      ),
+    }),
+    open_questions: z.object({
+      appeared: comparisonGroupSchema(z.string()),
+      disappeared: comparisonGroupSchema(z.string()),
+      persisting: comparisonGroupSchema(z.string()),
+    }),
+    documents: z.object({
+      appeared: comparisonGroupSchema(comparisonDocumentSchema),
+      disappeared: comparisonGroupSchema(comparisonDocumentSchema),
+      persisting: comparisonGroupSchema(
+        z
+          .object({
+            source_id: nullableString,
+            dedupe_key: nullableString,
+            title: nullableString,
+            earlier: comparisonDocumentSchema,
+            later: comparisonDocumentSchema,
+            version_changed: z.boolean(),
+            content_changed: z.boolean(),
+          })
+          .passthrough(),
+      ),
+    }),
+    facts: z.object({
+      appeared: comparisonGroupSchema(comparisonFactSchema),
+      disappeared: comparisonGroupSchema(comparisonFactSchema),
+      metric_changes: comparisonGroupSchema(metricChangeSchema),
+    }),
+    coverage: z
+      .object({
+        earlier: z.unknown(),
+        later: z.unknown(),
+        gaps_added: comparisonGroupSchema(z.string()),
+        gaps_removed: comparisonGroupSchema(z.string()),
+        unexamined_unknown: z.object({
+          earlier: z.boolean(),
+          later: z.boolean(),
+        }),
+      })
+      .passthrough(),
+    late_material: z
+      .object({
+        earlier_as_of: nullableString,
+        documents: comparisonGroupSchema(comparisonDocumentSchema),
+        note: nullableString,
+      })
+      .passthrough(),
+    notes: z.array(z.string()).optional(),
+  })
+  .passthrough();
+
+export type ReportComparison = z.infer<typeof reportComparisonSchema>;
+
 export const factDetailSchema = z
   .object({
     fact: factSchema,

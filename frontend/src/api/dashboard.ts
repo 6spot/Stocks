@@ -5,6 +5,7 @@ import {
   factsResponseSchema,
   processingResponseSchema,
   processingRetrySchema,
+  reportComparisonSchema,
   reportDetailSchema,
   reportsResponseSchema,
   runDetailSchema,
@@ -238,6 +239,19 @@ export const dashboardApi = {
       schema: reportDetailSchema,
       signal,
     });
+  },
+
+  reportComparison(
+    reportId: string,
+    otherReportId: string,
+    signal?: AbortSignal,
+  ) {
+    return apiRequest(
+      `/api/reports/${encodeURIComponent(reportId)}/comparison${queryString({
+        other_report_id: otherReportId,
+      })}`,
+      { schema: reportComparisonSchema, signal },
+    );
   },
 };
 

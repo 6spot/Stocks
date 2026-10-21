@@ -18,8 +18,9 @@ import {
 } from "@/components/source-independence";
 import { OriginalLinks } from "@/components/original-links";
 import { PageHeader } from "@/components/page-header";
+import { ReportComparisonCard } from "@/components/report-comparison";
 import { StatusBadge } from "@/components/status-badge";
-import type { OriginGroup } from "@/api/schemas";
+import type { OriginGroup, ReportListItem } from "@/api/schemas";
 import { evidenceCoverageSchema } from "@/api/schemas";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -125,7 +126,16 @@ export function ResearchPage() {
 
         <section className="min-w-0">
           {selectedId ? (
-            <ReportReader key={selectedId} reportId={selectedId} />
+            <ReportReader
+              key={selectedId}
+              reportId={selectedId}
+              reports={
+                reports.data?.items.filter(
+                  (report) => report.run_status === "succeeded",
+                ) ?? []
+              }
+              onSelectReport={selectReport}
+            />
           ) : (
             <EmptyPanel
               title="选择一份报告"
@@ -149,7 +159,15 @@ export function ResearchPage() {
   );
 }
 
-export function ReportReader({ reportId }: { reportId: string }) {
+export function ReportReader({
+  reportId,
+  reports = [],
+  onSelectReport,
+}: {
+  reportId: string;
+  reports?: ReportListItem[];
+  onSelectReport?: (reportId: string) => void;
+}) {
   const report = useResource(
     (signal) => dashboardApi.report(reportId, signal),
     [reportId],
@@ -263,6 +281,12 @@ export function ReportReader({ reportId }: { reportId: string }) {
         groups={originGroups}
         evidenceGroupCount={evidenceGroupCount}
         referenceCount={data.evidence.length}
+      />
+
+      <ReportComparisonCard
+        reportId={reportId}
+        reports={reports}
+        onSelectReport={onSelectReport}
       />
 
       <MetricComparisonsCard comparisons={comparisons} />

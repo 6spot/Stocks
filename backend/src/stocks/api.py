@@ -4,6 +4,7 @@ import hashlib
 import logging
 import secrets
 from collections import defaultdict
+from copy import deepcopy
 from datetime import UTC, datetime
 from functools import lru_cache
 from heapq import merge
@@ -63,6 +64,8 @@ from stocks.models import (
 from stocks.processing.processors import build_stage_registry
 from stocks.processing.parser import HTML_CONTENT_TYPES, TEXT_CONTENT_TYPES
 from stocks.processing.runner import describe_stages, run_stages_for_documents
+from stocks.research.comparison import compare_report_sides
+from stocks.research.evidence import fact_selection_ref
 from stocks.research.service import merged_research_refs, research_ledger_gaps
 from stocks.repository import (
     SearchFilters,
@@ -1646,6 +1649,184 @@ def report_detail(report_id: UUID) -> dict:
                 )
             ],
         }
+
+
+@app.get("/api/reports/{report_id}/comparison")
+def report_comparison(
+    report_id: UUID,
+    other_report_id: UUID = Query(...),
+) -> dict:
+    """Deterministic comparison of two saved reports, earlier side first.
+
+    Both sides are read from their own stored Analysis, Evidence Package and
+    cited Document versions; the endpoint never re-runs research and never
+    rewrites the older report.
+    """
+
+    if report_id == other_report_id:
+        raise HTTPException(
+            status_code=400, detail="A report cannot be compared with itself"
+        )
+    config = settings()
+    with session_factory()() as session:
+        first = _report_side(session, config, report_id)
+        second = _report_side(session, config, other_report_id)
+    for side in (first, second):
+        # A report always belongs to a successful Run; the guard keeps a
+        # failed or unfinished Run from ever standing in as a successful history.
+        if side["run_status"] != "succeeded":
+            raise HTTPException(
+                status_code=409,
+                detail="Report comparison requires successful Runs",
+            )
+    ordered = sorted(
+        (first, second),
+        key=lambda side: (
+            side["report"]["created_at"],
+            side["report"]["report_id"],
+        ),
+    )
+    earlier, later = ordered
+    # ``swapped`` is True when the report named in the path is not the earlier
+    # side, so a caller can tell that the response order differs from its own.
+    earlier = {
+        **earlier,
+        "ordering": {
+            "requested_report_id": str(report_id),
+            "swapped": earlier["report"]["report_id"] != str(report_id),
+        },
+    }
+    return compare_report_sides(earlier, later)
+
+
+def _report_side(session: Session, config: Settings, report_id: UUID) -> dict:
+    """One report's stored snapshot, readable without touching current data."""
+
+    report, analysis, package = _report_chain(session, report_id)
+    run = session.get(TaskRun, report.run_id)
+    ledger = _research_ledger(analysis, run)
+    refs = _report_research_refs(analysis, package, run)
+    entries, _states = _resolve_evidence(session, config, refs)
+    return {
+        "report": {
+            "report_id": str(report.id),
+            "run_id": str(report.run_id),
+            "analysis_id": str(report.analysis_id),
+            "task_id": report.task_id,
+            "title": report.title,
+            "created_at": report.created_at,
+        },
+        "run_status": run.status if run is not None else None,
+        "analysis": {
+            "summary": analysis.summary,
+            "findings": _safe_external_payload(analysis.findings),
+            "open_questions": deepcopy(analysis.open_questions),
+            "evidence_refs": _safe_external_payload(analysis.evidence_refs),
+            "created_at": analysis.created_at,
+        },
+        "package": {
+            "evidence_package_id": str(package.id),
+            "as_of": package.as_of,
+            "scope": _safe_external_payload(package.scope),
+            "selection_policy_version": package.selection_policy_version,
+            "coverage": _safe_external_payload(package.coverage),
+            "selected_count": package.selected_count,
+            "candidates_discovered": package.candidates_discovered,
+            "candidates_screened": package.candidates_screened,
+            "unexamined_count": package.unexamined_count,
+            "retrieval_truncated": package.retrieval_truncated,
+        },
+        "documents": _report_document_refs(entries, refs),
+        "facts": _report_fact_snapshots(session, package, refs),
+        "research_input_count": sum(
+            1
+            for item in ledger
+            if isinstance(item, dict) and item.get("kind") == "input"
+        ),
+    }
+
+
+def _report_document_refs(entries: list[dict], refs: list[dict]) -> list[dict]:
+    """One entry per cited Document version, with every citation it carries."""
+
+    documents: dict[str, dict] = {}
+    order: list[str] = []
+    for index, entry in enumerate(entries):
+        reference = refs[index] if index < len(refs) else {}
+        payload = entry.get("document") if isinstance(entry.get("document"), dict) else {}
+        key = str(entry.get("document_id") or payload.get("id") or "")
+        if not key:
+            continue
+        item = documents.get(key)
+        if item is None:
+            item = {
+                "document_id": key,
+                "version": payload.get("version"),
+                "content_hash": payload.get("content_hash"),
+                "source_id": payload.get("source_id"),
+                "dedupe_key": payload.get("dedupe_key"),
+                "title": payload.get("title"),
+                "original_url": payload.get("original_url"),
+                "published_at": payload.get("published_at"),
+                "collected_at": payload.get("collected_at"),
+                "origin": entry.get("origin"),
+                "origin_id": entry.get("origin_id"),
+                "version_matches": entry.get("version_matches"),
+                "role": entry.get("role"),
+                "chunk_ids": [],
+                "fact_ids": [],
+            }
+            documents[key] = item
+            order.append(key)
+        chunk_id = entry.get("chunk_id")
+        if chunk_id and chunk_id not in item["chunk_ids"]:
+            item["chunk_ids"].append(chunk_id)
+        for fact_id in reference.get("fact_ids") or []:
+            if fact_id not in item["fact_ids"]:
+                item["fact_ids"].append(fact_id)
+    return [documents[key] for key in order]
+
+
+def _report_fact_snapshots(
+    session: Session, package: EvidencePackage, refs: list[dict]
+) -> list[dict]:
+    """Every Fact the report actually used, read from its immutable rows."""
+
+    fact_ids: list[UUID] = []
+    for reference in refs:
+        for value in reference.get("fact_ids") or []:
+            fact_id = _parse_id(value)
+            if fact_id is not None and fact_id not in fact_ids:
+                fact_ids.append(fact_id)
+    groups = package.evidence_groups if isinstance(package.evidence_groups, list) else []
+    for group in groups:
+        if not isinstance(group, dict):
+            continue
+        # A Fact-only group has no readable Chunk, so its Facts would otherwise
+        # never appear in the comparison.
+        for reference in group.get("fact_refs") or []:
+            if not isinstance(reference, dict):
+                continue
+            fact_id = _parse_id(reference.get("fact_id"))
+            if fact_id is not None and fact_id not in fact_ids:
+                fact_ids.append(fact_id)
+    if not fact_ids:
+        return []
+    rows = session.scalars(select(Fact).where(Fact.id.in_(fact_ids))).all()
+    snapshots: list[dict] = []
+    for fact in sorted(rows, key=lambda row: str(row.id)):
+        projected = fact_selection_ref(fact)
+        attributes = projected.get("attributes")
+        currency = (
+            attributes.get("currency") if isinstance(attributes, dict) else None
+        )
+        snapshots.append(
+            {
+                **projected,
+                "currency": currency if isinstance(currency, str) else None,
+            }
+        )
+    return snapshots
 
 
 @app.get("/api/reports/{report_id}/evidence/{chunk_id}")
