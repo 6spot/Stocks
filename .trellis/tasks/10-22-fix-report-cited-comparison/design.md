@@ -14,6 +14,12 @@ backend/src/stocks/api.py 的 _report_side() 用 _report_research_refs() 得到�
 
 缺少冻结信息时返回现有缺口/未知语义，不用实时全量 Fact 静默替代。无历史兼容数据要求，不新增旧报告回填流程。
 
+## 实施落点（2026-10-22）
+
+`_report_side()` 以 `_cited_research_refs()` 合并 Analysis 顶层与 Finding 引用并去重，再与本 Run 冻结输入相交；不在输入内的保存引用返回 409。Document 投影只包含实际引用，Fact 由 `_cited_fact_snapshots()` 从 `merged_research_fact_refs()` 读取被引用 Chunk 携带的冻结投影，缺失时标 `unavailable` 而不回查当前行。旧的全组遍历 + 实时 Fact 查询函数已删除。
+
+测试已编写但未运行：`test_report_comparison.py` 覆盖未引用入选材料、补证引用、冻结值稳定与既有 F-01 重处理场景。远程认证受阻，任务未验收，详见 [验收记录](acceptance.md)。
+
 ## 关键文件与依赖
 
 - backend/src/stocks/api.py：比较侧、保存台账、引用/Fact 投影辅助函数。

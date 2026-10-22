@@ -3,7 +3,7 @@
   "name": "fix-report-cited-comparison",
   "title": "F-04 按报告实际引用比较历史证据",
   "description": "从已保存的报告引用构造比较侧，排除未引用的入选材料与实时事实扩张。",
-  "status": "planning",
+  "status": "in_progress",
   "dev_type": "backend",
   "scope": null,
   "package": null,
@@ -12,7 +12,7 @@
   "assignee": "me",
   "createdAt": "2026-10-22",
   "completedAt": null,
-  "branch": null,
+  "branch": "fix/report-cited-comparison",
   "base_branch": "main",
   "worktree_path": null,
   "commit": null,
@@ -27,13 +27,15 @@
     "backend/tests/test_report_api.py",
     "docs/interface.md"
   ],
-  "notes": "Owner 已授权创建交接任务，本轮不实施；静态发现尚未运行复现。接手时复核 PRD/design/implement 并按实际实施授权启动本叶子。硬依赖 F-01，建议基于 F-03 合入结果集成。",
+  "notes": "2026-10-22 Owner “继续下一个任务”授权下实施 F-04 并进入 in_progress。F-01 已归档，满足硬依赖。比较侧已按保存的 Analysis/Findings 引用构造去重集合，与本 Run 冻结输入相交；未引用入选/补证材料不进入比较。Fact 原值改从 merged_research_fact_refs 冻结投影读取，删除遍历全部组并查实时 Fact 的旧函数；冻结投影缺失时保留身份并标记 unavailable，不读当前行、不填 0。已补未引用材料、补证引用、冻结值稳定回归，更新 docs/interface.md 与 docs/research.md。当前无可用 SSH 认证（免交互返回 Permission denied，exit 255），测试未执行，AC 未勾选；详见 acceptance.md。未改结构。",
   "meta": {
-    "depends_on": [".trellis/tasks/10-22-fix-fact-reprocess-history"],
+    "depends_on": [
+      ".trellis/tasks/10-22-fix-fact-reprocess-history"
+    ],
     "source_review": ".trellis/tasks/10-20-stocks-roadmap/research/implementation-design-review.md",
     "kind": "repair",
     "finding": "F-04",
-    "planning_review": "pending",
-    "implementation_authorized": "false"
+    "planning_review": "completed",
+    "implementation_authorized": "true"
   }
 }

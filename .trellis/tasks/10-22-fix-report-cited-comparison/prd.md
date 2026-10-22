@@ -23,4 +23,4 @@
 
 ## 状态
 
-当前仅规划，尚无运行结果。设计依据为 docs/interface.md 的 V2-04 历史比较及 docs/research.md 的冻结引用契约。
+2026-10-22 已获 Owner 实施授权并进入 `in_progress`。比较集合与实际引用、冻结 Fact 读取已实现，回归场景与归属文档已更新；缺陷基线与修复结果均尚未运行验证，测试服务器 SSH 认证受阻，验收项保持未勾选。详见 [实施记录](implement.md) 与 [验收记录](acceptance.md)。设计依据为 docs/interface.md 的 V2-04 历史比较及 docs/research.md 的冻结引用契约。
