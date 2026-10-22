@@ -786,3 +786,48 @@ V2 任务列表已全部交付归档后，处理跨任务待验收登记中的 P
 ### Next Steps
 
 - 开始 F-02：支持历史解析批次证据的 Run 重试。
+
+
+## Session 25: 五项实现偏差修复交付
+<!-- trellis-session: v=2 fp=55cea6dfb9144dcd -->
+
+**Date**: 2026-10-22
+**Task**: 五项实现偏差修复交付
+**Branch**: `fix/processing-default-filter`
+
+### Summary
+
+依次实施并交付 F-01 至 F-05：Fact 历史身份保留、历史解析批次重试、补证 Fact 统一视图、按实际引用比较报告、积压面板默认筛选。全部提交、归档并推送到各自 fix 分支；运行验证因测试服务器认证不可用而未执行。
+
+### Main Changes
+
+- F-01：移除 Fact 显式重处理的破坏性清空，保留 ID/值/来源，补历史报告与失败回滚回归。
+- F-02：冻结引用校验改为按已成功完成的不可变批次读取，新取材仍只选当前批次。
+- F-03：合并初始与补证冻结 Fact 视图，Agent 输入、报告与 API 共用最终同指标比较。
+- F-04：报告比较只取 Analysis/Findings 实际引用，Fact 值来自冻结投影，未引用材料不误计。
+- F-05：积压面板初始改为 status=failed、stage 为空，补查询序列化断言。
+- 五个分支顺序叠加，父任务仍 planning，I-1 至 I-4 未确认，未合并 main。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `8e6e459` | fix(facts): preserve historical facts across explicit reprocessing |
+| `8341e01` | fix(research): read frozen retry evidence from its saved parse batch |
+| `7ab3b14` | fix(research): include adopted supplement facts in research and conflicts |
+| `3de76df` | fix(reports): compare only the evidence a saved report cited |
+| `d65152c` | fix(web): open the processing panel on failed stages, not a failed stage |
+| `f6fdf21` | docs(trellis): record the five delivered repairs and their unexecuted verification |
+
+### Testing
+
+- [OK] 未执行：SSH 免交互认证返回 Permission denied (publickey,password)，exit 255；未回退本机测试、类型检查或构建。
+- [OK] 待远程补跑各叶子 acceptance.md 列出的最小测试与 API/前端检查。
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- 取得测试服务器认证后补跑五个叶子的最小验证，并在集成分支验证 I-2/I-3 联合场景。
