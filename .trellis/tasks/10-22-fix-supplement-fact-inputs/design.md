@@ -16,6 +16,12 @@ research/supplement.py 已把补证 Fact 投影写入 research_inputs.fact_refs�
 
 优先从既有冻结的 Run/Analysis 台账推导，不新建平行存储。若实际持久化/接口确需增加字段，明确其归属与生成时机，修改当前模型/初始化和对应文档，不做历史迁移或旧值回填。
 
+## 实施落点（2026-10-22）
+
+`compare_fact_values()` 由原 `metric_comparisons()` 提取，保持同一冲突判定；`merged_research_fact_refs()` 合并初始组与追加台账的冻结 `fact_refs` 并按 `fact_id` 去重，`final_metric_comparisons()` 在此视图上计算。`_agent_evidence()` 将每个 Document 的完整 Facts 挂到其首个可读 Chunk，并把比较写入 Agent 的 coverage；Analysis 保存同一比较，Report 用它渲染，报告 API 以 `final_metric_comparisons` 暴露。初始 `EvidencePackage.metric_comparisons` 保持原样。
+
+测试已编写但未运行：`test_execution.py` 覆盖同 Document 去重+新增 Fact、模型请求完整字段、冲突并列、Analysis 冻结；`test_report_api.py` 覆盖 API 的初始与最终比较并存。远程认证受阻，任务未验收，详见 [验收记录](acceptance.md)。
+
 ## 关键文件
 
 - backend/src/stocks/research/supplement.py、service.py、evidence.py；现有 group_origins()、metric_comparisons()、mark_conflicting_facts() 位于 evidence.py，开工时复核其最新实现。

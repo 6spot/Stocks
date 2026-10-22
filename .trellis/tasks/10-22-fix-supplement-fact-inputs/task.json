@@ -3,7 +3,7 @@
   "name": "fix-supplement-fact-inputs",
   "title": "F-03 将补证 Fact 纳入研究与冲突视图",
   "description": "将追加台账中的 Fact 完整传给 Agent，并用于最终指标和来源冲突展示。",
-  "status": "planning",
+  "status": "in_progress",
   "dev_type": "backend",
   "scope": null,
   "package": null,
@@ -12,7 +12,7 @@
   "assignee": "me",
   "createdAt": "2026-10-22",
   "completedAt": null,
-  "branch": null,
+  "branch": "fix/supplement-fact-inputs",
   "base_branch": "main",
   "worktree_path": null,
   "commit": null,
@@ -32,13 +32,13 @@
     "docs/data.md",
     "docs/interface.md"
   ],
-  "notes": "Owner 已授权创建交接任务，本轮不实施；静态发现尚未运行复现。接手时复核 PRD/design/implement 并按实际实施授权启动本叶子。与另一研究修复任务共享后端文件，隔离开发并协调合并。",
+  "notes": "2026-10-22 Owner “继续下一个任务”授权下实施 F-03 并进入 in_progress。已把初始 evidence_groups 与追加 research_inputs 的冻结 Fact 合并为统一视图，Agent 输入、最终同指标比较、Report 与报告 API 共用该视图；初始 EvidencePackage.metric_comparisons 未被改写，报告 API 新增 final_metric_comparisons，前端优先展示它。已补同 Document 去重+新增 Fact、冲突并列、Analysis 冻结与 API 读取回归，同步 docs/research.md 与 docs/interface.md。当前无可用 SSH 认证（免交互返回 Permission denied，exit 255），测试、类型与前端检查均未执行，AC 未勾选；详见 acceptance.md。未修改数据库结构；F-04 应复用 merged_research_fact_refs/final_metric_comparisons。",
   "meta": {
     "depends_on": [],
     "source_review": ".trellis/tasks/10-20-stocks-roadmap/research/implementation-design-review.md",
     "kind": "repair",
     "finding": "F-03",
-    "planning_review": "pending",
-    "implementation_authorized": "false"
+    "planning_review": "completed",
+    "implementation_authorized": "true"
   }
 }
