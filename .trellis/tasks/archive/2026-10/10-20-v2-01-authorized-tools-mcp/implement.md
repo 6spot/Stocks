@@ -21,7 +21,7 @@
 
 - 远程 MCP 固定 `2025-11-25`（initialize 握手 + `Mcp-Session-Id`）；不实现 stdio，不支持无状态新时代路由头。
 - 单次 Run 的补证轮次上限 2，每次计划最多 4 个请求；单 Tool 预算由 `ToolBudgets` 决定，token 预算按 `estimate_tokens()` 的 4 字符≈1 token 估算。
-- 补证输入落在 Evidence Package 的追加 JSONB 中，不新建独立表：Run 与包一一对应，重试按包深拷贝即可保留初始包与追加输入。
+- 补证输入落在 TaskRun.research_inputs，完成时冻结到 Analysis.research_inputs；Evidence Package 保持初始选择不变。重试分别深拷贝初始包与追加台账，并重映射边界包 ID。
 - 执行注入点统一为 `ExecutionContext.tool_client_factory` / `stage_registry` / `snapshot_store`，测试与部署共用同一条执行路径。
 
 ## 最小必要验证
@@ -42,10 +42,10 @@
 
 ## 收尾
 
-- [ ] 逐项记录 PRD AC 的实际结果、未完成和外部限制。
-- [ ] 契约变更只更新唯一归属文档，运行能力更新 quickstart。
-- [ ] 检查后续依赖与阶段验收；保留原始证据、输入快照及最后成功结果。
-- [ ] 完成实现/质量检查后按 Trellis 工作流交付，不在本轮提前归档或标完成。
+- [x] 逐项记录 PRD AC 的实际结果、未完成和外部限制（见 PRD AC、上方远程验证记录与 task.json notes）。
+- [x] 契约变更只更新唯一归属文档，运行能力更新 quickstart（归档 notes 已记录文档和规范同步）。
+- [x] 检查后续依赖与阶段验收；保留原始证据、输入快照及最后成功结果（真实 MCP 接通仍待最终验收，未计作通过）。
+- [x] 已完成实现/质量检查并按 Trellis 工作流交付归档；本项据既有归档记录补齐，不代表真实供应商验收通过。
 
 ## 上下文读取注意
 

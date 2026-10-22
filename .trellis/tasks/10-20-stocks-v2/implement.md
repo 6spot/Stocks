@@ -1,6 +1,6 @@
 # V2 阶段执行与验收
 
-- [ ] 前置阶段：[V1-09](../10-20-v1-09-arm-deployment-acceptance/prd.md)
+- [ ] 前置阶段：[V1-09](../archive/2026-10/10-20-v1-09-arm-deployment-acceptance/prd.md)
 - [ ] 按 prd.md 任务表复核依赖，逐个细化并启动实际交付子任务；不激活本父任务充当实现目标。
 - [ ] 每个子任务完成其最小相关验证后记录 AC 结果，不默认重跑全量测试。
 - [ ] 最后由 V2-05 汇总本阶段真实集成场景，核对 docs/validation.md 本阶段全部条件。

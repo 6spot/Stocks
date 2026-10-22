@@ -31,8 +31,8 @@
     "milestone": "V1",
     "kind": "delivery",
     "depends_on": [
-      ".trellis/tasks/10-20-v1-02-processing-recovery",
-      ".trellis/tasks/10-20-v1-03-classification"
+      ".trellis/tasks/archive/2026-10/10-20-v1-02-processing-recovery",
+      ".trellis/tasks/archive/2026-10/10-20-v1-03-classification"
     ],
     "planning_review": "completed",
     "planning_depth": "delivery-plan",

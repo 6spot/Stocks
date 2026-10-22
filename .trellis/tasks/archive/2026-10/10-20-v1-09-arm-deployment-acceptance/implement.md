@@ -3,7 +3,7 @@
 ## 开工条件
 
 - [x] 复核 PRD 与最新领域契约；前置任务：
-  [V1-08](../archive/2026-10/10-20-v1-08-web-console/prd.md)
+  [V1-08](../10-20-v1-08-web-console/prd.md)
 - [x] 重新检查现有 Compose、Dockerfile、认证、健康检查、前端构建及测试环境。
 - [x] Owner 已明确授权按 V1-07、V1-08、V1-09 顺序执行；外部验收允许 pending。
 - [x] implement.jsonl / check.jsonl 已提供真实规范与基线，实施时按实际改动复核。

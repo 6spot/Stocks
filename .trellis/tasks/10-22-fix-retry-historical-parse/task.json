@@ -1,0 +1,41 @@
+{
+  "id": "fix-retry-historical-parse",
+  "name": "fix-retry-historical-parse",
+  "title": "F-02 支持历史解析批次证据的 Run 重试",
+  "description": "允许重试读取已保存的历史解析批次，同时保留引用完整性与权限检查。",
+  "status": "planning",
+  "dev_type": "backend",
+  "scope": null,
+  "package": null,
+  "priority": "P1",
+  "creator": "me",
+  "assignee": "me",
+  "createdAt": "2026-10-22",
+  "completedAt": null,
+  "branch": null,
+  "base_branch": "main",
+  "worktree_path": null,
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [],
+  "parent": "10-22-implementation-design-fixes",
+  "relatedFiles": [
+    "backend/src/stocks/research/service.py",
+    "backend/src/stocks/execution/service.py",
+    "backend/tests/test_execution.py",
+    "backend/tests/test_research.py",
+    "backend/tests/test_research_supplement.py",
+    "docs/research.md",
+    "docs/execution.md"
+  ],
+  "notes": "Owner 已授权创建交接任务，本轮不实施；静态发现尚未运行复现。接手时复核 PRD/design/implement 并按实际实施授权启动本叶子。与另一研究修复任务共享后端文件，隔离开发并协调合并。",
+  "meta": {
+    "depends_on": [],
+    "source_review": ".trellis/tasks/10-20-stocks-roadmap/research/implementation-design-review.md",
+    "kind": "repair",
+    "finding": "F-02",
+    "planning_review": "pending",
+    "implementation_authorized": "false"
+  }
+}

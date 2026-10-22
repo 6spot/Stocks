@@ -2,7 +2,7 @@
 
 ## 开工条件
 
-- [x] 复核 PRD 与最新领域契约；前置任务：[V1-06](../archive/2026-10/10-20-v1-06-incremental-evidence/prd.md)
+- [x] 复核 PRD 与最新领域契约；前置任务：[V1-06](../10-20-v1-06-incremental-evidence/prd.md)
 - [x] 重新检查现有代码及测试，落实建议路径、具体 Schema 和必要技术决策。
 - [x] Owner 已明确授权按 V1-07、V1-08、V1-09 顺序执行；task.py start 已执行。
 - [x] implement.jsonl / check.jsonl 已提供真实规范与基线，并按实际改动复核。

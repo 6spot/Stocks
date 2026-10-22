@@ -35,7 +35,7 @@
 - [x] Check 审查完整任务 diff（含新增 scheduler/worker/测试与 `ac3_drill.py`）、模型与初始化一致性、
   配置/示例、CLI/文档以及所有权/恢复边界；发现与修复记录见 [review.md](review.md)，
   acceptance.md 已重写为唯一结论（远程 142 项 pytest + 18 项真实进程检查；旧“全未运行”叙述已作废）。
-- [x] 工程知识已写入 [.trellis/spec/backend/worker-guidelines.md](../../spec/backend/worker-guidelines.md)
+- [x] 工程知识已写入 [.trellis/spec/backend/worker-guidelines.md](../../../../spec/backend/worker-guidelines.md)
   （Session/领取/调度轮/两层所有权/空闲等待与退避/自有线程池/重试复制）并链接进 index；
   `testing-guidelines.md` 补充密码认证与会话凭据、`BatchMode` 失败不等于服务器不可达、环境缺失须及时
   反馈，并在错误矩阵拆分认证失败与网络不可达（未写入任何凭据）。

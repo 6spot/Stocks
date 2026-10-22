@@ -10,5 +10,5 @@
 {"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "后端实现/数据库/错误与必要验证约定"}
 {"file": ".trellis/tasks/10-20-stocks-roadmap/research/baseline.md", "reason": "本轮代码现状与分期依据，后续开工需复核"}
 {"file": ".trellis/spec/backend/testing-guidelines.md", "reason": "唯一远程测试服务器、隔离目录、持久环境、清理与凭据脱敏"}
-{"file": ".trellis/tasks/10-20-v1-01-worker-scheduling/research/kickoff-review.md", "reason": "最新代码基线及已批准范围；边界授权以 PRD 和本轮用户指令为准"}
+{"file": ".trellis/tasks/archive/2026-10/10-20-v1-01-worker-scheduling/research/kickoff-review.md", "reason": "最新代码基线及已批准范围；边界授权以 PRD 和本轮用户指令为准"}
 {"file": ".trellis/tasks/10-20-stocks-roadmap/pending-acceptance.md", "reason": "PA-1 真实闭环延后，不阻止本项实施也不视为通过"}

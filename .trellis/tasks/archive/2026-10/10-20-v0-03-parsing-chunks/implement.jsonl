@@ -9,4 +9,4 @@
 {"file": ".trellis/spec/backend/logging-guidelines.md", "reason": "CLI 与运行异常不得泄露正文或敏感信息"}
 {"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "最小必要测试、真实来源和结构检查"}
 {"file": ".trellis/spec/backend/testing-guidelines.md", "reason": "远程 Python 3.12、隔离 pgvector 与清理规则"}
-{"file": ".trellis/tasks/10-20-v0-03-parsing-chunks/research/implementation-baseline.md", "reason": "当前代码现状、Schema 决策和验证边界"}
+{"file": ".trellis/tasks/archive/2026-10/10-20-v0-03-parsing-chunks/research/implementation-baseline.md", "reason": "当前代码现状、Schema 决策和验证边界"}

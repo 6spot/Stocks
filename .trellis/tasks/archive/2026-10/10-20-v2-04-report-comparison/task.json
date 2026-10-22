@@ -31,7 +31,7 @@
     "milestone": "V2",
     "kind": "delivery",
     "depends_on": [
-      ".trellis/tasks/10-20-v2-03-source-conflicts"
+      ".trellis/tasks/archive/2026-10/10-20-v2-03-source-conflicts"
     ],
     "planning_review": "approved",
     "planning_depth": "delivery-plan",

@@ -113,7 +113,7 @@
 - `api.py` 的 Run 只读输出新增 `triggered_by`/`retry_of_run_id`。
 - 文档同步：`docs/execution.md`（调度持久状态与漏触发策略、V1 Task 子集、两类检索边界）、`docs/quickstart.md`
   （Worker/CLI 命令）、`docs/validation.md`（V1-01 已实现与待补边界）、`docs/data.md`（采集 Run 不另建表）。
-- 工程规范新增 [`.trellis/spec/backend/worker-guidelines.md`](../../spec/backend/worker-guidelines.md)
+- 工程规范新增 [`.trellis/spec/backend/worker-guidelines.md`](../../../../spec/backend/worker-guidelines.md)
   （Session/所有权/空闲等待/重试复制）并链接进 index；`testing-guidelines.md` 补充密码认证、
   `BatchMode` 失败不等于服务器不可达、以及环境缺失须及时反馈的规则（不含任何凭据）。
 

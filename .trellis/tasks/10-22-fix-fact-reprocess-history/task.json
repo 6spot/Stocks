@@ -1,0 +1,40 @@
+{
+  "id": "fix-fact-reprocess-history",
+  "name": "fix-fact-reprocess-history",
+  "title": "F-01 保留 Fact 重处理前的历史证据身份",
+  "description": "显式重处理同一 Document 时保留 Fact 稳定身份及历史报告引用。",
+  "status": "in_progress",
+  "dev_type": "backend",
+  "scope": null,
+  "package": null,
+  "priority": "P1",
+  "creator": "me",
+  "assignee": "me",
+  "createdAt": "2026-10-22",
+  "completedAt": null,
+  "branch": "fix/fact-reprocess-history",
+  "base_branch": "main",
+  "worktree_path": null,
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [],
+  "parent": "10-22-implementation-design-fixes",
+  "relatedFiles": [
+    "backend/src/stocks/facts.py",
+    "backend/src/stocks/extraction/service.py",
+    "backend/tests/test_facts.py",
+    "backend/tests/test_report_comparison.py",
+    "docs/data.md",
+    ".trellis/spec/backend/database-guidelines.md"
+  ],
+  "notes": "2026-10-22 Owner 指令“开始处理第一个”已明确授权实施 F-01，规划复核完成。已移除文本抽取/Source Mapper 的破坏性清空及 clear_facts，保留原身份复用、事务与所有权检查；已补历史报告、遗漏/变化候选、追加与失败回滚回归，更新归属契约。f01-start、f01-implement 完成。当前会话无可用 SSH 认证（免交互返回 Permission denied (publickey,password)，exit 255），测试与运行检查均未执行，未回退本机，AC 保持未勾选。Owner 随后指示提交、归档并推送，并继续下一任务；因此本任务以“代码已交付、运行验证未完成”状态归档，不代表验收通过，后续必须在指定测试服务器补跑 tests/test_facts.py 与历史报告场景。结果见 acceptance.md 和 implement.md。F-04 依赖与其他叶子实施范围不变。",
+  "meta": {
+    "depends_on": [],
+    "source_review": ".trellis/tasks/10-20-stocks-roadmap/research/implementation-design-review.md",
+    "kind": "repair",
+    "finding": "F-01",
+    "planning_review": "completed",
+    "implementation_authorized": "true"
+  }
+}

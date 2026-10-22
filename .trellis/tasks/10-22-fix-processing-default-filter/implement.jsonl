@@ -1,0 +1,13 @@
+{"file":".trellis/spec/guides/agent-execution-guide.md","reason":"所有 Agent 的执行预算、阻塞交回及验证边界"}
+{"file":".trellis/spec/backend/testing-guidelines.md","reason":"前后端验证均只允许在指定服务器任务隔离目录执行"}
+{"file":".trellis/tasks/10-20-stocks-roadmap/research/implementation-design-review.md","reason":"五项静态审查证据、触发条件及未验证限制"}
+{"file":".trellis/tasks/10-22-implementation-design-fixes/prd.md","reason":"任务映射、范围及父级集成验收"}
+{"file":".trellis/tasks/10-22-implementation-design-fixes/design.md","reason":"冻结输入不变量、依赖与共享文件边界"}
+{"file":".trellis/tasks/10-22-fix-processing-default-filter/prd.md","reason":"本叶子的目标、范围与验收条件"}
+{"file":".trellis/tasks/10-22-fix-processing-default-filter/design.md","reason":"本叶子的建议实现与数据流边界"}
+{"file":".trellis/tasks/10-22-fix-processing-default-filter/implement.md","reason":"执行顺序、最小验证及交付要求"}
+{"file":"docs/interface.md","reason":"本任务唯一归属领域契约，开工时以全文最新内容为准"}
+{"file":".trellis/spec/frontend/index.md","reason":"实现与质量检查的项目规范"}
+{"file":".trellis/spec/frontend/state-management.md","reason":"实现与质量检查的项目规范"}
+{"file":".trellis/spec/frontend/type-safety.md","reason":"实现与质量检查的项目规范"}
+{"file":".trellis/spec/frontend/quality-guidelines.md","reason":"实现与质量检查的项目规范"}

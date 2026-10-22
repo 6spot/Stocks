@@ -6,11 +6,11 @@
 
 ## 背景与依据
 
-阶段：V1。归属契约：`docs/architecture.md`, `docs/execution.md`, `docs/interface.md`, `docs/validation.md`, `docs/quickstart.md`。代码现状见[基线](../10-20-stocks-roadmap/research/baseline.md)，现有模型/helper 不等于业务闭环。
+阶段：V1。归属契约：`docs/architecture.md`, `docs/execution.md`, `docs/interface.md`, `docs/validation.md`, `docs/quickstart.md`。代码现状见[基线](../../../10-20-stocks-roadmap/research/baseline.md)，现有模型/helper 不等于业务闭环。
 
 ## 前置依赖
 
-[V1-08](../archive/2026-10/10-20-v1-08-web-console/prd.md)
+[V1-08](../10-20-v1-08-web-console/prd.md)
 
 依赖是实施顺序，不由 Trellis 父子关系自动执行。跨阶段依赖先通过前一阶段验收。
 

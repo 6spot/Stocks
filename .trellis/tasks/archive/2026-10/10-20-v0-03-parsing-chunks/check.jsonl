@@ -7,4 +7,4 @@
 {"file": ".trellis/spec/backend/error-handling.md", "reason": "核对稳定错误、脱敏和失败状态"}
 {"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "选择并核对最小必要真实/固定响应验证"}
 {"file": ".trellis/spec/backend/testing-guidelines.md", "reason": "核对远程结构测试、凭据和清理"}
-{"file": ".trellis/tasks/10-20-v0-03-parsing-chunks/research/implementation-baseline.md", "reason": "核对实现决策与实际代码是否一致"}
+{"file": ".trellis/tasks/archive/2026-10/10-20-v0-03-parsing-chunks/research/implementation-baseline.md", "reason": "核对实现决策与实际代码是否一致"}

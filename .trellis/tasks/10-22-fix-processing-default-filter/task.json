@@ -1,0 +1,40 @@
+{
+  "id": "fix-processing-default-filter",
+  "name": "fix-processing-default-filter",
+  "title": "F-05 修正积压面板初始筛选参数",
+  "description": "修正首次请求误将 failed 当作 stage 的问题，验证真实 API 参数契约。",
+  "status": "planning",
+  "dev_type": "frontend",
+  "scope": null,
+  "package": null,
+  "priority": "P2",
+  "creator": "me",
+  "assignee": "me",
+  "createdAt": "2026-10-22",
+  "completedAt": null,
+  "branch": null,
+  "base_branch": "main",
+  "worktree_path": null,
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [],
+  "parent": "10-22-implementation-design-fixes",
+  "relatedFiles": [
+    "frontend/src/features/runs/processing-panel.tsx",
+    "frontend/src/features/runs/processing-panel.test.tsx",
+    "frontend/src/api/dashboard.ts",
+    "frontend/src/api/client.ts",
+    "backend/src/stocks/api.py",
+    "docs/interface.md"
+  ],
+  "notes": "Owner 已授权创建交接任务，本轮不实施；静态发现尚未运行复现。接手时复核 PRD/design/implement 并按实际实施授权启动本叶子。可独立交付。",
+  "meta": {
+    "depends_on": [],
+    "source_review": ".trellis/tasks/10-20-stocks-roadmap/research/implementation-design-review.md",
+    "kind": "repair",
+    "finding": "F-05",
+    "planning_review": "pending",
+    "implementation_authorized": "false"
+  }
+}

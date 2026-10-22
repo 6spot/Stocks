@@ -35,7 +35,7 @@
     "milestone": "V2",
     "kind": "milestone",
     "depends_on": [
-      ".trellis/tasks/10-20-v1-09-arm-deployment-acceptance"
+      ".trellis/tasks/archive/2026-10/10-20-v1-09-arm-deployment-acceptance"
     ],
     "planning_review": "pending",
     "planning_depth": "coordination",

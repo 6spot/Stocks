@@ -6,7 +6,7 @@ Owner 能理解研究覆盖、模型使用和异常成本，完成研究深化�
 
 ## 背景与依据
 
-阶段：V2。归属契约：`docs/interface.md`, `docs/research.md`, `docs/execution.md`, `docs/validation.md`。代码现状见[基线](../10-20-stocks-roadmap/research/baseline.md)，现有模型/helper 不等于业务闭环。
+阶段：V2。归属契约：`docs/interface.md`, `docs/research.md`, `docs/execution.md`, `docs/validation.md`。代码现状见[基线](../../../10-20-stocks-roadmap/research/baseline.md)，现有模型/helper 不等于业务闭环。
 
 ## 前置依赖
 

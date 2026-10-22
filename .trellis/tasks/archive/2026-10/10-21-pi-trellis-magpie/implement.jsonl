@@ -1,5 +1,5 @@
 {"file":".trellis/spec/guides/index.md","reason":"工程规范导航与改动前检索约束"}
 {"file":".trellis/spec/guides/code-reuse-thinking-guide.md","reason":"复用现有模型解析与派发机制，避免新增编排和重复解析器"}
 {"file":".trellis/spec/backend/testing-guidelines.md","reason":"所有运行验证限指定测试服务器，不能本机验证网关或模型"}
-{"file":".trellis/tasks/10-21-pi-trellis-magpie/research/environment.md","reason":"实际模型标识、Magpie 现状、官方 API、更新覆盖和未验证边界"}
-{"file":".trellis/tasks/10-21-pi-trellis-magpie/research/progress-feedback.md","reason":"子进程反馈缺口、Pi JSON 事件契约、最小补丁边界及远程回归限制"}
+{"file":".trellis/tasks/archive/2026-10/10-21-pi-trellis-magpie/research/environment.md","reason":"实际模型标识、Magpie 现状、官方 API、更新覆盖和未验证边界"}
+{"file":".trellis/tasks/archive/2026-10/10-21-pi-trellis-magpie/research/progress-feedback.md","reason":"子进程反馈缺口、Pi JSON 事件契约、最小补丁边界及远程回归限制"}

@@ -2,7 +2,7 @@
 
 ## 开工条件
 
-- [x] 复核 PRD 与最新领域契约；前置任务 [V2-01](../archive/2026-10/10-20-v2-01-authorized-tools-mcp/prd.md) 已归档完成。
+- [x] 复核 PRD 与最新领域契约；前置任务 [V2-01](../10-20-v2-01-authorized-tools-mcp/prd.md) 已归档完成。
 - [x] 重新检查现有代码及测试：parse 仅支持 HTML/XHTML/纯文本，`http_api` 已能存原件并映射 JSON Fact，文章获取只允许 HTML/纯文本。
 - [x] 用户授权按 V2 任务列表逐个实施；来源名单确认与真实来源验收按会话约定延后记录，不阻塞实现。
 - [x] implement.jsonl / check.jsonl 已提供真实规范与基线。

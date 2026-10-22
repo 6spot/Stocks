@@ -6,7 +6,7 @@ Owner 可比较前后报告及其真实依据，理解结论、修订和不确�
 
 ## 背景与依据
 
-阶段：V2。归属契约：`docs/research.md`, `docs/interface.md`, `docs/validation.md`。代码现状见[基线](../10-20-stocks-roadmap/research/baseline.md)，现有模型/helper 不等于业务闭环。
+阶段：V2。归属契约：`docs/research.md`, `docs/interface.md`, `docs/validation.md`。代码现状见[基线](../../../10-20-stocks-roadmap/research/baseline.md)，现有模型/helper 不等于业务闭环。
 
 ## 前置依赖
 

@@ -2,7 +2,7 @@
 
 ## 开工条件
 
-- [x] 复核 PRD 与最新领域契约；前置任务 [V2-03](../archive/2026-10/10-20-v2-03-source-conflicts/prd.md) 已归档完成（提交 `8a8bcc3`）。
+- [x] 复核 PRD 与最新领域契约；前置任务 [V2-03](../10-20-v2-03-source-conflicts/prd.md) 已归档完成（提交 `8a8bcc3`）。
 - [x] 重新检查现有代码及测试：报告链路为 Report → Analysis → Evidence Package → `_report_research_refs`/`_resolve_evidence` 的引用视图，`_research_ledger` 提供最终输入台账；`origin_groups`/`metric_comparisons` 已在 V2-03 落库，因此比较只需读快照，无需新表或新列。
 - [x] 用户授权按 V2 任务列表逐个实施；真实双报告人工对照与真实修订样例按会话约定延后记录，不阻塞实现。
 - [x] implement.jsonl / check.jsonl 已提供真实规范与基线，按实际改动裁剪复核。

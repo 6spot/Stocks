@@ -10,21 +10,21 @@
 
 ## 前置依赖
 
-[V0-07](../10-20-v0-07-evidence-api-acceptance/prd.md)
+[V0-07](../archive/2026-10/10-20-v0-07-evidence-api-acceptance/prd.md)
 
 ## 子任务与交付范围
 
 | 任务 | 交付 | 依赖 |
 | --- | --- | --- |
-| [V1-01](../10-20-v1-01-worker-scheduling/prd.md) | 独立 Worker 定时调度与 Run 恢复 | V0-07 |
-| [V1-02](../10-20-v1-02-processing-recovery/prd.md) | 统一后台处理状态与积压重试 | V1-01 |
-| [V1-03](../10-20-v1-03-classification/prd.md) | Decision Model 轻量分类与受控标签 | V1-02 |
-| [V1-04](../10-20-v1-04-facts-api-mapping/prd.md) | 按需 Fact 与结构化 API 字段映射 | V1-02, V1-03 |
-| [V1-05](../10-20-v1-05-committed-change-cursors/prd.md) | 提交可见变化水位与可继续扫描 | V1-04 |
-| [V1-06](../10-20-v1-06-incremental-evidence/prd.md) | Document Fact 统一增量取材与覆盖 | V1-05 |
-| [V1-07](../10-20-v1-07-owner-console-api/prd.md) | Owner 访问控制与控制台后端 API | V1-06 |
-| [V1-08](../10-20-v1-08-web-console/prd.md) | 受保护的响应式研究控制台 | V1-07 |
-| [V1-09](../10-20-v1-09-arm-deployment-acceptance/prd.md) | ARM Compose 部署与 V1 日常运行验收 | V1-08 |
+| [V1-01](../archive/2026-10/10-20-v1-01-worker-scheduling/prd.md) | 独立 Worker 定时调度与 Run 恢复 | V0-07 |
+| [V1-02](../archive/2026-10/10-20-v1-02-processing-recovery/prd.md) | 统一后台处理状态与积压重试 | V1-01 |
+| [V1-03](../archive/2026-10/10-20-v1-03-classification/prd.md) | Decision Model 轻量分类与受控标签 | V1-02 |
+| [V1-04](../archive/2026-10/10-20-v1-04-facts-api-mapping/prd.md) | 按需 Fact 与结构化 API 字段映射 | V1-02, V1-03 |
+| [V1-05](../archive/2026-10/10-20-v1-05-committed-change-cursors/prd.md) | 提交可见变化水位与可继续扫描 | V1-04 |
+| [V1-06](../archive/2026-10/10-20-v1-06-incremental-evidence/prd.md) | Document Fact 统一增量取材与覆盖 | V1-05 |
+| [V1-07](../archive/2026-10/10-20-v1-07-owner-console-api/prd.md) | Owner 访问控制与控制台后端 API | V1-06 |
+| [V1-08](../archive/2026-10/10-20-v1-08-web-console/prd.md) | 受保护的响应式研究控制台 | V1-07 |
+| [V1-09](../archive/2026-10/10-20-v1-09-arm-deployment-acceptance/prd.md) | ARM Compose 部署与 V1 日常运行验收 | V1-08 |
 
 ## 阶段退出条件
 

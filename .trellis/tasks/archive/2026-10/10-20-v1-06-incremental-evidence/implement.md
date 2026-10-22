@@ -2,7 +2,7 @@
 
 ## 开工条件
 
-- [x] 复核 PRD 与最新领域契约；前置任务：[V1-05](../archive/2026-10/10-20-v1-05-committed-change-cursors/prd.md)
+- [x] 复核 PRD 与最新领域契约；前置任务：[V1-05](../10-20-v1-05-committed-change-cursors/prd.md)
 - [x] 重新检查现有代码及测试，落实建议路径、具体 Schema 和必要技术决策。
 - [x] 用户已指示按任务列表逐个执行，视为对 V1-06 实施范围的确认；task.py start 已执行。
 - [x] implement.jsonl / check.jsonl 已提供真实规范与基线，派发前按实际改动裁剪复核。

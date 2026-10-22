@@ -1,5 +1,5 @@
 {"file":".trellis/spec/guides/index.md","reason":"检查改动范围和工程约束"}
 {"file":".trellis/spec/guides/code-reuse-thinking-guide.md","reason":"检查是否复用原生解析和共同派发入口，没有重复配置协议"}
 {"file":".trellis/spec/backend/testing-guidelines.md","reason":"检查验证来源和未运行项，禁止本机测试或以静态阅读冒充运行成功"}
-{"file":".trellis/tasks/10-21-pi-trellis-magpie/research/environment.md","reason":"核对真实完整 ID、Check 可写权限、缺省继承风险和更新限制"}
-{"file":".trellis/tasks/10-21-pi-trellis-magpie/research/progress-feedback.md","reason":"核对 Pi 1.3 结束语义、同步等待限制、公开进度 / 阻塞返回、测试范围与未验证状态"}
+{"file":".trellis/tasks/archive/2026-10/10-21-pi-trellis-magpie/research/environment.md","reason":"核对真实完整 ID、Check 可写权限、缺省继承风险和更新限制"}
+{"file":".trellis/tasks/archive/2026-10/10-21-pi-trellis-magpie/research/progress-feedback.md","reason":"核对 Pi 1.3 结束语义、同步等待限制、公开进度 / 阻塞返回、测试范围与未验证状态"}

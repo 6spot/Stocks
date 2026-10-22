@@ -3,7 +3,7 @@
 ## 开工条件
 
 - [x] 复核 PRD 与最新领域契约；前置任务：
-  [V1-07](../../archive/2026-10/10-20-v1-07-owner-console-api/prd.md)
+  [V1-07](../10-20-v1-07-owner-console-api/prd.md)
 - [x] 重新检查 V1-07 API、测试和响应 Schema，落实具体页面、依赖与交互。
 - [x] Owner 已明确授权按 V1-07、V1-08、V1-09 顺序继续；`task.py start` 已执行。
 - [x] implement.jsonl / check.jsonl 已提供真实规范与基线，实施时按实际改动复核。

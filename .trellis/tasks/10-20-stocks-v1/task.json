@@ -39,7 +39,7 @@
     "milestone": "V1",
     "kind": "milestone",
     "depends_on": [
-      ".trellis/tasks/10-20-v0-07-evidence-api-acceptance"
+      ".trellis/tasks/archive/2026-10/10-20-v0-07-evidence-api-acceptance"
     ],
     "planning_review": "pending",
     "planning_depth": "coordination",

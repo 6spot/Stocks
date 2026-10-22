@@ -158,7 +158,7 @@ remote-verification.md 第 9 节）。
 
 已写文件：
 
-- 新增 [`.trellis/spec/backend/worker-guidelines.md`](../../spec/backend/worker-guidelines.md)（Worker/调度的
+- 新增 [`.trellis/spec/backend/worker-guidelines.md`](../../../../spec/backend/worker-guidelines.md)（Worker/调度的
   Session、领取、调度轮边界、两层所有权 fence、空闲等待与退避、自有线程池、重试复制规则、错误矩阵、
   Good/Base/Bad、Tests Required、Wrong/Correct），产品 cron/漏触发语义只链接 `docs/execution.md`，不复制第二套设计；
   已加入 `.trellis/spec/backend/index.md` 导航表。

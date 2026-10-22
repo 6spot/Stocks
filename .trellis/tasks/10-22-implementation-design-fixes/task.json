@@ -1,0 +1,44 @@
+{
+  "id": "implementation-design-fixes",
+  "name": "implementation-design-fixes",
+  "title": "修复实现与设计一致性偏差",
+  "description": "修复静态审查发现的五项证据保留、研究输入和控制台行为偏差，并完成跨任务集成验收。",
+  "status": "planning",
+  "dev_type": "fullstack",
+  "scope": null,
+  "package": null,
+  "priority": "P1",
+  "creator": "me",
+  "assignee": "me",
+  "createdAt": "2026-10-22",
+  "completedAt": null,
+  "branch": null,
+  "base_branch": "main",
+  "worktree_path": null,
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [
+    "10-22-fix-fact-reprocess-history",
+    "10-22-fix-retry-historical-parse",
+    "10-22-fix-supplement-fact-inputs",
+    "10-22-fix-report-cited-comparison",
+    "10-22-fix-processing-default-filter"
+  ],
+  "parent": null,
+  "relatedFiles": [
+    ".trellis/tasks/10-20-stocks-roadmap/research/implementation-design-review.md",
+    "docs/data.md",
+    "docs/execution.md",
+    "docs/research.md",
+    "docs/interface.md"
+  ],
+  "notes": "Owner 已授权梳理并创建任务，交由其他 Agent 开发。本轮仅规划，未启动实施；五个叶子分别交付，父任务负责集成验收。原路线图真实服务延期清单保持原状态。",
+  "meta": {
+    "depends_on": [],
+    "source_review": ".trellis/tasks/10-20-stocks-roadmap/research/implementation-design-review.md",
+    "kind": "repair-program",
+    "planning_review": "pending",
+    "implementation_authorized": "false"
+  }
+}

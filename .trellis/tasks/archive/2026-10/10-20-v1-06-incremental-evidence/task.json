@@ -27,14 +27,15 @@
     "docs/execution.md",
     "docs/validation.md"
   ],
-  "notes": "本轮仅规划；依赖写入 meta.depends_on 及规划文档，Trellis 父子关系不会自动调度。开工前复核现状和技术细节并取得该子任务的实施确认。",
+  "notes": "已于 2026-10-21 实施并归档；实际验证、AC 与限制见 acceptance.md。真实 Provider/第三方来源与性能验收仍按既有阶段清单处理。2026-10-22 修正归档依赖路径，依据已有实施与验收材料补记规划复核状态；本次代码与设计审查发现的偏差见 .trellis/tasks/10-20-stocks-roadmap/research/implementation-design-review.md。",
   "meta": {
     "milestone": "V1",
     "kind": "delivery",
     "depends_on": [
-      ".trellis/tasks/10-20-v1-05-committed-change-cursors"
+      ".trellis/tasks/archive/2026-10/10-20-v1-05-committed-change-cursors"
     ],
-    "planning_review": "pending",
+    "planning_review": "completed",
+    "planning_review_note": "2026-10-22 补充核对 PRD/design/implement、前置依赖及已有实施记录；原实施清单已勾选开工复核，此处补齐状态，不追认历史审查时间。当前代码偏差另见 .trellis/tasks/10-20-stocks-roadmap/research/implementation-design-review.md。",
     "planning_depth": "delivery-plan",
     "implementation_authorized": "true"
   }

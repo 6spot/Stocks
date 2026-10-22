@@ -6,17 +6,17 @@ Owner 能在桌面和手机查看情报、报告及运行异常并完成必要�
 
 ## 背景与依据
 
-阶段：V1。归属契约：`docs/interface.md`, `docs/architecture.md`, `docs/validation.md`。代码现状见[基线](../10-20-stocks-roadmap/research/baseline.md)，现有模型/helper 不等于业务闭环。
+阶段：V1。归属契约：`docs/interface.md`, `docs/architecture.md`, `docs/validation.md`。代码现状见[基线](../../../10-20-stocks-roadmap/research/baseline.md)，现有模型/helper 不等于业务闭环。
 
 ## 前置依赖
 
-[V1-07](../../archive/2026-10/10-20-v1-07-owner-console-api/prd.md)
+[V1-07](../10-20-v1-07-owner-console-api/prd.md)
 
 依赖是实施顺序，不由 Trellis 父子关系自动执行。跨阶段依赖先通过前一阶段验收。
 
 ## 范围与要求
 
-- 按[架构技术选型](../../../docs/architecture.md#技术与部署)初始化前端，遵循[组件与样式](../../spec/frontend/component-guidelines.md)及[状态管理](../../spec/frontend/state-management.md)规范；复用原语，不开发独立组件库。
+- 按[架构技术选型](../../../../../docs/architecture.md#技术与部署)初始化前端，遵循[组件与样式](../../../../spec/frontend/component-guidelines.md)及[状态管理](../../../../spec/frontend/state-management.md)规范；复用原语，不开发独立组件库。
 - 实现 Overview、Intelligence、Tasks、Research 和基础 Runs；来源/模型/任务配置仍使用文件，不做编辑系统。
 - Intelligence 默认语义检索并有元数据过滤、Fact 查询、片段上下文、处理状态和安全原件入口；不因搜索触发全库处理。
 - 统一报告阅读，引用先展示实际片段/Fact、来源/版本/单位再打开原件；缺口与不确定性可见，不强制空栏目或虚构图表。

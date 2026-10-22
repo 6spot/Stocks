@@ -6,7 +6,7 @@
 
 ## 背景与前置
 
-唯一领域契约为 `docs/data.md`、`docs/execution.md`、`docs/validation.md`。V1-01 已交付独立定时 Worker 与 Run 恢复，见[前置任务验收](../archive/2026-10/10-20-v1-01-worker-scheduling/acceptance.md)。开工时已有手动解析/索引、不可变 ParseBatch/Chunk 及部分向量复用，尚无统一文档待办；分类与 Fact 算法仍由后续任务交付。开工依据见[复核记录](research/kickoff-review.md)，最终实现与验证见[验收记录](acceptance.md)。
+唯一领域契约为 `docs/data.md`、`docs/execution.md`、`docs/validation.md`。V1-01 已交付独立定时 Worker 与 Run 恢复，见[前置任务验收](../10-20-v1-01-worker-scheduling/acceptance.md)。开工时已有手动解析/索引、不可变 ParseBatch/Chunk 及部分向量复用，尚无统一文档待办；分类与 Fact 算法仍由后续任务交付。开工依据见[复核记录](research/kickoff-review.md)，最终实现与验证见[验收记录](acceptance.md)。
 
 ## 范围与要求
 

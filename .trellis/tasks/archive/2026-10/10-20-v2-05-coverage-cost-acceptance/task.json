@@ -32,8 +32,8 @@
     "milestone": "V2",
     "kind": "delivery",
     "depends_on": [
-      ".trellis/tasks/10-20-v2-02-source-parser-expansion",
-      ".trellis/tasks/10-20-v2-04-report-comparison"
+      ".trellis/tasks/archive/2026-10/10-20-v2-02-source-parser-expansion",
+      ".trellis/tasks/archive/2026-10/10-20-v2-04-report-comparison"
     ],
     "planning_review": "approved",
     "planning_depth": "delivery-plan",
