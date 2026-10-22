@@ -1581,6 +1581,39 @@ def test_retry_keeps_the_ledger_and_appended_evidence_stays_citable(
             LEDGER_KIND_INPUT,
         ]
 
+        # A later successful parse supersedes batch A. Both the initial
+        # selection and the appended input still belong to A, so the retry must
+        # keep reading them instead of silently switching to the new batch.
+        document = session.get(Document, UUID(EVIDENCE_DOCUMENT_ID))
+        assert document is not None
+        newer = DocumentParseBatch(
+            document_id=document.id,
+            processor_version="test-v2",
+            config_fingerprint="f" * 64,
+            content_hash=document.content_hash,
+            attempt_number=2,
+            status="completed",
+            chunk_count=1,
+            created_at=datetime.now(UTC),
+        )
+        session.add(newer)
+        session.flush()
+        session.add(
+            DocumentChunk(
+                document_id=document.id,
+                parse_batch_id=newer.id,
+                position=0,
+                text="Evidence from the newer parse.",
+                locator={},
+            )
+        )
+        parse_state = session.get(DocumentParseState, document.id)
+        assert parse_state is not None
+        parse_state.current_batch_id = newer.id
+        parse_state.latest_batch_id = newer.id
+        session.commit()
+        session.expire_all()
+
         retried = execution_service.retry_run(session, run_id)
         retry_run_id = retried.run.id
         retried_ledger = deepcopy(retried.run.research_inputs)
@@ -2130,6 +2163,133 @@ def test_retry_recovers_a_failed_agent_without_rebinding_the_window(
             "change_watermark_start": retried.run.change_watermark_start,
             "change_watermark_end": retried.run.change_watermark_end,
         }
+
+
+def test_retry_reads_a_superseded_parse_batch_after_the_document_is_reparsed(
+    engine, tmp_path
+):
+    """A frozen Run input stays citable after a newer current batch exists.
+
+    New evidence selection must keep using the current batch; only the retry's
+    already-recorded references are read through the historical batch.
+    """
+
+    from stocks.repository import current_document_hits
+
+    config = _make_task_config(tmp_path)
+    task = config.tasks[0]
+    models_path = write_models_config(tmp_path)
+    selected = _selected_evidence_chunk()
+    with Session(engine) as session:
+        claimed = create_or_get_run(
+            session,
+            task,
+            list(config.agents),
+            config_path=models_path,
+        )
+        run_id = claimed.run.id
+        assert claim_run(session, run_id, process_token=PROCESS_A)
+        _add_saved_evidence(session)
+
+        def fake_search(session, settings, config_path, step, *, run, **kwargs):
+            return _evidence_selection_result(
+                session,
+                run,
+                selected_chunks=[selected],
+                gaps=[],
+            )
+
+        original_search = execution_service._run_evidence_selection
+        execution_service._run_evidence_selection = fake_search
+        try:
+            failed = execute_claimed_run(
+                ExecutionContext(
+                    session=session,
+                    settings=make_config(),
+                    config_path=str(models_path),
+                    model_transport=_mock_transport(statuses=[500, 500, 500]),
+                ),
+                run_id,
+                process_token=PROCESS_A,
+            )
+        finally:
+            execution_service._run_evidence_selection = original_search
+        assert failed.status == "failed"
+
+        # The same Document is parsed again into a new current batch; the old
+        # batch and its Chunk stay stored as immutable history.
+        document = session.get(Document, UUID(EVIDENCE_DOCUMENT_ID))
+        assert document is not None
+        newer = DocumentParseBatch(
+            document_id=document.id,
+            processor_version="test-v2",
+            config_fingerprint="f" * 64,
+            content_hash=document.content_hash,
+            attempt_number=2,
+            status="completed",
+            chunk_count=1,
+            created_at=datetime.now(UTC),
+        )
+        session.add(newer)
+        session.flush()
+        session.add(
+            DocumentChunk(
+                document_id=document.id,
+                parse_batch_id=newer.id,
+                position=0,
+                text="Evidence from the newer parse.",
+                locator={},
+            )
+        )
+        state = session.get(DocumentParseState, document.id)
+        assert state is not None
+        state.current_batch_id = newer.id
+        state.latest_batch_id = newer.id
+        session.commit()
+        session.expire_all()
+        assert [hit.text for hit in current_document_hits(session, [document.id])] == [
+            "Evidence from the newer parse."
+        ]
+
+        retried = execution_service.retry_run(session, run_id)
+        retry_package = session.scalar(
+            select(EvidencePackage).where(
+                EvidencePackage.run_id == retried.run.id
+            )
+        )
+        assert retry_package is not None
+        # The retry keeps the frozen batch A reference instead of switching to B.
+        assert retry_package.selected_chunks[0]["parse_batch_id"] == (
+            EVIDENCE_BATCH_ID
+        )
+
+        assert claim_run(session, retried.run.id, process_token=PROCESS_B)
+        completed = execute_claimed_run(
+            ExecutionContext(
+                session=session,
+                settings=make_config(),
+                config_path=str(models_path),
+                model_transport=_mock_transport(),
+            ),
+            retried.run.id,
+            process_token=PROCESS_B,
+        )
+        assert completed.status == "succeeded"
+        session.expire_all()
+        analysis = session.scalar(
+            select(Analysis).where(Analysis.run_id == retried.run.id)
+        )
+        assert analysis is not None
+        assert analysis.evidence_refs[0]["chunk_id"] == EVIDENCE_CHUNK_ID
+        assert analysis.evidence_refs[0]["parse_batch_id"] == EVIDENCE_BATCH_ID
+        report = session.scalar(
+            select(Report).where(Report.run_id == retried.run.id)
+        )
+        assert report is not None
+        # The newer batch still feeds new selection, not this retry.
+        assert [
+            hit.text for hit in current_document_hits(session, [document.id])
+        ] == ["Evidence from the newer parse."]
 
 
 def test_normal_runs_advance_through_frozen_paged_scan(

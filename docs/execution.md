@@ -54,7 +54,7 @@ V0 `EvidencePackage` 的持久字段为：Run、objective、scope、`as_of`、`s
 
 StepResult、Analysis 与 finding 保存的证据引用只保留可回查的身份字段：`chunk_id`、`document_id`、`parse_batch_id`、`document_version`、`source_id`、`position`。正文、标题、定位器与来源时间通过该引用从 Repository 读取，不在运行结果里复制原文，避免同一份证据随 Run、Analysis 与 Report 重复堆积。
 
-`Analysis` 按 Run 保存 summary、结构化 findings、open questions、实际证据引用与覆盖缺口；每个 finding 的 `kind` 为 `fact | source_opinion | model_inference`，并至少包含一个所选 Chunk 引用、理由与不确定性。`Report` 由已保存 Analysis 确定性生成可阅读 Markdown。引用在保存 Analysis 前再次匹配持久 Document 版本、Chunk 和 parse batch；非法引用按模型响应错误有限重试，最终失败不写入或替换 Analysis/Report。同一 Run 已有 Evidence Package 时重试沿用该快照。
+`Analysis` 按 Run 保存 summary、结构化 findings、open questions、实际证据引用与覆盖缺口；每个 finding 的 `kind` 为 `fact | source_opinion | model_inference`，并至少包含一个所选 Chunk 引用、理由与不确定性。`Report` 由已保存 Analysis 确定性生成可阅读 Markdown。引用在保存 Analysis 前再次匹配持久 Document 版本、Chunk 和 parse batch；该批次只需是已成功完成的不可变批次，不要求仍是 Document 的当前批次，以便重试继续读取其冻结输入。非法引用按模型响应错误有限重试，最终失败不写入或替换 Analysis/Report。同一 Run 已有 Evidence Package 时重试沿用该快照。
 
 **可引用性的统一底线：** 初始选择与 V2-01 授权补证的证据都只有在统一入库并成为持久 Chunk 后才能支撑 finding；只有 Fact 或只有搜索摘要、没有可定位 Chunk 的补充内容不能作为证据，只能进入 open questions 与覆盖说明。Fact 的适用范围与补充检索边界见[研究设计](research.md#agent-补充检索与故障边界)。
 
@@ -71,7 +71,7 @@ V0 Run 在创建时快照 Task 的 objective、strategy、scope、步骤/Agent �
 - 每个执行上下文使用独立数据库 Session；某一 Task 的配置、模型初始化或执行失败只记录为该 Run 的结构化错误，不终止 Worker 轮次，也不影响其他 Task 的执行。
 - 采集 Run 只加载 `config/sources.yaml` 与现有 `collect_source`，不解析 chat/embedding 路由；研究模型配置损坏不影响采集入队与执行，采集故障也不阻止研究读取存量资料。
 - Run 未正常结束、Worker 中断或步骤失败时，保留已保存的步骤结果、Evidence Package、原始错误与 ModelCall 记录。Worker 自身不检测死进程、不做自动接管。Owner 必须先确认旧进程已停止，再通过受控 CLI 显式结束该 Run；结束后清除运行占用并保留全部进度与错误。
-- 重试创建新的 Run 记录，复用被结束 Run 的配置/模型/提示词快照、失败点之前已成功的 StepResult，并复制其原变化窗口、展示时间、`change_scan_progress` 与 Evidence Package（新包的 `run_id` 属于新 Run，`select_evidence` 输出中的 `evidence_package_id` 同步改指新包），把 `retry_of_run_id` 指向原 Run；重试不重新绑定最新端点。`research_agent` 步骤不复制，Analysis/Report 由重试重新生成，不借用旧 Run 名下的结果。原 Run、其失败步骤、ModelCall、Analysis/Report 与错误继续保留为失败历史，不删除失败证据、不伪装为首次执行。`skipped` 步骤不复制而是重新判断条件，避免把旧判断带入新一次尝试。重试只允许针对 `failed` 或 `cancelled` 的 Run，且仍受同一 Task 单个活跃 Run 约束。
+- 重试创建新的 Run 记录，复用被结束 Run 的配置/模型/提示词快照、失败点之前已成功的 StepResult，并复制其原变化窗口、展示时间、`change_scan_progress` 与 Evidence Package（新包的 `run_id` 属于新 Run，`select_evidence` 输出中的 `evidence_package_id` 同步改指新包），把 `retry_of_run_id` 指向原 Run；重试不重新绑定最新端点。重试读取复制的冻结引用时按已保存的 Document 版本、Chunk 与成功解析批次校验；同 Document 后来重新解析成新当前批次不会使旧引用失效，但不会把新批次片段偷换进来，批次缺失或身份不匹配仍失败。`research_agent` 步骤不复制，Analysis/Report 由重试重新生成，不借用旧 Run 名下的结果。原 Run、其失败步骤、ModelCall、Analysis/Report 与错误继续保留为失败历史，不删除失败证据、不伪装为首次执行。`skipped` 步骤不复制而是重新判断条件，避免把旧判断带入新一次尝试。重试只允许针对 `failed` 或 `cancelled` 的 Run，且仍受同一 Task 单个活跃 Run 约束。
 - 结束 Run、写入步骤结果与写入最终状态都核对 Run 状态与所有权；Owner 结束之后，旧执行不能再把 StepResult、Analysis/Report 或 Run 最终状态写成成功，这一步是确定性 fence。`select_evidence` 与 `collect_sources` 会在步骤内部提交自己的派生结果（Evidence Package、Document），因此在执行每一步前以及每个 Source 开始前再核对一次所有权，避免被结束的 Run 启动新的步骤或新的 Source；这层事前检查不持行锁，也不能回滚已经开始的步骤已在自身事务中提交的资料，采集到的原文仍按统一入库规则保留，只是该 Run 不会因此获得成功的步骤结果或报告。结束 Run 的前提始终是 Owner 已确认旧进程停止。
 - 解析、分类、抽取、索引和取材积压使用 Task/Run 或 Document 处理状态管理；有限自动重试后，可由 Owner 手动重试或继续处理，不另建积压管理服务。V1-02 已提供 `stocks.processing status|retry|reprocess` 的有界 CLI：`status` 按 Document、阶段与状态查询积压并显示本部署已注册/未接入的阶段，`retry` 只重开失败或未完成阶段，`reprocess` 可显式重跑已完成阶段，运行中阶段必须 `--confirm-stopped`。阶段状态机与重处理边界见[数据设计](data.md#后台解析片段与索引)；交互见[界面设计](interface.md)。
 

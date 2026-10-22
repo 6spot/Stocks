@@ -26,7 +26,7 @@ from stocks.models import (
     Analysis,
     Document,
     DocumentChunk,
-    DocumentParseState,
+    DocumentParseBatch,
     EvidencePackage,
     Fact,
 )
@@ -956,7 +956,13 @@ def validate_selected_versions(
     session: Session,
     selected: list[dict],
 ) -> dict[tuple[str, str], dict]:
-    """Return allowable references after checking current Document/Chunk identity."""
+    """Return allowable references after checking their saved identity.
+
+    A frozen Run input may cite a completed parse batch that is no longer the
+    Document's current one: a later reparse keeps the old batch and its Chunks
+    readable for historical reports and retries. New evidence selection is
+    unaffected, because it reads only the current batch in the Repository.
+    """
     allowed: dict[tuple[str, str], dict] = {}
     for item in selected:
         try:
@@ -969,14 +975,16 @@ def validate_selected_versions(
             select(DocumentChunk, Document)
             .join(Document, Document.id == DocumentChunk.document_id)
             .join(
-                DocumentParseState,
-                DocumentParseState.document_id == Document.id,
+                DocumentParseBatch,
+                DocumentParseBatch.id == DocumentChunk.parse_batch_id,
             )
             .where(
                 DocumentChunk.id == chunk_id,
                 DocumentChunk.document_id == document_id,
                 DocumentChunk.parse_batch_id == parse_batch_id,
-                DocumentParseState.current_batch_id == parse_batch_id,
+                DocumentParseBatch.document_id == document_id,
+                DocumentParseBatch.status == "completed",
+                DocumentParseBatch.content_hash == Document.content_hash,
                 Document.version == item.get("document_version"),
             )
         ).first()

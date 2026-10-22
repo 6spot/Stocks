@@ -578,7 +578,9 @@ def test_validate_selected_versions_rejects_stale_document_version(engine):
             validate_selected_versions(session, [item])
 
 
-def test_validate_selected_versions_rejects_superseded_parse_batch(engine):
+def test_validate_selected_versions_accepts_a_superseded_completed_batch(engine):
+    """A frozen reference stays readable after the Document is reparsed."""
+
     with Session(engine) as session:
         document, chunks = add_document_with_chunks(session)
         state = session.get(DocumentParseState, document.id)
@@ -596,6 +598,30 @@ def test_validate_selected_versions_rejects_superseded_parse_batch(engine):
         session.add(newer_batch)
         session.flush()
         state.current_batch_id = newer_batch.id
+        state.latest_batch_id = newer_batch.id
+        session.commit()
+        item = {
+            "chunk_id": str(chunks[0].id),
+            "document_id": str(document.id),
+            "parse_batch_id": str(chunks[0].parse_batch_id),
+            "document_version": document.version,
+        }
+
+        allowed = validate_selected_versions(session, [item])
+
+        assert allowed[(str(chunks[0].id), str(document.id))]["text"] == (
+            chunks[0].text
+        )
+
+
+def test_validate_selected_versions_rejects_an_unfinished_parse_batch(engine):
+    """Only a batch that actually produced Chunks can back a citation."""
+
+    with Session(engine) as session:
+        document, chunks = add_document_with_chunks(session)
+        batch = session.get(DocumentParseBatch, chunks[0].parse_batch_id)
+        assert batch is not None
+        batch.status = "failed"
         session.commit()
         item = {
             "chunk_id": str(chunks[0].id),
@@ -605,6 +631,25 @@ def test_validate_selected_versions_rejects_superseded_parse_batch(engine):
         }
         with pytest.raises(ValueError, match="saved Document"):
             validate_selected_versions(session, [item])
+
+
+def test_validate_selected_versions_rejects_a_batch_from_another_document(engine):
+    """A Chunk and its batch must belong to the cited Document."""
+
+    with Session(engine) as session:
+        document, chunks = add_document_with_chunks(session)
+        other, other_chunks = add_document_with_chunks(
+            session, dedupe_key="doc-2", chunk_texts=("Other evidence.",)
+        )
+        item = {
+            "chunk_id": str(other_chunks[0].id),
+            "document_id": str(document.id),
+            "parse_batch_id": str(chunks[0].parse_batch_id),
+            "document_version": document.version,
+        }
+        with pytest.raises(ValueError, match="saved Document"):
+            validate_selected_versions(session, [item])
+        assert other.id != document.id
 
 
 def test_select_evidence_persists_empty_package_without_inventing_counts(
