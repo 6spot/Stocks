@@ -18,4 +18,4 @@
 
 ## 状态
 
-当前仅规划，未运行前端测试、构建或接口 smoke。设计依据为 docs/interface.md 的 Runs/积压入口。
+2026-10-22 已获 Owner 实施授权并进入 `in_progress`。初始筛选与回归断言已修改，归属文档已更新；缺陷基线与修复结果均尚未运行验证，测试服务器 SSH 认证受阻，验收项保持未勾选。详见 [实施记录](implement.md) 与 [验收记录](acceptance.md)。设计依据为 docs/interface.md 的 Runs/积压入口。
