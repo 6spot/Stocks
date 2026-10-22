@@ -33,12 +33,12 @@
     "docs/research.md",
     "docs/interface.md"
   ],
-  "notes": "Owner 已授权梳理并创建任务，交由其他 Agent 开发。本轮仅规划，未启动实施；五个叶子分别交付，父任务负责集成验收。原路线图真实服务延期清单保持原状态。",
+  "notes": "2026-10-22 Owner 依次授权实施 F-01 至 F-05，五个叶子均已完成代码、回归场景与归属文档，并提交、归档、推送到各自顺序叠加的 fix/* 分支（F-01 8e6e459、F-02 8341e01、F-03 7ab3b14、F-04 3de76df、F-05 d65152c）。F-04 的 F-01 硬依赖已满足。当前会话无可用测试服务器 SSH 认证（免交互返回 Permission denied，exit 255），所有测试、类型检查、构建与 API smoke 均未执行，叶子 AC 与父任务 I-1 至 I-4 全部未勾选；归档只表示代码交付，不代表验收通过。分支尚未合并 main、未创建 PR。恢复集成验收需先取得远程认证，按各叶子 acceptance.md 补跑最小测试并验证 I-2/I-3 联合场景。真实 Provider/MCP、ARM 等延期项不变。",
   "meta": {
     "depends_on": [],
     "source_review": ".trellis/tasks/10-20-stocks-roadmap/research/implementation-design-review.md",
     "kind": "repair-program",
-    "planning_review": "pending",
-    "implementation_authorized": "false"
+    "planning_review": "completed",
+    "implementation_authorized": "true"
   }
 }

@@ -4,8 +4,8 @@
 
 - [x] Owner 授权梳理问题并创建交接任务。
 - [x] 五项发现已映射到独立叶子，补充依赖和验收场景。
-- [x] Owner 已授权实施 F-01，已复核规划并启动该叶子；父任务保持规划状态。
-- [ ] F-02 至 F-05 仍待各自的实施指令与开工复核，不由 F-01 授权自动扩展。
+- [x] Owner 已授权实施 F-01 至 F-05，五个叶子均已启动、实施并归档。
+- [ ] 父任务集成验收 I-1 至 I-4 待补跑测试后确认。
 
 ## 建议执行顺序
 
@@ -34,9 +34,19 @@
 
 不默认运行全量测试；优先复用各叶子新增的回归场景验证 I-2/I-3，再针对合并冲突扩大范围。任务 JSON/JSONL/链接自动检查也只能在指定服务器隔离目录运行。
 
-## 2026-10-22 F-01 进展
+## 2026-10-22 五个叶子交付记录
 
-F-01 已在 `fix/fact-reprocess-history` 分支移除两条破坏性清空路径，补充回归并同步领域契约。当前仅代码与静态复核完成；测试服务器 SSH 认证受阻，运行验证未执行，叶子保持 `in_progress`，父级集成及 F-04 依赖尚未解除。具体证据和恢复步骤见 [F-01 验收记录](../10-22-fix-fact-reprocess-history/acceptance.md)。其他叶子未启动。
+F-01 至 F-05 均已在各自分支完成代码、回归场景与归属文档，并提交、归档、推送；F-04 的 F-01 硬依赖在实施时已满足。各叶子验收记录（均在归档目录）：
+
+- `.trellis/tasks/archive/2026-10/10-22-fix-fact-reprocess-history/acceptance.md`
+- `.trellis/tasks/archive/2026-10/10-22-fix-retry-historical-parse/acceptance.md`
+- `.trellis/tasks/archive/2026-10/10-22-fix-supplement-fact-inputs/acceptance.md`
+- `.trellis/tasks/archive/2026-10/10-22-fix-report-cited-comparison/acceptance.md`
+- `.trellis/tasks/archive/2026-10/10-22-fix-processing-default-filter/acceptance.md`
+
+**运行验证全部未执行**：本会话 SSH 免交互认证返回 `Permission denied (publickey,password)`，exit 255；未回退本机测试、类型检查或构建。所有叶子 AC 与父任务 I-1 至 I-4 保持未勾选，归档只表示代码已交付。
+
+分支为顺序叠加：`fix/fact-reprocess-history` → `fix/retry-historical-parse` → `fix/supplement-fact-inputs` → `fix/report-cited-comparison` → `fix/processing-default-filter`。尚未合并到 `main`，未创建或合并 PR。集成验收应在一个包含全部修复的分支上进行，先补跑各叶子的最小测试，再验证 I-2/I-3 联合场景。
 
 ## 收尾
 

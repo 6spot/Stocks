@@ -37,4 +37,16 @@ Owner 于 2026-10-22 明确要求梳理发现并创建任务，交给其他 Agen
 
 ## 完成记录
 
-当前仅规划；本轮没有修改业务代码、运行测试或确认上述 AC 通过。技术设计及执行顺序分别见 design.md、implement.md。
+2026-10-22：五个叶子均已实施、提交、归档并推送到各自的 `fix/*` 分支；父任务仍为 `planning`，因为集成验收需要实际运行测试，而当前会话没有可用的测试服务器 SSH 认证。
+
+| 叶子 | 分支 | 代码提交 | 运行验证 |
+| --- | --- | --- | --- |
+| F-01 | `fix/fact-reprocess-history` | `8e6e459` | 未执行 |
+| F-02 | `fix/retry-historical-parse` | `8341e01` | 未执行 |
+| F-03 | `fix/supplement-fact-inputs` | `7ab3b14` | 未执行 |
+| F-04 | `fix/report-cited-comparison` | `3de76df` | 未执行 |
+| F-05 | `fix/processing-default-filter` | `d65152c` | 未执行 |
+
+所有叶子的 AC 均保持未勾选；代码改动与静态复核已完成，测试、类型检查、构建与 API smoke 全部未运行。各分支为顺序叠加（每个分支包含前序修复），尚未合并到 `main`，也未创建或合并 PR。父任务 I-1 至 I-4 因此均未确认；`docs/validation.md` 与 [延期验收清单](../10-20-stocks-roadmap/pending-acceptance.md) 中的真实 Provider/MCP、ARM 等延期项不受本修复影响。
+
+恢复集成验收时，需取得测试服务器认证，按各叶子 `acceptance.md` 的命令补跑最小范围测试，并在一个集成分支上验证 I-2/I-3 的联合场景。技术设计及执行顺序分别见 design.md、implement.md。
