@@ -22,4 +22,4 @@
 
 ## 状态
 
-当前仅规划，无新增运行验证。依据 docs/data.md 的历史批次保留及 docs/research.md、docs/execution.md 的冻结输入/重试契约。
+2026-10-22 已获 Owner 实施授权并进入 `in_progress`。修复代码、回归场景及归属文档已写入；缺陷基线与修复结果均尚未运行验证，测试服务器 SSH 认证受阻，验收项保持未勾选。详见 [实施记录](implement.md) 与 [验收记录](acceptance.md)。依据 docs/data.md 的历史批次保留及 docs/research.md、docs/execution.md 的冻结输入/重试契约。

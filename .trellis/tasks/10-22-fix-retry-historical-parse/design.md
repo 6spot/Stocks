@@ -12,6 +12,12 @@ retry_run() 复制 EvidencePackage 与 research_inputs；_agent_evidence() 合�
 
 补证仍只能从本 Run 合并台账形成允许集。旧批次缺失不回退当前批次；重试复制过程不能更新原包的 ID、文本或引用。
 
+## 实施落点（2026-10-22）
+
+已按本方案把 `validate_selected_versions()` 的批次条件从“必须为当前批次”改为“属于该 Document 且成功完成、内容哈希与 Document 版本一致”；Repository 的当前批次筛选未改动，新取材仍只读当前成功批次。历史报告与重试读取复用同一函数，无需新增 API。
+
+测试已编写但未运行：`test_research.py` 覆盖历史批次可读、未完成批次拒绝、跨 Document 拒绝；`test_execution.py` 覆盖失败 Run → 批次 B → 重试仍读 A，以及追加台账输入。远程认证受阻，任务保持未验收，详见 [验收记录](acceptance.md)。
+
 ## 关键文件与集成
 
 - backend/src/stocks/research/service.py：validate_selected_versions、合并引用。
