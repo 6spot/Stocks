@@ -17,6 +17,7 @@ from stocks.models import (
     Document,
     DocumentEmbeddingState,
     EvidencePackage,
+    Fact,
     ModelCall,
     Report,
     Source,
@@ -256,6 +257,7 @@ def persist_run(
     gaps: list[str] | None = None,
     appended_inputs: list[dict] | None = None,
     appended_gaps: list[str] | None = None,
+    evidence_groups: list[dict] | None = None,
 ):
     """Save a Run with its Evidence Package, plus Analysis and Report on success.
 
@@ -333,6 +335,7 @@ def persist_run(
             }
         ],
         selected_chunks=selected,
+        evidence_groups=deepcopy(evidence_groups or []),
         coverage={"gaps": list(gaps or []), "current_query_only": True},
         candidates_discovered=None,
         candidates_screened=len(selected),
@@ -849,6 +852,137 @@ def test_document_payload_exposes_the_current_classification(engine, client, sna
     assert row["classification"]["companies"] == []
     detail = client.get(f"/api/documents/{first['document_id']}").json()
     assert detail["document"]["classification"]["should_extract"] is True
+
+
+def test_report_api_exposes_final_facts_and_comparisons_of_adopted_inputs(
+    engine, client, snapshot_store
+):
+    """An adopted Fact is visible in the report API, not only in the ledger."""
+
+    from stocks.facts import FactInput, persist_facts
+    from stocks.research.evidence import fact_selection_ref
+
+    config = make_config()
+    _objects, store, _read = snapshot_store
+    supplemental_bytes = (
+        b"<html><body><article><p>Revised CPI was 2.1% in September."
+        b"</p></article></body></html>"
+    )
+    supplemental_text = "Revised CPI was 2.1% in September."
+    with Session(engine) as session:
+        persist_source(session)
+        first = persist_parsed_version(
+            session, config, store, make_item(ARTICLE_V1), CHUNK_V1
+        )
+        mark_indexed(session, first)
+        second = persist_parsed_version(
+            session,
+            config,
+            store,
+            make_item(
+                supplemental_bytes,
+                dedupe_key="release-2",
+                title="Supplemental release",
+                original_url="https://www.example.gov/releases/two",
+            ),
+            supplemental_text,
+        )
+        mark_indexed(session, second)
+        initial_fact = persist_facts(
+            session,
+            first["document_id"],
+            [
+                FactInput(
+                    fact_type="macro_indicator",
+                    origin_method="llm_extraction",
+                    evidence_ref={
+                        "kind": "chunk",
+                        "chunk_id": str(first["chunk_id"]),
+                        "parse_batch_id": str(first["parse_batch_id"]),
+                        "position": first["position"],
+                    },
+                    subject_name="US CPI",
+                    metric_id="cpi_yoy",
+                    statement="US CPI was 2.4.",
+                    value=2.4,
+                    unit="percent",
+                    period_end=datetime(2026, 9, 30, tzinfo=UTC),
+                    available_at=CREATED_AT,
+                )
+            ],
+            processor_version="test",
+            config_fingerprint="f" * 64,
+            created_at=CREATED_AT,
+        )
+        adopted_fact = persist_facts(
+            session,
+            second["document_id"],
+            [
+                FactInput(
+                    fact_type="macro_indicator",
+                    origin_method="llm_extraction",
+                    evidence_ref={
+                        "kind": "chunk",
+                        "chunk_id": str(second["chunk_id"]),
+                        "parse_batch_id": str(second["parse_batch_id"]),
+                        "position": second["position"],
+                    },
+                    subject_name="US CPI",
+                    metric_id="cpi_yoy",
+                    statement="US CPI was 2.1.",
+                    value=2.1,
+                    unit="percent",
+                    period_end=datetime(2026, 9, 30, tzinfo=UTC),
+                    available_at=CREATED_AT,
+                )
+            ],
+            processor_version="test",
+            config_fingerprint="f" * 64,
+            created_at=CREATED_AT,
+        )
+        session.commit()
+        initial_ref = fact_selection_ref(
+            session.get(Fact, initial_fact.created_ids[0])
+        )
+        adopted_ref = fact_selection_ref(
+            session.get(Fact, adopted_fact.created_ids[0])
+        )
+        input_record = appended_input(second)
+        input_record["fact_refs"] = [adopted_ref]
+        # Production records the Document's Facts on its first returned Chunk.
+        input_record["chunks"][0]["fact_ids"] = [
+            str(adopted_fact.created_ids[0])
+        ]
+        _run, package, report = persist_run(
+            session,
+            selected_chunks=[selected_ref(first)],
+            appended_inputs=[input_record],
+            evidence_groups=[
+                {
+                    "document_id": str(first["document_id"]),
+                    "chunk_ids": [str(first["chunk_id"])],
+                    "fact_refs": [initial_ref],
+                    "role": "new_information",
+                }
+            ],
+        )
+
+    detail = client.get(f"/api/reports/{report['report_id']}").json()
+    assert detail["evidence_package"]["metric_comparisons"] == []
+    final = detail["evidence_package"]["final_metric_comparisons"]
+    assert len(final) == 1
+    assert final[0]["metric_id"] == "cpi_yoy"
+    assert final[0]["value_conflict"] is True
+    assert sorted(item["value"] for item in final[0]["facts"]) == [2.1, 2.4]
+    assert {item["fact_id"] for item in detail["facts"]} == {
+        str(initial_fact.created_ids[0]),
+        str(adopted_fact.created_ids[0]),
+    }
+    assert str(adopted_fact.created_ids[0]) in {
+        fact_id
+        for entry in detail["evidence"]
+        for fact_id in entry["fact_ids"]
+    }
 
 
 def test_report_merges_initial_and_appended_evidence(

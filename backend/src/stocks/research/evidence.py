@@ -354,53 +354,58 @@ class _FactBasis:
 
 
 def metric_comparisons(groups: list[EvidenceGroup]) -> list[dict]:
-    """Compare same-metric Facts across the whole selection, side by side.
+    """Compare same-metric Facts across the whole selection, side by side."""
+
+    return compare_fact_values(
+        [item for group in groups for item in group.facts]
+    )
+
+
+def compare_fact_values(facts: list[dict]) -> list[dict]:
+    """Compare frozen Fact projections by metric, side by side.
 
     A differing value with an identical basis, a different basis (unit or
     currency), and a different observation period are separate flags on one
     entry. Nothing is averaged, overwritten or marked resolved: the entry only
-    states what the selected originals actually said.
+    states what the selected originals actually said. Each compared projection
+    receives its ``comparison_id`` and flags in place, so the model input and
+    the deterministic report describe the same comparison.
     """
 
     by_metric: dict[tuple, list[tuple[dict, _FactBasis]]] = {}
     order: list[tuple] = []
-    for group in groups:
-        for item in group.facts:
-            metric_id = item.get("metric_id")
-            if not metric_id:
-                continue
-            identity = (
-                item.get("subject_name"),
-                item.get("symbol"),
-                metric_id,
-            )
-            if identity not in by_metric:
-                by_metric[identity] = []
-                order.append(identity)
-            attributes = item.get("attributes")
-            currency = (
-                attributes.get("currency")
-                if isinstance(attributes, dict)
-                else None
-            )
-            basis = _FactBasis(
-                value=item.get("value"),
-                unit=item.get("unit"),
-                currency=currency if isinstance(currency, str) else None,
-                period_start=item.get("period_start"),
-                period_end=item.get("period_end"),
-            )
-            by_metric[identity].append((item, basis))
+    for item in facts:
+        metric_id = item.get("metric_id")
+        if not metric_id:
+            continue
+        identity = (
+            item.get("subject_name"),
+            item.get("symbol"),
+            metric_id,
+        )
+        if identity not in by_metric:
+            by_metric[identity] = []
+            order.append(identity)
+        attributes = item.get("attributes")
+        currency = (
+            attributes.get("currency")
+            if isinstance(attributes, dict)
+            else None
+        )
+        basis = _FactBasis(
+            value=item.get("value"),
+            unit=item.get("unit"),
+            currency=currency if isinstance(currency, str) else None,
+            period_start=item.get("period_start"),
+            period_end=item.get("period_end"),
+        )
+        by_metric[identity].append((item, basis))
 
     comparisons: list[dict] = []
     for identity in order:
         entries = by_metric[identity]
         if len(entries) < 2:
             continue
-        bases = {
-            (basis.unit, basis.currency, basis.period_start, basis.period_end)
-            for _, basis in entries
-        }
         values_by_basis: dict[tuple, set] = {}
         for _, basis in entries:
             keys = values_by_basis.setdefault(

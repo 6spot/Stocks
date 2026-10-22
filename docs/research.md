@@ -117,6 +117,8 @@ V0 当前实现使用每次 Run 一份持久 Evidence Package：保存 objective
 
 **同指标比较（V2-03）：** Evidence Package 另存 `metric_comparisons[]`。同一 `(subject_name, symbol, metric_id)` 出现两个及以上 Fact 时生成一条对比，分别标记 `value_conflict`（同一 unit/currency/观测期下取值不同）、`basis_mismatch`（单位或币种不同）与 `period_mismatch`（观测期不同），并逐个列出各来源的 `value`、`unit`、`currency`、`period_start`、`period_end`、`available_at`、`statement` 与 `document_id`。同一个 Fact 在 `evidence_groups[].fact_refs` 中带上 `comparison_id` 与三个标记，模型输入与报告看到的是并列值本身。**不做平均、不做静默覆盖、不把冲突或未确认值标为已核实**；只有一条 Fact 的指标不生成对比，也不因此被判定为「已核实」。
 
+**补证 Fact 的最终视图（V2-01/V2-03）：** 初始 `evidence_groups[].fact_refs` 与本次 Run 实际采用的补证输入 `research_inputs[].fact_refs` 都保存完整冻结 Fact 投影。研究 Agent 的模型输入、确定性同指标比较、Report 与报告 API 使用同一个合并视图：按 `fact_id` 去重，初始组在前、追加输入在后，因此同一 Document 被两条路径命中只计一次，而该 Document 上新增的 Fact 仍会补入。每个 Document 的 Facts 只随它第一个可读 Chunk 出现一次；只有 Fact、没有可读 Chunk 的补证组仍只以结构化证据存在，不能作为 finding 引用。比较使用冻结投影中的值、单位、期间与可获知时间，不重新读取当前 Fact 行，也不改写初始 `Evidence Package.metric_comparisons[]`；报告 API 另返回由该视图计算的 `final_metric_comparisons[]`，`metric_comparisons[]` 继续只表示初始选择。
+
 **报告呈现（V2-03）：** `render_report()` 在 Coverage 之前确定性生成 `## Sources and Conflicts`：先写本次选中的独立原件数与覆盖的 Document 版本数、列出确认同源的合并组，再逐个列出同指标取值与差异类型，并明确说明这些值按发布原样并列、未平均、未标记已核实。该段落来自已保存的 Evidence Package 与 Analysis.coverage，不依赖模型输出；模型只负责解释影响与不确定性。段落在 20 个 origin group / 20 条对比处截断，其余仍保存在 Evidence Package 中。
 
 **历史报告比较（V2-04）：** `GET /api/reports/{report_id}/comparison?other_report_id=...` 只比较两份**已保存**报告各自的快照：Analysis 的 findings / open questions、Evidence Package 的 `scope`、`as_of` 与 coverage，以及各报告真实引用的 Document 版本与 Fact。它**不重新研究、不调用 Tool、不读取当前最新数据、不改写旧报告**，响应 `notes[]` 也把这个边界写明。两侧按 `created_at`、`report_id` 排序，`ordering.requested_report_id` 与 `ordering.swapped` 说明请求的报告是否就是较早一侧；失败或未完成的 Run 不能充当成功历史报告（409），同一报告自比返回 400，未知报告返回 404。

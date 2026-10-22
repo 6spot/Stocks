@@ -1701,6 +1701,238 @@ def test_retry_keeps_the_ledger_and_appended_evidence_stays_citable(
         assert appended_chunk_id in report.content
 
 
+def test_agent_receives_appended_facts_and_their_comparison(
+    engine, tmp_path, monkeypatch
+):
+    """A supplemental Fact reaches the model, the report and the saved Analysis.
+
+    The Document already has an initial group, so the appended Fact must be
+    merged into that same evidence chain instead of being lost behind the
+    initial projection. Both published values stay side by side.
+    """
+
+    from stocks.facts import FactInput, persist_facts
+    from stocks.models import Fact
+    from stocks.research.evidence import fact_selection_ref
+    from stocks.research.service import LEDGER_KIND_INPUT, SUPPLEMENT_ROLE
+    from stocks.research.supplement import append_research_entries
+
+    config = _make_task_config(tmp_path, tools=["research_search"])
+    task = config.tasks[0]
+    models_path = write_models_config(tmp_path)
+    tools_path = write_tools_config(tmp_path)
+    selected = _selected_evidence_chunk()
+    second_chunk_id = "00000000-0000-0000-0000-000000000004"
+    period_end = datetime(2026, 9, 30, tzinfo=UTC)
+    with Session(engine) as session:
+        claimed = create_or_get_run(
+            session,
+            task,
+            list(config.agents),
+            config_path=models_path,
+            tools_config_path=tools_path,
+        )
+        run_id = claimed.run.id
+        assert claim_run(session, run_id, process_token=PROCESS_A)
+        _add_saved_evidence(session)
+        session.add(
+            DocumentChunk(
+                id=UUID(second_chunk_id),
+                document_id=UUID(EVIDENCE_DOCUMENT_ID),
+                parse_batch_id=UUID(EVIDENCE_BATCH_ID),
+                position=1,
+                text="A second release reports a different CPI.",
+                locator={},
+            )
+        )
+        session.commit()
+
+        def persist(value, chunk_id, statement):
+            result = persist_facts(
+                session,
+                UUID(EVIDENCE_DOCUMENT_ID),
+                [
+                    FactInput(
+                        fact_type="macro_indicator",
+                        origin_method="llm_extraction",
+                        evidence_ref={
+                            "kind": "chunk",
+                            "chunk_id": chunk_id,
+                            "parse_batch_id": EVIDENCE_BATCH_ID,
+                            "position": (
+                                0 if chunk_id == EVIDENCE_CHUNK_ID else 1
+                            ),
+                        },
+                        subject_name="US CPI",
+                        metric_id="cpi_yoy",
+                        statement=statement,
+                        value=value,
+                        unit="percent",
+                        period_end=period_end,
+                        available_at=datetime.now(UTC),
+                    )
+                ],
+                processor_version="test",
+                config_fingerprint="f" * 64,
+                created_at=datetime.now(UTC),
+            )
+            session.commit()
+            return session.get(Fact, result.created_ids[0])
+
+        initial_fact = persist(2.4, EVIDENCE_CHUNK_ID, "US CPI was 2.4.")
+        appended_fact = persist(3.1, second_chunk_id, "US CPI was 3.1.")
+        initial_ref = fact_selection_ref(initial_fact)
+        appended_ref = fact_selection_ref(appended_fact)
+
+        def fake_search(session, settings, config_path, step, *, run, **kwargs):
+            output, refs = _evidence_selection_result(
+                session,
+                run,
+                selected_chunks=[selected],
+                gaps=[],
+            )
+            package = session.scalar(
+                select(EvidencePackage).where(EvidencePackage.run_id == run.id)
+            )
+            package.evidence_groups = [
+                {
+                    "document_id": EVIDENCE_DOCUMENT_ID,
+                    "chunk_ids": [EVIDENCE_CHUNK_ID],
+                    "fact_refs": [initial_ref],
+                    "role": "new_information",
+                    "kinds": ["document_ingested"],
+                    "reasons": ["new_information"],
+                }
+            ]
+            session.commit()
+            # The adopted input re-registers the initial Fact too, so the merge
+            # must deduplicate it while still adding the second one.
+            append_research_entries(
+                session,
+                session.get(TaskRun, run.id),
+                package,
+                [
+                    {
+                        "kind": LEDGER_KIND_INPUT,
+                        "input_id": "input-1",
+                        "tool_id": "research_search",
+                        "purpose": "Fetch the second release.",
+                        "role": SUPPLEMENT_ROLE,
+                        "document_id": EVIDENCE_DOCUMENT_ID,
+                        "source_id": "sec",
+                        "document_version": 1,
+                        "parse_batch_id": EVIDENCE_BATCH_ID,
+                        "title": "Second release",
+                        "url": "https://www.example.gov/releases/two",
+                        "chunks": [
+                            {
+                                "chunk_id": second_chunk_id,
+                                "position": 1,
+                                "chunk_ids": [second_chunk_id],
+                                "fact_ids": [str(appended_fact.id)],
+                            }
+                        ],
+                        "fact_refs": [initial_ref, appended_ref],
+                        "timing": ["collected_after_as_of"],
+                        "recorded_at": datetime.now(UTC).isoformat(),
+                    }
+                ],
+                process_token=PROCESS_A,
+                now=datetime.now(UTC),
+            )
+            return output, refs
+
+        monkeypatch.setattr(
+            execution_service, "_run_evidence_selection", fake_search
+        )
+        captured: list[dict] = []
+        base = _mock_transport()
+        empty_plan = {"assessment": "No further lookups.", "requests": []}
+
+        def handler(request):
+            body = json.loads(request.content)
+            name = (
+                body.get("response_format", {})
+                .get("json_schema", {})
+                .get("name")
+            )
+            if name == "research_tool_plan":
+                return httpx.Response(
+                    200,
+                    json={
+                        "model": "research-model",
+                        "choices": [
+                            {"message": {"content": json.dumps(empty_plan)}}
+                        ],
+                        "usage": {"prompt_tokens": 10, "completion_tokens": 5},
+                    },
+                )
+            captured.append(body)
+            return base.handler(request)
+
+        completed = execute_claimed_run(
+            ExecutionContext(
+                session=session,
+                settings=make_config(),
+                config_path=str(models_path),
+                model_transport=httpx.MockTransport(handler),
+                session_factory=lambda: Session(engine),
+                tools_config_path=tools_path,
+            ),
+            run_id,
+            process_token=PROCESS_A,
+        )
+        assert completed.status == "succeeded"
+        assert len(captured) == 1
+        agent_input = json.loads(captured[0]["messages"][1]["content"])
+        fact_ids = sorted(
+            fact["fact_id"]
+            for fact in agent_input["evidence"][0]["fact_refs"]
+        )
+        assert fact_ids == sorted([str(initial_fact.id), str(appended_fact.id)])
+        # The complete frozen projection, not just ids, reaches the model.
+        appended_payload = next(
+            fact
+            for fact in agent_input["evidence"][0]["fact_refs"]
+            if fact["fact_id"] == str(appended_fact.id)
+        )
+        assert appended_payload["value"] == 3.1
+        assert appended_payload["unit"] == "percent"
+        assert appended_payload["period_end"] == period_end.isoformat()
+        assert appended_payload["evidence_ref"]["chunk_id"] == second_chunk_id
+        comparison = agent_input["coverage"]["metric_comparisons"][0]
+        assert comparison["metric_id"] == "cpi_yoy"
+        assert comparison["value_conflict"] is True
+        assert sorted(item["value"] for item in comparison["facts"]) == [
+            2.4,
+            3.1,
+        ]
+
+        session.expire_all()
+        analysis = session.scalar(
+            select(Analysis).where(Analysis.run_id == run_id)
+        )
+        assert analysis is not None
+        saved_comparison = analysis.coverage["metric_comparisons"][0]
+        assert saved_comparison["metric_id"] == "cpi_yoy"
+        assert sorted(item["value"] for item in saved_comparison["facts"]) == [
+            2.4,
+            3.1,
+        ]
+        report = session.scalar(select(Report).where(Report.run_id == run_id))
+        assert report is not None
+        assert "2.4 percent" in report.content
+        assert "3.1 percent" in report.content
+        assert "values differ" in report.content
+        # The initial Evidence Package keeps its own untouched comparison list.
+        session.expire_all()
+        saved_package = session.scalar(
+            select(EvidencePackage).where(EvidencePackage.run_id == run_id)
+        )
+        assert saved_package is not None
+        assert saved_package.metric_comparisons == []
+
+
 def test_second_planning_round_continues_the_attempt_sequence(engine, tmp_path):
     """A later planning round adds cost rows instead of hiding round one."""
 

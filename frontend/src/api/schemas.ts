@@ -847,6 +847,7 @@ export const reportDetailSchema = z
         queries: z.unknown(),
         coverage: z.unknown(),
         metric_comparisons: z.array(metricComparisonSchema).optional(),
+        final_metric_comparisons: z.array(metricComparisonSchema).optional(),
         candidates_discovered: nullableNumber,
         candidates_screened: nullableNumber,
         selected_count: z.number().int().nonnegative(),

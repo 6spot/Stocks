@@ -67,7 +67,12 @@ from stocks.processing.parser import HTML_CONTENT_TYPES, TEXT_CONTENT_TYPES
 from stocks.processing.runner import describe_stages, run_stages_for_documents
 from stocks.research.comparison import compare_report_sides
 from stocks.research.evidence import fact_selection_ref
-from stocks.research.service import merged_research_refs, research_ledger_gaps
+from stocks.research.service import (
+    final_metric_comparisons,
+    merged_research_fact_refs,
+    merged_research_refs,
+    research_ledger_gaps,
+)
 from stocks.repository import (
     SearchFilters,
     get_document,
@@ -1654,7 +1659,9 @@ def report_detail(report_id: UUID) -> dict:
                 "evidence_refs": analysis.evidence_refs,
                 "created_at": analysis.created_at,
             },
-            "evidence_package": _package_payload(package),
+            "evidence_package": _package_payload(
+                package, _research_ledger(analysis, run)
+            ),
             "research_inputs": _research_inputs_payload(analysis, run),
             "evidence": entries,
             "cited_chunk_ids": [
@@ -1762,7 +1769,7 @@ def _report_side(session: Session, config: Settings, report_id: UUID) -> dict:
             "retrieval_truncated": package.retrieval_truncated,
         },
         "documents": _report_document_refs(entries, refs),
-        "facts": _report_fact_snapshots(session, package, refs),
+        "facts": _report_fact_snapshots(session, package, refs, ledger),
         "research_input_count": sum(
             1
             for item in ledger
@@ -1813,7 +1820,10 @@ def _report_document_refs(entries: list[dict], refs: list[dict]) -> list[dict]:
 
 
 def _report_fact_snapshots(
-    session: Session, package: EvidencePackage, refs: list[dict]
+    session: Session,
+    package: EvidencePackage,
+    refs: list[dict],
+    ledger: list | None = None,
 ) -> list[dict]:
     """Every Fact the report actually used, read from its immutable rows."""
 
@@ -1823,18 +1833,18 @@ def _report_fact_snapshots(
             fact_id = _parse_id(value)
             if fact_id is not None and fact_id not in fact_ids:
                 fact_ids.append(fact_id)
-    groups = package.evidence_groups if isinstance(package.evidence_groups, list) else []
-    for group in groups:
-        if not isinstance(group, dict):
-            continue
-        # A Fact-only group has no readable Chunk, so its Facts would otherwise
-        # never appear in the comparison.
-        for reference in group.get("fact_refs") or []:
-            if not isinstance(reference, dict):
-                continue
-            fact_id = _parse_id(reference.get("fact_id"))
-            if fact_id is not None and fact_id not in fact_ids:
-                fact_ids.append(fact_id)
+    try:
+        frozen = merged_research_fact_refs(package, ledger)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=409, detail="Report research inputs are invalid"
+        ) from exc
+    # A Fact-only group has no readable Chunk, so its Facts would otherwise never
+    # appear. Adopted Tool inputs contribute their own frozen Facts here too.
+    for reference in frozen:
+        fact_id = _parse_id(reference.get("fact_id"))
+        if fact_id is not None and fact_id not in fact_ids:
+            fact_ids.append(fact_id)
     if not fact_ids:
         return []
     rows = session.scalars(select(Fact).where(Fact.id.in_(fact_ids))).all()
@@ -2194,7 +2204,22 @@ def _research_inputs_payload(
     }
 
 
-def _package_payload(package: EvidencePackage) -> dict:
+def _package_payload(
+    package: EvidencePackage, ledger: list | None = None
+) -> dict:
+    """The frozen package plus the final comparison of everything it adopted.
+
+    ``metric_comparisons`` keeps its initial-selection meaning; the report also
+    exposes the same final comparison the Agent received, so an adopted Tool
+    input's Fact is never visible in one view and missing from another.
+    """
+
+    try:
+        final_comparisons = final_metric_comparisons(package, ledger)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=409, detail="Report research inputs are invalid"
+        ) from exc
     return {
         "evidence_package_id": str(package.id),
         "run_id": str(package.run_id),
@@ -2205,6 +2230,7 @@ def _package_payload(package: EvidencePackage) -> dict:
         "selection_budget": package.selection_budget,
         "queries": _safe_external_payload(package.queries),
         "metric_comparisons": _safe_external_payload(package.metric_comparisons),
+        "final_metric_comparisons": _safe_external_payload(final_comparisons),
         "coverage": _safe_external_payload(package.coverage),
         "candidates_discovered": package.candidates_discovered,
         "candidates_screened": package.candidates_screened,

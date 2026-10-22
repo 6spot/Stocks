@@ -195,7 +195,10 @@ export function ReportReader({
   const evidenceGroupCount = coverage.success
     ? coverage.data.evidence_group_count ?? null
     : null;
-  const comparisons = data.evidence_package.metric_comparisons ?? [];
+  const comparisons =
+    data.evidence_package.final_metric_comparisons ??
+    data.evidence_package.metric_comparisons ??
+    [];
   const originById = new Map(
     originGroups.map((group) => [group.origin_id, group]),
   );

@@ -57,9 +57,12 @@ from stocks.providers import (
     load_embedding_targets,
     model_route_snapshot,
 )
+from stocks.research.evidence import compare_fact_values
 from stocks.research.service import (
     LEDGER_KIND_SELECTION,
     durable_evidence_ref,
+    final_metric_comparisons,
+    merged_research_fact_refs,
     merged_research_refs,
     parse_agent_output,
     render_report,
@@ -2021,7 +2024,28 @@ def _agent_evidence(
     for group in package.evidence_groups or ():
         if isinstance(group, dict) and isinstance(group.get("document_id"), str):
             groups_by_document.setdefault(group["document_id"], group)
+    # Every frozen Fact projection this Run may use, initial groups first and
+    # then the inputs it actually adopted. The complete projection travels with
+    # the readable Chunk that cites it; a supplemental Fact is never reduced to
+    # an id or dropped because its Document already had an initial group.
+    try:
+        frozen_facts = merged_research_fact_refs(package, run.research_inputs)
+    except ValueError as exc:
+        raise _StepFailure(
+            "EVIDENCE_PACKAGE_INVALID",
+            "Research input Facts are invalid",
+        ) from exc
+    # Flag the same-metric comparisons on the frozen projections themselves, so
+    # the Agent sees both published values and their comparison identity instead
+    # of an averaged or silently selected number.
+    compare_fact_values(frozen_facts)
+    fact_refs_by_document: dict[str, list[dict]] = {}
+    for fact in frozen_facts:
+        document_id = fact.get("document_id")
+        if isinstance(document_id, str):
+            fact_refs_by_document.setdefault(document_id, []).append(fact)
     evidence: list[dict] = []
+    fact_documents_emitted: set[str] = set()
     for key, item in allowed_refs.items():
         merged = merged_by_key.get(key, {})
         item["origin"] = merged.get("origin", "initial")
@@ -2030,15 +2054,36 @@ def _agent_evidence(
             item["timing"] = list(timing)
         group = groups_by_document.get(item["document_id"])
         if group is not None:
-            # Attach the structured Facts and the reported role to the readable
-            # Chunk the Agent already cites, so one evidence chain arrives once.
+            # Attach the reported role to the readable Chunk the Agent already
+            # cites, so one evidence chain arrives once.
             item["evidence_role"] = group.get("role")
             item["kinds"] = deepcopy(group.get("kinds", []))
             item["reasons"] = deepcopy(group.get("reasons", []))
-            item["fact_refs"] = deepcopy(group.get("fact_refs", []))
             item["chunk_ids"] = deepcopy(group.get("chunk_ids", []))
+        facts = fact_refs_by_document.get(item["document_id"])
+        # A Document is one citation unit: its Facts travel with its first
+        # readable Chunk instead of repeating on every Chunk of that Document.
+        if facts and item["document_id"] not in fact_documents_emitted:
+            fact_documents_emitted.add(item["document_id"])
+            item["fact_refs"] = deepcopy(facts)
         evidence.append(item)
     return allowed_refs, evidence
+
+
+def _final_coverage(
+    coverage: object, package: EvidencePackage, ledger: list | None
+) -> dict:
+    """The stored coverage, with comparisons over every frozen Fact of the Run.
+
+    The Agent input schema keeps one bounded coverage object, so the final
+    same-metric comparison travels inside it. The initial package's own
+    comparison list is never rewritten; this is the same view the Report and the
+    report API use.
+    """
+
+    payload = deepcopy(coverage) if isinstance(coverage, dict) else {}
+    payload["metric_comparisons"] = final_metric_comparisons(package, ledger)
+    return payload
 
 
 def _reload_run_and_package(
@@ -2395,7 +2440,9 @@ def _run_agent(
         "as_of": package.as_of.isoformat(),
         "evidence_package_id": str(package.id),
         "evidence": evidence,
-        "coverage": deepcopy(source_output.get("coverage")),
+        "coverage": _final_coverage(
+            source_output.get("coverage"), package, run.research_inputs
+        ),
         "truncated": source_output.get("truncated", False),
     }
     try:
@@ -2664,6 +2711,10 @@ def _analysis_and_report(
         coverage["gaps"] = list(
             dict.fromkeys([*(str(gap) for gap in recorded), *ledger_gaps])
         )
+    if isinstance(coverage, dict):
+        # Freeze the same final comparison the Agent and the Report used, so the
+        # saved Analysis explains an adopted Fact without rewriting the package.
+        coverage["metric_comparisons"] = final_metric_comparisons(package, ledger)
     analysis = Analysis(
         run_id=run.id,
         evidence_package_id=package.id,
@@ -2690,7 +2741,9 @@ def _analysis_and_report(
             scope=run.scope,
             as_of=package.as_of,
             analysis=analysis,
-            metric_comparisons=package.metric_comparisons,
+            # The frozen initial comparisons stay in the package; the report
+            # states the same final material the Agent was given.
+            metric_comparisons=final_metric_comparisons(package, ledger),
         ),
         created_at=created_at,
     )

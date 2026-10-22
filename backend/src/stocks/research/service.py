@@ -35,6 +35,7 @@ from stocks.research.evidence import (
     HISTORICAL_CONTEXT,
     NEW_INFORMATION,
     EvidenceCollector,
+    compare_fact_values,
     group_origins,
     mark_conflicting_facts,
     metric_comparisons,
@@ -839,6 +840,69 @@ def merged_research_refs(package: EvidencePackage, ledger: list | None) -> list[
                 }
             )
     return refs
+
+
+def merged_research_fact_refs(
+    package: EvidencePackage, ledger: list | None
+) -> list[dict]:
+    """Every frozen Fact projection this Run may use, in evidence order.
+
+    The initial Evidence Package's groups and each adopted Tool input keep their
+    own projections; this view only merges them by Fact id. A supplemental
+    Document that was also selected initially is therefore counted once, while a
+    new Fact on an already selected Document is still added. Values are read from
+    the frozen projections, never re-read from the current Fact rows.
+    """
+
+    facts: list[dict] = []
+    seen: set[str] = set()
+    groups = package.evidence_groups
+    if not isinstance(groups, list):
+        raise ValueError("Evidence Package evidence groups are invalid")
+    for group in groups:
+        if not isinstance(group, dict):
+            raise ValueError("Evidence Package evidence group is invalid")
+        _merge_fact_refs(group.get("fact_refs"), facts, seen, "Evidence Package")
+    if ledger is None:
+        return facts
+    if not isinstance(ledger, list):
+        raise ValueError("Research input ledger is invalid")
+    for record in ledger:
+        if not isinstance(record, dict):
+            raise ValueError("Research input ledger entry is invalid")
+        if record.get("kind") != LEDGER_KIND_INPUT:
+            continue
+        _merge_fact_refs(record.get("fact_refs"), facts, seen, "Research input")
+    return facts
+
+
+def _merge_fact_refs(
+    refs: object, facts: list[dict], seen: set[str], source: str
+) -> None:
+    if refs is None:
+        return
+    if not isinstance(refs, list):
+        raise ValueError(f"{source} fact references are invalid")
+    for fact in refs:
+        if not isinstance(fact, dict) or not isinstance(fact.get("fact_id"), str):
+            raise ValueError(f"{source} fact reference is invalid")
+        if fact["fact_id"] in seen:
+            continue
+        seen.add(fact["fact_id"])
+        facts.append(deepcopy(fact))
+
+
+def final_metric_comparisons(
+    package: EvidencePackage, ledger: list | None
+) -> list[dict]:
+    """Compare every frozen Fact of this Run without rewriting the package.
+
+    The initial ``metric_comparisons`` stay the immutable selection snapshot.
+    This view adds the adopted inputs' Facts, so the Agent input, the rendered
+    Report and the report API all describe the same final material.
+    """
+
+    return compare_fact_values(merged_research_fact_refs(package, ledger))
 
 
 def research_ledger_gaps(ledger: list | None) -> list[str]:
