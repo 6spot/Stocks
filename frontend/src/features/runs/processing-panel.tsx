@@ -25,8 +25,8 @@ function resultErrors(result: ProcessingRetryResult): string[] {
 }
 
 export function ProcessingPanel() {
-  const [stage, setStage] = useState("failed");
-  const [status, setStatus] = useState("");
+  const [stage, setStage] = useState("");
+  const [status, setStatus] = useState("failed");
   const [pendingDocument, setPendingDocument] = useState<string | null>(null);
   const [pendingStage, setPendingStage] = useState<string | null>(null);
   const [stopRequest, setStopRequest] = useState<{

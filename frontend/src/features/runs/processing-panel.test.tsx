@@ -65,6 +65,41 @@ describe("ProcessingPanel", () => {
     });
   });
 
+  it("requests failed stages without sending a stage filter", async () => {
+    render(<ProcessingPanel />);
+
+    await screen.findByRole("button", { name: "重试此阶段" });
+    expect(processingMock).toHaveBeenCalledWith(
+      { stage: null, status: "failed", limit: 100 },
+      expect.anything(),
+    );
+
+    const user = userEvent.setup();
+    await user.selectOptions(screen.getByLabelText("阶段"), "facts");
+    await waitFor(() =>
+      expect(processingMock).toHaveBeenLastCalledWith(
+        { stage: "facts", status: "failed", limit: 100 },
+        expect.anything(),
+      ),
+    );
+
+    await user.selectOptions(screen.getByLabelText("状态"), "pending");
+    await waitFor(() =>
+      expect(processingMock).toHaveBeenLastCalledWith(
+        { stage: "facts", status: "pending", limit: 100 },
+        expect.anything(),
+      ),
+    );
+
+    await user.selectOptions(screen.getByLabelText("阶段"), "");
+    await waitFor(() =>
+      expect(processingMock).toHaveBeenLastCalledWith(
+        { stage: null, status: "pending", limit: 100 },
+        expect.anything(),
+      ),
+    );
+  });
+
   it("shows accepted=false errors returned with HTTP 200", async () => {
     retryMock.mockResolvedValue({
       document_id: "d1",

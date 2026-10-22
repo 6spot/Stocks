@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { apiRequest } from "@/api/client";
+import { dashboardApi } from "@/api/dashboard";
 import { useSessionStore } from "@/auth/session-store";
 import { z } from "zod";
 
@@ -62,6 +63,34 @@ describe("apiRequest", () => {
 
     expect(useSessionStore.getState().status).toBe("anonymous");
     expect(useSessionStore.getState().session).toBeNull();
+  });
+
+  it("serializes the processing default as status only", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          items: [],
+          next_cursor: null,
+          has_more: false,
+          limit: 100,
+          available_stages: [],
+          counts: { by_status: {}, by_stage: {} },
+        }),
+        {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        },
+      ),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await dashboardApi.processing({ stage: null, status: "failed", limit: 100 });
+
+    const [url] = fetchMock.mock.calls[0] as [string, RequestInit];
+    const query = new URL(url, "https://app.test").searchParams;
+    expect(query.get("status")).toBe("failed");
+    expect(query.has("stage")).toBe(false);
+    expect(query.get("limit")).toBe("100");
   });
 
   it("keeps login failures anonymous when they return 401", async () => {
