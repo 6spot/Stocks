@@ -748,3 +748,41 @@ V2 任务列表已全部交付归档后，处理跨任务待验收登记中的 P
 ### Next Steps
 
 - 待 Owner 最终验收：真实模型 Provider 凭据与真实外网闭环（PA-1）、真实远程 MCP 与凭据、真实返回费用的端点、SEC/Fed 真实联系邮箱、真实转载与冲突样例、连续两份真实报告人工对照、真机移动/ARM 与公网发布
+
+
+## Session 24: F-01 保留 Fact 重处理历史并归档
+<!-- trellis-session: v=2 fp=97e9e3d6f30005ad -->
+
+**Date**: 2026-10-22
+**Task**: F-01 保留 Fact 重处理历史并归档
+**Branch**: `fix/fact-reprocess-history`
+
+### Summary
+
+移除 Fact 显式重处理的破坏性清空，补充历史报告与失败回滚回归，归档 F-01；运行验证因测试服务器认证不可用而未执行。
+
+### Main Changes
+
+- 移除文本抽取与 Source Mapper 重处理时的 clear_facts 及该函数，保留既有 (document_id, fact_key) 复用、事务和阶段所有权检查。
+- 补充相同/变化/遗漏候选、新位置追加、提交前失败回滚与历史报告重处理回归；同步 docs/data.md 和数据库规范。
+- 提交并推送 fix/fact-reprocess-history，归档 F-01；父任务 F-04 依赖保持未解除。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `8e6e459` | fix(facts): preserve historical facts across explicit reprocessing |
+| `ff0807b` | docs(trellis): reconcile roadmap records and record the five repair tasks |
+
+### Testing
+
+- [OK] 未执行：SSH 免交互认证返回 Permission denied (publickey,password)，exit 255；未回退本机测试。
+- [OK] 待远程补跑 tests/test_facts.py 与 test_report_comparison.py 的历史报告用例。
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- 开始 F-02：支持历史解析批次证据的 Run 重试。

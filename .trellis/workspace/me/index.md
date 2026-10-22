@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 23
+- **Total Sessions**: 24
 - **Last Active**: 2026-10-22
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~750 | Active |
+| `journal-1.md` | ~788 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 24 | 2026-10-22 | F-01 保留 Fact 重处理历史并归档 | `8e6e459`, `ff0807b` | `fix/fact-reprocess-history` |
 | 23 | 2026-10-22 | 修复解析器容器文本逐字符换行并整理待验收清单 | `fbc6c4a`, `6f4ffb7`, `79875f1`, `46e200e` | `main` |
 | 22 | 2026-10-22 | V2-05 覆盖费用与异常分析及 V2 验收 | `ba03897` | `main` |
 | 21 | 2026-10-22 | V2-04 基于原始证据的历史报告比较 | `511b677` | `main` |
