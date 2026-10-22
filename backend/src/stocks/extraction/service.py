@@ -28,7 +28,6 @@ from stocks.changes import record_change
 from stocks.decision import decision_client, load_decision_route
 from stocks.facts import (
     FactInput,
-    clear_facts,
     list_document_facts,
     persist_facts,
 )
@@ -552,10 +551,6 @@ def extract_document_facts(
         # Fence before writing derived rows: a claim superseded by a newer parse
         # batch must be refused, not silently committed.
         assert_stage_owned(session, claim)
-        if claim.reprocess_requested:
-            # An explicit Owner reprocess replaces this version's previous result
-            # instead of merging into it, so a removed fact does not linger.
-            clear_facts(session, locked.id)
     result = persist_facts(
         session,
         locked.id,
@@ -873,8 +868,6 @@ def map_document_facts(
 
     if claim is not None:
         assert_stage_owned(session, claim)
-        if claim.reprocess_requested:
-            clear_facts(session, locked.id)
     fingerprint = hashlib.sha256(
         f"{MAPPER_PROCESSOR_VERSION}:{mapper.id}".encode("utf-8")
     ).hexdigest()

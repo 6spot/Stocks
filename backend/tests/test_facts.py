@@ -10,6 +10,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+from copy import deepcopy
 from datetime import UTC, datetime
 from uuid import uuid4
 
@@ -18,6 +19,7 @@ import pytest
 from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session
 
+from stocks.changes import current_watermark
 from stocks.collection.config import load_sources, SourceConfig
 from stocks.extraction.service import (
     EXTRACTOR_PROCESSOR_VERSION,
@@ -31,7 +33,6 @@ from stocks.extraction.service import (
 from stocks.facts import (
     FactFilters,
     FactInput,
-    clear_facts,
     fact_key,
     fact_to_dict,
     list_document_facts,
@@ -41,6 +42,7 @@ from stocks.facts import (
 )
 from stocks.models import (
     Base,
+    ChangeRecord,
     Document,
     DocumentProcessingState,
     Fact,
@@ -1052,25 +1054,26 @@ def test_fact_query_filters_by_source_symbol_and_metric(engine):
     assert all(item["evidence_ref"]["kind"] == "json_pointer" for item in payload)
 
 
-def test_explicit_reprocess_replaces_this_versions_facts(engine):
-    """An Owner reprocess must be able to remove a Fact the model no longer states."""
+@pytest.mark.parametrize("reprocess_mode", ["same", "changed", "omitted", "invalid"])
+def test_explicit_reprocess_preserves_this_versions_facts(engine, reprocess_mode):
+    """Previously citable Facts retain identity, values and provenance."""
 
     config = make_config()
     document = parsed(engine, config)
     classified(engine, document, should_extract=True)
     now = datetime(2026, 10, 21, 16, tzinfo=UTC)
+    original_candidate = {
+        "fact_type": "financial_metric",
+        "statement": "First statement.",
+        "value": 1.0,
+        "unit": "unit",
+    }
+    revised_candidate = dict(original_candidate)
+    if reprocess_mode == "changed":
+        revised_candidate.update(statement="Different candidate.", value=99.0)
     answers = [
-        {
-            "facts": [
-                {
-                    "fact_type": "financial_metric",
-                    "statement": "First statement.",
-                    "value": 1.0,
-                    "unit": "unit",
-                }
-            ]
-        },
-        {"facts": []},
+        {"facts": [original_candidate]},
+        {"facts": [] if reprocess_mode == "omitted" else [revised_candidate]},
     ]
 
     def handler(request: httpx.Request) -> httpx.Response:
@@ -1079,38 +1082,61 @@ def test_explicit_reprocess_replaces_this_versions_facts(engine):
         )["chunks"]
         payload = answers.pop(0)
         for fact in payload["facts"]:
-            fact["chunk_id"] = chunks[0]["chunk_id"]
+            fact["chunk_id"] = (
+                str(uuid4())
+                if reprocess_mode == "invalid" and not answers
+                else chunks[0]["chunk_id"]
+            )
         return chat_response(payload)
 
     route = make_route()
     client = ModelClient(route.targets, httpx.MockTransport(handler))
+    registry = StageRegistry(facts=FactsStageProcessor(route=route, client=client))
     with Session(engine) as session:
         claim = claim_stage(session, STAGE_FACTS, owner_token="f1", now=now)
-        execute_claimed_stage(
-            session,
-            config,
-            StageRegistry(facts=FactsStageProcessor(route=route, client=client)),
-            claim,
-            clock=lambda: now,
+        execution = execute_claimed_stage(
+            session, config, registry, claim, clock=lambda: now
         )
+        assert execution.status == "completed"
     with Session(engine) as session:
-        assert len(list_document_facts(session, document.id)) == 1
+        original = [
+            fact_to_dict(row) for row in list_document_facts(session, document.id)
+        ]
+        assert len(original) == 1
+        changes = set(
+            session.scalars(
+                select(ChangeRecord.id).where(
+                    ChangeRecord.document_id == document.id,
+                    ChangeRecord.kind == "fact_extracted",
+                )
+            )
+        )
+        assert len(changes) == 1
 
     later = now.replace(hour=17)
     with Session(engine) as session:
         request_reprocess(session, document.id, STAGE_FACTS, now=later)
     with Session(engine) as session:
         claim = claim_stage(session, STAGE_FACTS, owner_token="f2", now=later)
-        execute_claimed_stage(
-            session,
-            config,
-            StageRegistry(facts=FactsStageProcessor(route=route, client=client)),
-            claim,
-            clock=lambda: later,
+        assert claim is not None and claim.reprocess_requested
+        execution = execute_claimed_stage(
+            session, config, registry, claim, clock=lambda: later
         )
+        expected_status = "failed" if reprocess_mode == "invalid" else "completed"
+        assert execution.status == expected_status
 
     with Session(engine) as session:
-        assert list_document_facts(session, document.id) == []
+        assert [
+            fact_to_dict(row) for row in list_document_facts(session, document.id)
+        ] == original
+        assert set(
+            session.scalars(
+                select(ChangeRecord.id).where(
+                    ChangeRecord.document_id == document.id,
+                    ChangeRecord.kind == "fact_extracted",
+                )
+            )
+        ) == changes
 
 
 def test_stale_extraction_owner_cannot_write_facts(engine):
@@ -1218,44 +1244,106 @@ agents:
     assert processor.route is None
 
 
-def test_clear_facts_only_touches_its_own_document(engine):
+@pytest.mark.parametrize(
+    "reprocess_mode", ["same", "omitted", "new_field", "changed_unit", "commit_failure"]
+)
+def test_mapper_reprocess_preserves_facts_and_only_records_new_identities(
+    engine, monkeypatch, reprocess_mode
+):
     config = make_config()
-    first = ingest(engine, config, payload=CPI_JSON, content_type="application/json")
-    second = ingest(
-        engine,
-        config,
-        payload=CPI_JSON,
-        content_type="application/json",
-        dedupe_key="other",
-    )
+    document = ingest(engine, config, payload=CPI_JSON, content_type="application/json")
     now = datetime(2026, 10, 21, 19, tzinfo=UTC)
-    fact = FactInput(
-        fact_type="macro_indicator",
-        origin_method="source_mapping",
-        evidence_ref={"kind": "json_pointer", "pointer": "/v"},
-        value=1.0,
-        unit="percent",
-    )
-    with Session(engine) as session:
-        for document in (first, second):
-            persist_facts(
+
+    def process(mapper_config, owner, instant, *, expected_status="completed"):
+        with Session(engine) as session:
+            claim = claim_stage(session, STAGE_FACTS, owner_token=owner, now=instant)
+            assert claim is not None
+            execution = execute_claimed_stage(
                 session,
-                document.id,
-                (fact,),
-                processor_version="v1",
-                config_fingerprint="f" * 64,
-                created_at=now,
+                config,
+                StageRegistry(
+                    facts=FactsStageProcessor(
+                        mapper=parse_mapper(mapper_config),
+                        read_bytes=lambda config, item: CPI_JSON,
+                    )
+                ),
+                claim,
+                clock=lambda: instant,
             )
-        session.commit()
+            assert execution.status == expected_status
+
+    process(CPI_MAPPER_CONFIG, "mapper-first", now)
+    with Session(engine) as session:
+        original = {
+            row.id: fact_to_dict(row)
+            for row in list_document_facts(session, document.id)
+        }
+        assert len(original) == 2
+        changes = set(
+            session.scalars(
+                select(ChangeRecord.id).where(
+                    ChangeRecord.document_id == document.id,
+                    ChangeRecord.kind == "fact_mapped",
+                )
+            )
+        )
+        assert len(changes) == 2
+        watermark = current_watermark(session)
+
+    revised_config = deepcopy(CPI_MAPPER_CONFIG)
+    if reprocess_mode == "omitted":
+        revised_config["fields"].pop()
+    elif reprocess_mode in {"new_field", "commit_failure"}:
+        revised_config["fields"].append(
+            {
+                "kind": "text",
+                "pointer": "/series/observations/0/units",
+                "fact_type": "unit_label",
+            }
+        )
+    elif reprocess_mode == "changed_unit":
+        revised_config["fields"][0]["unit"] = "basis points"
+    later = now.replace(hour=20)
+    with Session(engine) as session:
+        request_reprocess(session, document.id, STAGE_FACTS, now=later)
+    if reprocess_mode == "commit_failure":
+
+        def fail_completion(*args, **kwargs):
+            raise RuntimeError("Stage completion failed after writing Fact changes")
+
+        monkeypatch.setattr(
+            "stocks.extraction.service.apply_stage_outcome", fail_completion
+        )
+    process(
+        revised_config,
+        "mapper-reprocess",
+        later,
+        expected_status="failed" if reprocess_mode == "commit_failure" else "completed",
+    )
 
     with Session(engine) as session:
-        removed = clear_facts(session, first.id)
-        session.commit()
-        assert removed == 1
-
-    with Session(engine) as session:
-        assert list_document_facts(session, first.id) == []
-        assert len(list_document_facts(session, second.id)) == 1
+        rows = {
+            row.id: fact_to_dict(row)
+            for row in list_document_facts(session, document.id)
+        }
+        assert {fact_id: rows[fact_id] for fact_id in original} == original
+        new_ids = set(rows) - set(original)
+        assert len(new_ids) == (1 if reprocess_mode == "new_field" else 0)
+        new_changes = list(
+            session.scalars(
+                select(ChangeRecord).where(
+                    ChangeRecord.document_id == document.id,
+                    ChangeRecord.kind == "fact_mapped",
+                    ChangeRecord.id.not_in(changes),
+                )
+            )
+        )
+        assert {change.fact_id for change in new_changes} == new_ids
+        assert len(new_changes) == len(new_ids)
+        assert current_watermark(session) == watermark + len(new_ids)
+        state = get_stage_state(session, document.id, STAGE_FACTS)
+        assert state is not None
+        assert state.reprocess_requested == (reprocess_mode == "commit_failure")
 
 
 def test_fact_api_reads_by_document_and_filter(engine, monkeypatch):

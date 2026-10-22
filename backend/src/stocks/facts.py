@@ -21,7 +21,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from uuid import UUID
 
-from sqlalchemy import and_, delete, or_, select
+from sqlalchemy import and_, or_, select
 from sqlalchemy.orm import Session
 
 from stocks.models import FACT_ORIGIN_METHODS, Document, Fact
@@ -131,10 +131,10 @@ def persist_facts(
     """Write this attempt's Facts for one Document version without committing.
 
     Called inside the caller's transaction so a committed Fact never exists
-    without its stage progress. ``replace`` semantics apply per Document version:
-    the caller decides whether to clear a previous extraction by passing
-    ``replace_all=True`` (an explicit reprocess), and otherwise existing rows with
-    the same key are reused instead of duplicated.
+    without its stage progress. Retries and explicit reprocessing reuse existing
+    identities without changing their IDs, content or provenance, even when this
+    attempt omits them or proposes different values. Only new identities append
+    rows; revised source content belongs to a new Document version.
     """
 
     for fact in facts:
@@ -193,21 +193,6 @@ def persist_facts(
         total=len(facts),
         created_ids=tuple(created_ids),
     )
-
-
-def clear_facts(session: Session, document_id: UUID) -> int:
-    """Remove this Document version's Facts for an explicit replacement.
-
-    Only the caller that is about to write a complete new result does this, and
-    only for its own Document version. Other versions keep their own Facts, so a
-    report citing an older version stays reproducible. Without committing, the
-    caller keeps the delete and the new rows in one transaction.
-    """
-
-    result = session.execute(
-        delete(Fact).where(Fact.document_id == document_id)
-    )
-    return int(result.rowcount or 0)
 
 
 @dataclass(frozen=True)

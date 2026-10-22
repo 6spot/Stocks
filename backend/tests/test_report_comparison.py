@@ -10,6 +10,7 @@ import os
 from copy import deepcopy
 from datetime import UTC, datetime, timedelta
 from hashlib import sha256
+from types import SimpleNamespace
 from uuid import uuid4
 
 import pytest
@@ -19,16 +20,19 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from stocks.api import app
 from stocks.auth import SESSION_COOKIE
+from stocks.extraction.service import extract_document_facts
 from stocks.facts import FactInput, persist_facts
 from stocks.models import (
     Analysis,
     Base,
+    Document,
     EvidencePackage,
     Report,
     Source,
     TaskDefinition,
     TaskRun,
 )
+from stocks.processing.stages import STAGE_FACTS, claim_stage, request_reprocess
 from stocks.repository import (
     DocumentInput,
     ParseChunkInput,
@@ -520,6 +524,89 @@ def test_comparison_orders_sides_and_reports_each_difference(
         original = client.get(f"/api/documents/{saved['document_id']}/original")
         assert original.status_code == 200
         assert original.content == payload
+
+
+def test_reprocessing_keeps_a_report_fact_readable_and_its_comparison_unchanged(
+    engine, client, snapshot_store, monkeypatch
+):
+    """An old report retains its cited Fact even if extraction proposes a new value."""
+
+    earlier, later, first, _second = build_two_reports(
+        engine, snapshot_store, monkeypatch
+    )
+    comparison_path = f"/api/reports/{later['report_id']}/comparison"
+    params = {"other_report_id": str(earlier["report_id"])}
+    response = client.get(comparison_path, params=params)
+    assert response.status_code == 200
+    original_comparison = response.json()
+    old_fact = original_comparison["facts"]["metric_changes"]["items"][0]["earlier"][0]
+    fact_path = f"/api/facts/{old_fact['fact_id']}"
+    response = client.get(fact_path)
+    assert response.status_code == 200
+    original_fact = response.json()["fact"]
+    with Session(engine) as session:
+        analysis = session.get(Analysis, earlier["analysis_id"])
+        original_refs = deepcopy(analysis.evidence_refs)
+        assert original_refs
+        package = session.get(EvidencePackage, earlier["package_id"])
+        original_groups = deepcopy(package.evidence_groups)
+
+    candidate = FactInput(
+        fact_type=original_fact["fact_type"],
+        origin_method=original_fact["origin_method"],
+        evidence_ref=deepcopy(original_fact["evidence_ref"]),
+        metric_id=original_fact["metric_id"],
+        subject_name=original_fact["subject_name"],
+        symbol=original_fact["symbol"],
+        statement="A different extraction candidate.",
+        value=99.0,
+        unit="percent",
+    )
+    route = SimpleNamespace(
+        protocol="openai_compatible",
+        routing=SimpleNamespace(primary="test", fallbacks=()),
+    )
+    now = LATER_CREATED + timedelta(hours=1)
+    with Session(engine) as session:
+        request_reprocess(session, first["document_id"], STAGE_FACTS, now=now)
+    with Session(engine) as session:
+        claim = claim_stage(
+            session,
+            STAGE_FACTS,
+            owner_token="historical-fact",
+            now=now,
+            document_ids=[first["document_id"]],
+        )
+        assert claim is not None and claim.reprocess_requested
+        summary = extract_document_facts(
+            session,
+            make_config(),
+            session.get(Document, first["document_id"]),
+            route=route,
+            client=None,
+            claim=claim,
+            clock=lambda: now,
+            extract=lambda *_: ((candidate,), {"model_alias": "test"}),
+        )
+        assert summary.status == "completed"
+        assert summary.created == 0
+        assert summary.reused == 1
+
+    response = client.get(fact_path)
+    assert response.status_code == 200
+    assert response.json()["fact"] == original_fact
+    response = client.get(comparison_path, params=params)
+    assert response.status_code == 200
+    assert response.json() == original_comparison
+    assert client.get(f"/api/reports/{earlier['report_id']}").status_code == 200
+    original = client.get(f"/api/documents/{first['document_id']}/original")
+    assert original.status_code == 200
+    assert original.content == ARTICLES[1]
+    with Session(engine) as session:
+        analysis = session.get(Analysis, earlier["analysis_id"])
+        package = session.get(EvidencePackage, earlier["package_id"])
+        assert analysis.evidence_refs == original_refs
+        assert package.evidence_groups == original_groups
 
 
 def test_comparison_explains_a_metric_revision_as_a_source_change(

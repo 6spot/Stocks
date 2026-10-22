@@ -56,8 +56,9 @@ fact_key = hashlib.sha256(json.dumps(payload, sort_keys=True).encode()).hexdiges
   仍然有效的前提。
 - 语义上不可比较的值要有表级约束兜底，例如 `value IS NULL OR unit IS NOT NULL`：未知
   单位宁可不存数值，也不能存成看起来可比较的数字。
-- 只有显式重处理（`reprocess_requested`）才在同一版本内先删除再重写；普通重试依赖唯一
-  约束复用，不删除已有结果。
+- 普通重试与显式 Fact 重处理都通过 `persist_facts()` 复用同一 `(document_id, fact_key)`
+  的已有行；不得删除或覆盖历史 Fact，新身份可以追加。完整保留语义见
+  [数据设计](../../../docs/data.md) 的 V1-04 Fact 契约。
 
 ## 追加型台账
 
