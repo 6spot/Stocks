@@ -15,18 +15,20 @@ from uuid import uuid4
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session, sessionmaker
 
 from stocks.api import app
 from stocks.auth import SESSION_COOKIE
 from stocks.extraction.service import extract_document_facts
 from stocks.facts import FactInput, persist_facts
+from stocks.research.evidence import fact_selection_ref
 from stocks.models import (
     Analysis,
     Base,
     Document,
     EvidencePackage,
+    Fact,
     Report,
     Source,
     TaskDefinition,
@@ -270,6 +272,8 @@ def persist_report(
     unexamined_count: int | None,
     status: str = "succeeded",
     scope: dict | None = None,
+    ledger: list[dict] | None = None,
+    cited_inputs: list[dict] | None = None,
 ) -> dict:
     """Save one Run with its Package, Analysis and Report."""
 
@@ -294,6 +298,13 @@ def persist_report(
     # The stored snapshot keeps plain identifiers, so the same helper feeds the
     # Package, the Analysis and the comparison without leaking ORM objects.
     chunk_ref = {**selected_ref(selected), "fact_ids": list(fact_ids)}
+    # Freeze each cited Fact as the report knew it, like the real Evidence
+    # Package does. A comparison must never read today's Fact row instead.
+    frozen_facts = []
+    for fact_id in fact_ids:
+        row = session.get(Fact, UUID(fact_id))
+        assert row is not None
+        frozen_facts.append(fact_selection_ref(row))
     coverage = {
         "gaps": list(gaps),
         "selected_count": 1,
@@ -315,7 +326,7 @@ def persist_report(
             {
                 "document_id": chunk_ref["document_id"],
                 "chunk_ids": [chunk_ref["chunk_id"]],
-                "fact_refs": [{"fact_id": fact_id} for fact_id in fact_ids],
+                "fact_refs": deepcopy(frozen_facts),
                 "origin_id": "origin-1",
             }
         ],
@@ -340,9 +351,17 @@ def persist_report(
             {
                 "chunk_id": chunk_ref["chunk_id"],
                 "document_id": chunk_ref["document_id"],
-            }
+            },
+            *[
+                {
+                    "chunk_id": chunk["chunk_id"],
+                    "document_id": record["document_id"],
+                }
+                for record in (cited_inputs or [])
+                for chunk in record.get("chunks", [])
+            ],
         ],
-        research_inputs=[],
+        research_inputs=deepcopy(ledger or []),
         coverage=deepcopy(coverage),
         created_at=created_at,
     )
@@ -607,6 +626,261 @@ def test_reprocessing_keeps_a_report_fact_readable_and_its_comparison_unchanged(
         package = session.get(EvidencePackage, earlier["package_id"])
         assert analysis.evidence_refs == original_refs
         assert package.evidence_groups == original_groups
+
+
+def test_comparison_counts_an_adopted_supplement_only_when_cited(
+    engine, client, snapshot_store, monkeypatch
+):
+    """AC-2/AC-3: adopted evidence enters by citation, once, from its frozen value."""
+
+    config = make_config()
+    _objects, store, read = snapshot_store
+    monkeypatch.setattr("stocks.repository.read_snapshot", read)
+    with Session(engine) as session:
+        persist_source(session)
+        persist_task(session)
+        first = persist_version(
+            session,
+            config,
+            store,
+            collected_at=EARLIER_CREATED,
+            payload=ARTICLES[1],
+            text=CHUNKS[1],
+        )
+        first_fact = persist_fact(
+            session, first, value=2.4, available_at=EARLIER_CREATED
+        )
+        supplemental = persist_version(
+            session,
+            config,
+            store,
+            collected_at=LATER_CREATED,
+            payload=ARTICLES[2],
+            text=CHUNKS[2],
+        )
+        supplemental_fact = persist_fact(
+            session, supplemental, value=2.1, available_at=LATER_CREATED
+        )
+        with Session(engine) as session:
+            fact_row = session.get(Fact, UUID(supplemental_fact["fact_id"]))
+            frozen = fact_selection_ref(fact_row)
+        ledger = [
+            {
+                "kind": "input",
+                "input_id": "input-1",
+                "tool_id": "research_search",
+                "purpose": "Fetch the revision.",
+                "role": "external_supplement",
+                "document_id": str(supplemental["document_id"]),
+                "source_id": supplemental["source_id"],
+                "document_version": supplemental["version"],
+                "parse_batch_id": str(supplemental["parse_batch_id"]),
+                "title": supplemental["title"],
+                "url": "https://www.sec.gov/news/release-1",
+                "chunks": [
+                    {
+                        "chunk_id": str(supplemental["chunk_id"]),
+                        "position": supplemental["position"],
+                        "chunk_ids": [str(supplemental["chunk_id"])],
+                        "fact_ids": [str(fact_row.id)],
+                    }
+                ],
+                "fact_refs": [frozen],
+                "timing": ["collected_after_as_of"],
+                "recorded_at": LATER_CREATED.isoformat(),
+            }
+        ]
+        earlier = persist_report(
+            session,
+            created_at=EARLIER_CREATED,
+            as_of=EARLIER_CREATED,
+            selected=first,
+            fact_ids=[first_fact["fact_id"]],
+            findings=[finding("fact", "Inflation eased to 2.4%.", "Single source.")],
+            open_questions=[],
+            gaps=[],
+            unexamined_count=None,
+        )
+        cited = persist_report(
+            session,
+            created_at=LATER_CREATED,
+            as_of=LATER_CREATED,
+            selected=first,
+            fact_ids=[first_fact["fact_id"]],
+            findings=[
+                finding("fact", "Inflation eased to 2.4%.", "Single source."),
+                finding("fact", "A revision reported 2.1%.", "Adopted input."),
+            ],
+            open_questions=[],
+            gaps=[],
+            unexamined_count=None,
+            ledger=ledger,
+            cited_inputs=ledger,
+        )
+        # The adopted supplement is registered but never cited.
+        uncited = persist_report(
+            session,
+            created_at=LATER_CREATED + timedelta(hours=1),
+            as_of=LATER_CREATED,
+            selected=first,
+            fact_ids=[first_fact["fact_id"]],
+            findings=[finding("fact", "Inflation eased to 2.4%.", "Single source.")],
+            open_questions=[],
+            gaps=[],
+            unexamined_count=None,
+            ledger=ledger,
+        )
+
+    def comparison(newer):
+        return client.get(
+            f"/api/reports/{newer['report_id']}/comparison",
+            params={"other_report_id": str(earlier["report_id"])},
+        ).json()
+
+    data = comparison(cited)
+    appeared = data["facts"]["appeared"]
+    assert appeared["count"] == 1
+    assert appeared["items"][0]["value"] == 2.1
+    assert appeared["items"][0]["document_id"] == str(
+        supplemental["document_id"]
+    )
+    # The adopted Document is cited only through the supplemental Chunk; the
+    # initial Chunk of the other version stays the same material for both sides.
+    assert data["documents"]["appeared"]["count"] == 1
+    assert data["documents"]["appeared"]["items"][0]["document_id"] == str(
+        supplemental["document_id"]
+    )
+    # The same initial Fact cited by both reports is compared once.
+    assert data["facts"]["disappeared"]["count"] == 0
+    # The later report also cites a second value for the same metric, which is a
+    # real revision in what the report relied on, not an averaged result.
+    assert data["facts"]["metric_changes"]["count"] == 1
+
+    uncited_data = comparison(uncited)
+    assert uncited_data["facts"]["appeared"]["count"] == 0
+    assert uncited_data["documents"]["appeared"]["count"] == 0
+
+
+def test_comparison_ignores_material_a_report_did_not_cite(
+    engine, client, snapshot_store, monkeypatch
+):
+    """A wider Evidence Package is not a change in what the report relied on."""
+
+    config = make_config()
+    _objects, store, read = snapshot_store
+    monkeypatch.setattr("stocks.repository.read_snapshot", read)
+    with Session(engine) as session:
+        persist_source(session)
+        persist_task(session)
+        first = persist_version(
+            session,
+            config,
+            store,
+            collected_at=EARLIER_CREATED,
+            payload=ARTICLES[1],
+            text=CHUNKS[1],
+        )
+        first_fact = persist_fact(
+            session, first, value=2.4, available_at=EARLIER_CREATED
+        )
+        uncited = persist_version(
+            session,
+            config,
+            store,
+            collected_at=LATER_CREATED,
+            payload=ARTICLES[2],
+            text=CHUNKS[2],
+        )
+        uncited_fact = persist_fact(
+            session, uncited, value=2.1, available_at=LATER_CREATED
+        )
+        earlier = persist_report(
+            session,
+            created_at=EARLIER_CREATED,
+            as_of=EARLIER_CREATED,
+            selected=first,
+            fact_ids=[first_fact["fact_id"]],
+            findings=[finding("fact", "Inflation eased to 2.4%.", "Single source.")],
+            open_questions=[],
+            gaps=[],
+            unexamined_count=None,
+        )
+        later = persist_report(
+            session,
+            created_at=LATER_CREATED,
+            as_of=LATER_CREATED,
+            selected=first,
+            fact_ids=[first_fact["fact_id"]],
+            findings=[finding("fact", "Inflation eased to 2.4%.", "Single source.")],
+            open_questions=[],
+            gaps=[],
+            unexamined_count=None,
+        )
+        # The later package selected a second Document that its Analysis never
+        # cited. Its presence alone must not look like a report change.
+        package = session.get(EvidencePackage, later["package_id"])
+        assert package is not None
+        selected = deepcopy(package.selected_chunks)
+        selected.append(
+            {
+                **selected_ref(uncited),
+                "fact_ids": [uncited_fact["fact_id"]],
+            }
+        )
+        package.selected_chunks = selected
+        groups = deepcopy(package.evidence_groups)
+        groups.append(
+            {
+                "document_id": str(uncited["document_id"]),
+                "chunk_ids": [str(uncited["chunk_id"])],
+                "fact_refs": [],
+                "role": "new_information",
+            }
+        )
+        package.evidence_groups = groups
+        session.commit()
+
+    data = client.get(
+        f"/api/reports/{later['report_id']}/comparison",
+        params={"other_report_id": str(earlier["report_id"])},
+    ).json()
+
+    assert data["documents"]["appeared"]["count"] == 0
+    assert data["facts"]["appeared"]["count"] == 0
+    assert data["facts"]["disappeared"]["count"] == 0
+    assert data["facts"]["metric_changes"]["count"] == 0
+    assert str(uncited["document_id"]) not in str(data["documents"])
+    assert str(uncited_fact["fact_id"]) not in str(data["facts"])
+    assert {item["document_id"] for item in data["documents"]["persisting"]["items"]} == {
+        str(first["document_id"])
+    }
+
+
+def test_comparison_reads_frozen_fact_values_instead_of_current_rows(
+    engine, client, snapshot_store, monkeypatch
+):
+    """A later source change must not rewrite the value an old report cited."""
+
+    earlier, later, first, _second = build_two_reports(
+        engine, snapshot_store, monkeypatch
+    )
+    comparison_path = f"/api/reports/{later['report_id']}/comparison"
+    params = {"other_report_id": str(earlier["report_id"])}
+    before = client.get(comparison_path, params=params).json()
+
+    # A new Fact on the same cited Document, plus a changed stored value, is a
+    # current-data change. Neither may be read into the saved comparison.
+    with Session(engine) as session:
+        fact = session.scalar(
+            select(Fact).where(Fact.document_id == first["document_id"])
+        )
+        assert fact is not None
+        fact.value = 9.9
+        session.commit()
+
+    after = client.get(comparison_path, params=params).json()
+    assert after == before
+    assert after["facts"]["metric_changes"]["items"][0]["earlier"][0]["value"] == 2.4
 
 
 def test_comparison_explains_a_metric_revision_as_a_source_change(

@@ -66,7 +66,6 @@ from stocks.processing.processors import build_stage_registry
 from stocks.processing.parser import HTML_CONTENT_TYPES, TEXT_CONTENT_TYPES
 from stocks.processing.runner import describe_stages, run_stages_for_documents
 from stocks.research.comparison import compare_report_sides
-from stocks.research.evidence import fact_selection_ref
 from stocks.research.service import (
     final_metric_comparisons,
     merged_research_fact_refs,
@@ -1738,7 +1737,11 @@ def _report_side(session: Session, config: Settings, report_id: UUID) -> dict:
     run = session.get(TaskRun, report.run_id)
     ledger = _research_ledger(analysis, run)
     refs = _report_research_refs(analysis, package, run)
-    entries, _states = _resolve_evidence(session, config, refs)
+    # A comparison states what each report actually cited, not everything its
+    # Evidence Package happened to select or adopt. The saved Analysis refs are
+    # the authority; the frozen input only supplies their readable identity.
+    cited_refs = _cited_research_refs(analysis, refs)
+    entries, _states = _resolve_evidence(session, config, cited_refs)
     return {
         "report": {
             "report_id": str(report.id),
@@ -1768,8 +1771,8 @@ def _report_side(session: Session, config: Settings, report_id: UUID) -> dict:
             "unexamined_count": package.unexamined_count,
             "retrieval_truncated": package.retrieval_truncated,
         },
-        "documents": _report_document_refs(entries, refs),
-        "facts": _report_fact_snapshots(session, package, refs, ledger),
+        "documents": _report_document_refs(entries, cited_refs),
+        "facts": _cited_fact_snapshots(package, ledger, cited_refs),
         "research_input_count": sum(
             1
             for item in ledger
@@ -1817,51 +1820,6 @@ def _report_document_refs(entries: list[dict], refs: list[dict]) -> list[dict]:
             if fact_id not in item["fact_ids"]:
                 item["fact_ids"].append(fact_id)
     return [documents[key] for key in order]
-
-
-def _report_fact_snapshots(
-    session: Session,
-    package: EvidencePackage,
-    refs: list[dict],
-    ledger: list | None = None,
-) -> list[dict]:
-    """Every Fact the report actually used, read from its immutable rows."""
-
-    fact_ids: list[UUID] = []
-    for reference in refs:
-        for value in reference.get("fact_ids") or []:
-            fact_id = _parse_id(value)
-            if fact_id is not None and fact_id not in fact_ids:
-                fact_ids.append(fact_id)
-    try:
-        frozen = merged_research_fact_refs(package, ledger)
-    except ValueError as exc:
-        raise HTTPException(
-            status_code=409, detail="Report research inputs are invalid"
-        ) from exc
-    # A Fact-only group has no readable Chunk, so its Facts would otherwise never
-    # appear. Adopted Tool inputs contribute their own frozen Facts here too.
-    for reference in frozen:
-        fact_id = _parse_id(reference.get("fact_id"))
-        if fact_id is not None and fact_id not in fact_ids:
-            fact_ids.append(fact_id)
-    if not fact_ids:
-        return []
-    rows = session.scalars(select(Fact).where(Fact.id.in_(fact_ids))).all()
-    snapshots: list[dict] = []
-    for fact in sorted(rows, key=lambda row: str(row.id)):
-        projected = fact_selection_ref(fact)
-        attributes = projected.get("attributes")
-        currency = (
-            attributes.get("currency") if isinstance(attributes, dict) else None
-        )
-        snapshots.append(
-            {
-                **projected,
-                "currency": currency if isinstance(currency, str) else None,
-            }
-        )
-    return snapshots
 
 
 @app.get("/api/reports/{report_id}/evidence/{chunk_id}")
@@ -2239,6 +2197,102 @@ def _package_payload(
         "retrieval_truncated": package.retrieval_truncated,
         "created_at": package.created_at,
     }
+
+
+def _cited_research_refs(
+    analysis: Analysis, refs: list[dict]
+) -> list[dict]:
+    """The frozen input references this Analysis actually cited, once each.
+
+    Top-level references and every finding's references form one set keyed by
+    Chunk and Document, so a citation repeated across findings is compared once.
+    A saved reference that is not part of this Run's frozen input is a corrupt
+    snapshot, not extra evidence: it is refused rather than silently resolved.
+    """
+
+    cited_keys = _cited_keys(analysis)
+    by_key = {
+        (str(item.get("chunk_id")), str(item.get("document_id"))): item
+        for item in refs
+        if isinstance(item, dict)
+    }
+    missing = cited_keys - set(by_key)
+    if missing:
+        raise HTTPException(
+            status_code=409,
+            detail="Report cites evidence outside its frozen inputs",
+        )
+    # Follow the frozen input order so a repeated request produces the same
+    # comparison order instead of one derived from set iteration.
+    return [
+        item
+        for item in refs
+        if isinstance(item, dict)
+        and (str(item.get("chunk_id")), str(item.get("document_id")))
+        in cited_keys
+    ]
+
+
+def _cited_fact_snapshots(
+    package: EvidencePackage,
+    ledger: list | None,
+    cited_refs: list[dict],
+) -> list[dict]:
+    """The Facts attached to the Chunks this Analysis actually cited.
+
+    A citation names a Chunk; the frozen input for that Chunk names the Fact IDs
+    it carried. Only those Facts are compared, so a wider selection or a new Fact
+    on the same Document never enters the comparison. Values come from the frozen
+    projection, so a later reprocess cannot rewrite what the report cited.
+    """
+
+    try:
+        frozen = merged_research_fact_refs(package, ledger)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=409, detail="Report research inputs are invalid"
+        ) from exc
+    cited_fact_ids: list[str] = []
+    for reference in cited_refs:
+        for value in reference.get("fact_ids") or []:
+            fact_id = str(value)
+            if fact_id not in cited_fact_ids:
+                cited_fact_ids.append(fact_id)
+    if not cited_fact_ids:
+        return []
+    by_id = {str(fact.get("fact_id")): fact for fact in frozen}
+    snapshots: list[dict] = []
+    for fact_id in cited_fact_ids:
+        fact = by_id.get(fact_id)
+        if fact is None:
+            # The citation is legal but the frozen projection does not explain
+            # its value. Keep the identity with an explicitly unknown value
+            # instead of reading today's row or inventing a zero.
+            snapshots.append(
+                {
+                    "fact_id": fact_id,
+                    "value": None,
+                    "unit": None,
+                    "currency": None,
+                    "period_start": None,
+                    "period_end": None,
+                    "available_at": None,
+                    "statement": None,
+                    "unavailable": True,
+                }
+            )
+            continue
+        attributes = fact.get("attributes")
+        currency = (
+            attributes.get("currency") if isinstance(attributes, dict) else None
+        )
+        snapshots.append(
+            {
+                **deepcopy(fact),
+                "currency": currency if isinstance(currency, str) else None,
+            }
+        )
+    return sorted(snapshots, key=lambda row: str(row.get("fact_id")))
 
 
 def _cited_keys(analysis: Analysis) -> set[tuple[str, str]]:

@@ -56,7 +56,7 @@ Document Fact 和 Document 版本各自按创建标识或版本号推进，不�
 | `research_inputs`（V2-01） | 本次研究的最终输入台账：初始边界条目、补充采用的 Document 版本、Tool 身份与时间关系；晚于 `as_of` 发布或采集的资料在证据区明确标注 |
 | `coverage.origin_groups[]`、`metric_comparisons[]`（V2-03） | 本次选中的独立原件、确认同源的合并组，以及同指标各来源并列取值及其口径/观测期差异；报告页据此说明独立来源数、列出冲突值，均不标为已核实 |
 | `final_metric_comparisons[]`（V2-03） | 初始选择加本次 Run 实际采用补证 Fact 的最终同指标并列取值；`metric_comparisons[]` 仍只表示初始选择，两者都不平均、不覆盖、不标为已核实 |
-| `comparison`（V2-04） | 与另一份成功报告的前后对照结果（`GET /api/reports/{id}/comparison?other_report_id=...`）：结论新增/消失/持续与不确定性变化、引用 Document 的版本与内容变化、同指标取值修订、覆盖缺口增减与晚到资料；两侧各自保留片段与原件入口 |
+| `comparison`（V2-04） | 与另一份成功报告的前后对照结果（`GET /api/reports/{id}/comparison?other_report_id=...`）：结论新增/消失/持续与不确定性变化、引用 Document 的版本与内容变化、同指标取值修订、覆盖缺口增减与晚到资料；两侧各自保留片段与原件入口。比较集合只取该报告 Analysis/Findings 实际保存的引用，不把未引用的入选或补证材料当成报告依据，Fact 取值来自冻结投影而非当前行 |
 | `previous_report_ref?`（V2） | 可选历史报告引用 |
 
 基本交互：

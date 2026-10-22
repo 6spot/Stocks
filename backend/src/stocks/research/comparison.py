@@ -318,6 +318,9 @@ def _metric_value(fact: dict) -> dict:
         "period_end": fact.get("period_end"),
         "available_at": fact.get("available_at"),
         "statement": fact.get("statement"),
+        # A cited Fact whose frozen value is not stored stays explicitly
+        # unknown instead of looking like a zero or being filled from today.
+        "unavailable": bool(fact.get("unavailable", False)),
     }
 
 
