@@ -1,0 +1,30 @@
+{
+  "id": "review-behavior-fixes",
+  "name": "review-behavior-fixes",
+  "title": "修复复审发现的三项行为缺陷",
+  "description": "依次修复补证 Fact 阶段遗漏、SSE 完整结果读取及报告页默认选择，分别回归验收。",
+  "status": "planning",
+  "dev_type": null,
+  "scope": null,
+  "package": null,
+  "priority": "P2",
+  "creator": "me",
+  "assignee": "me",
+  "createdAt": "2026-10-23",
+  "completedAt": null,
+  "branch": null,
+  "base_branch": "main",
+  "worktree_path": null,
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [
+    "10-23-supplement-completed-classification",
+    "10-23-mcp-sse-completion",
+    "10-23-research-initial-selection"
+  ],
+  "parent": null,
+  "relatedFiles": [],
+  "notes": "",
+  "meta": {}
+}
