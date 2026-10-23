@@ -1,5 +1,12 @@
 # Agent 执行边界与阻塞交回
 
+## 子 Agent 派发方式
+
+本项目需要派发子 Agent 时，统一使用 **Pi 原生 `subagent`** 能力；项目 Agent 位于 `.pi/agents/`。
+不使用 `trellis_subagent`，也不依赖 Trellis 子 Agent 派发协议启动子 Pi 进程。Trellis 的任务、
+计划、验收记录和 `implement.jsonl` / `check.jsonl` 仍按工作流维护；派发提示同样以
+`Active task: <任务路径>` 开头，便于子 Agent 读取任务上下文。
+
 ## 适用范围
 
 适用于主会话，以及经用户授权使用的子 Agent、审查和研究调用，与模型、平台和业务模块无关。
