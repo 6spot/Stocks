@@ -21,6 +21,19 @@ HTTPS 公网解析、禁重定向、响应字节/JSON 深度/SSE 事件数、凭
 转成上述错误码，不把远端原文放进异常、日志或快照。凭据只在准备请求头时从环境变量读取，
 缺失即失败（`TOOL_CREDENTIAL_MISSING`），不写入配置、Run 快照或 ModelCall。
 
+**SSE 响应完成条件（`_EndpointClient._read_sse()`）：** 请求完成不取决于连接 EOF。客户端按
+字节收取经过 `_iter_body()` 同一字节预算与总截止时间检查的块，用 LF/CR/LF+CR（含跨块拆分的
+CRLF）切行，只对完整事件解码 UTF-8；事件内 `data:` 行以换行拼接、注释和 `event:`/`id:`/`retry:`
+跳过、空事件也计入 `max_sse_events`。收到与当前请求 ID 匹配的 JSON-RPC 结果并通过
+`_response_result()` 后立即返回已接收字节与结果，外层 `finally` 关闭响应；通知先于结果时跳过。
+错误响应、错配 ID、非法 JSON/UTF-8、事件/字节/截止时间超限、或 EOF 仍无结果均明确失败，
+不得用后台无上限读取线程、重试或放宽限额换取“读完”。普通 `application/json` 响应仍由
+`_read_body()` 完整读取；不要为了 SSE 复用把整响应缓冲写回普通 JSON 路径。
+
+回归断言应落在真实 `httpx` 流上（读取次数、是否继续读、响应是否关闭、失败码），而不是只
+断言 mock 被调用。受控流测试不构成真实外部 MCP 服务或授权验收；真实 endpoint 行为需另外
+验收并记录来源、授权范围和当天版本。
+
 两个 `httpx` 细节容易踩坑：0.28 的 `Client.send()` 不接受 `timeout=` 参数，每请求超时
 必须通过 `build_request(..., timeout=...)` 或 `stream()`/`send(stream=True)` 的请求扩展
 传递；`httpx` logger 默认在 INFO 记录每个请求 URL，工具客户端在构造时必须把
