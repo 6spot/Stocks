@@ -146,7 +146,7 @@ V0 当前实现使用每次 Run 一份持久 Evidence Package：保存 objective
 
 1. **先查 Repository。** 已保存的增量与历史证据由 `select_evidence` 一次取齐；只有资料缺失、过期、存在冲突或需要交叉核实时才允许外部调用。已配置但本次不需要的 Tool 不会被调用，不得为了“更完整”例行重查外部来源。
 2. **计划与执行分离。** 研究 Agent 只提出结构化补证请求（要解决的问题 + 有界参数），权限、预算、超时与来源登记由 Stocks 决定；请求的调用数、参数与去重规则见[执行设计](execution.md#tools-与远程-mcp)。
-3. **先保存再引用。** 采用的响应走统一 Source/Repository 入库（`ingest_document()`），只对该 Document 运行 parse → classify → facts 所需阶段，成功后再追加 `research_inputs`；不等待全库积压清空，也不绕过入库直接使用临时输出。复用同内容 Document 时，已完成的阶段只跳过自身，继续检查后续所需阶段；Fact 明确以 `NOT_APPLICABLE` 跳过不记为缺口，等待、依赖跳过或失败仍如实记录。
+3. **先保存再引用。** 采用的响应走统一 Source/Repository 入库（`ingest_document()`），只对该 Document 运行 parse → classify → facts 所需阶段，成功后再追加 `research_inputs`；不等待全库积压清空，也不绕过入库直接使用临时输出。复用同内容 Document 时，已完成的阶段只跳过自身，继续检查后续所需阶段；解析未完成或不可用仍在此止步，不继续分类或 Fact。Fact 明确以 `NOT_APPLICABLE` 跳过不记为缺口，等待、依赖跳过或失败仍如实记录。
 4. **发现与证据分开。** 搜索结果与摘要只是发现渠道，不能作为引用；只有取得可持久定位的 Chunk 才能支撑 finding。没有原文的补充结果记录为缺口或保留为 open question。
 5. **不可改写。** 初始 Evidence Package 不被重写，已保存的旧 Analysis/Report 保持原引用与生成时间；重试沿用来源 Run 的初始包与已追加输入，只追加真正新取得的材料。重试读取这些冻结引用时不受“当前解析批次已变化”影响，但仍核对 Chunk、Document 版本与批次的真实归属。
 

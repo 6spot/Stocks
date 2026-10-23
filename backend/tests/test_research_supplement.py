@@ -11,15 +11,20 @@ import pytest
 from sqlalchemy import create_engine, func, select
 from sqlalchemy.orm import Session
 
+from stocks.collection.config import load_sources
+from stocks.collection.service import sync_source
 from stocks.models import (
     Base,
     Document,
     DocumentChunk,
+    DocumentProcessingState,
     EvidencePackage,
     TaskDefinition,
     TaskRun,
 )
 from stocks.processing.processors import StageRegistry, build_parse_processor
+from stocks.processing.stages import StageOutcome
+from stocks.repository import DocumentInput, ingest_document
 from stocks.research.service import (
     LEDGER_KIND_GAP,
     LEDGER_KIND_INPUT,
@@ -146,7 +151,6 @@ def make_config(**overrides) -> Settings:
     }
     values.update(overrides)
     return Settings(**values)
-
 
 @pytest.fixture
 def engine():
@@ -346,6 +350,134 @@ def _runtime(engine, snapshot_store, client, tool: ToolConfig) -> ToolRuntime:
         snapshot_store=_store,
         owner_token="supplement-owner",
     )
+
+
+class _StubStage:
+    """A stage that completes without producing a derived result.
+
+    Used only to prove which stages the supplement path attempts; classification
+    and Fact semantics have their own processor-level tests.
+    """
+
+    version = "stub-stage-v1"
+
+    def __init__(self, stage: str, applicability: dict | None = None) -> None:
+        self.stage = stage
+        self.applicability = applicability
+
+    def __call__(self, session, config, document, claim) -> StageOutcome:
+        return StageOutcome(
+            document_id=claim.document_id,
+            stage=self.stage,
+            owner_token=claim.owner_token,
+            status="completed",
+            processor_version=self.version,
+            config_fingerprint="f" * 64,
+            applicability=self.applicability,
+        )
+
+
+def test_reused_document_reaches_facts_through_the_real_claim_path(
+    engine, tmp_path, snapshot_store
+):
+    """A Document whose parse/classify are already done must still gain Facts.
+
+    This drives the real ingest, claim and ownership path instead of mocking
+    ``run_stage_now``: the first pass has no Fact processor (the reusable
+    Document shape the defect was reported against), the second pass adds one.
+    """
+
+    _objects, store, read = snapshot_store
+    sources_path = write_sources_config(tmp_path)
+    config = make_config()
+    source = load_sources(sources_path)[0]
+    payload = (
+        b"<html><body><p>Consumer prices rose 2.4 percent in September "
+        b"2026.</p></body></html>"
+    )
+    with Session(engine) as session:
+        sync_source(session, source)
+        ingested = ingest_document(
+            session,
+            config,
+            DocumentInput(
+                source_id=SOURCE_ID,
+                dedupe_key="https://www.example.gov/releases/cpi-2026-09",
+                title="CPI release",
+                payload=payload,
+                content_type="text/html; charset=utf-8",
+                collected_at=CREATED_AT,
+            ),
+            store=store,
+        )
+        document_id = ingested.document.id
+
+    parse = build_parse_processor(
+        read_bytes=lambda settings, document: read(
+            settings, document.snapshot_key
+        )
+    )
+
+    def runtime_with(registry: StageRegistry) -> ToolRuntime:
+        return ToolRuntime(
+            client=None,
+            tools={},
+            session_factory=lambda: Session(engine),
+            stage_registry=registry,
+            snapshot_store=store,
+            owner_token="supplement-owner",
+        )
+
+    classify = _StubStage(
+        "classify",
+        applicability={
+            "requires_classification": True,
+            "requires_extraction": True,
+        },
+    )
+    first_gaps = supplement._process_document(
+        config,
+        document_id=document_id,
+        runtime=runtime_with(StageRegistry(parse=parse, classify=classify)),
+        now=CREATED_AT,
+    )
+    assert [gap["code"] for gap in first_gaps] == [
+        supplement.GAP_SUPPLEMENT_FACTS_UNAVAILABLE
+    ]
+    with Session(engine) as session:
+        facts_state = session.get(
+            DocumentProcessingState, (document_id, "facts")
+        )
+        assert facts_state.status == "pending"
+
+    second_gaps = supplement._process_document(
+        config,
+        document_id=document_id,
+        runtime=runtime_with(
+            StageRegistry(
+                parse=parse, classify=classify, facts=_StubStage("facts")
+            )
+        ),
+        now=CREATED_AT,
+    )
+
+    assert second_gaps == []
+    with Session(engine) as session:
+        states = {
+            state.stage: state
+            for state in session.scalars(
+                select(DocumentProcessingState).where(
+                    DocumentProcessingState.document_id == document_id
+                )
+            )
+        }
+        # The reused stages were read as completed, not claimed and rerun.
+        assert states["parse"].status == "completed"
+        assert states["parse"].attempts == 1
+        assert states["classify"].status == "completed"
+        assert states["classify"].attempts == 1
+        assert states["facts"].status == "completed"
+        assert states["facts"].attempts == 1
 
 
 def test_tool_content_is_ingested_and_appended_before_it_can_be_cited(
