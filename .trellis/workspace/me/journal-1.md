@@ -831,3 +831,25 @@ V2 任务列表已全部交付归档后，处理跨任务待验收登记中的 P
 ### Next Steps
 
 - 取得测试服务器认证后补跑五个叶子的最小验证，并在集成分支验证 I-2/I-3 联合场景。
+
+
+## Session 26: V2 集成验收与证据范围校正
+<!-- trellis-session: v=2 fp=58c0fc5d5962ef2e -->
+
+**Date**: 2026-10-23
+**Task**: V2 集成验收与证据范围校正
+**Branch**: `main`
+
+### Summary
+
+在指定测试服务器隔离库完成 V2 相关 133+40=173 项测试及新库初始化无漂移；真实两报告双向对照与九表全行哈希检查通过；SEC Apple JSON 采集、四字段 JSON Pointer 映射及原件回查通过，全文 parse 超过 5000 值限制；Fed XML 真实解析通过、本轮 PDF 超时。校正 V0/V1 窄范围证据表述，统一记录设备、MCP、来源修订、费用、外部 S3 与长期运行剩余条件。V1/V2 保持 planning，保留真实运行现场，无产品代码变更。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `5a94136` | docs: record V2 integration acceptance and precise evidence limits |
+
+### Status
+
+[OK] **Completed**
