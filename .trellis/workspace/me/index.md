@@ -8,8 +8,8 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 26
-- **Last Active**: 2026-10-23
+- **Total Sessions**: 27
+- **Last Active**: 2026-10-24
 <!-- @@@/auto:current-status -->
 
 ---
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~855 | Active |
+| `journal-1.md` | ~882 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 27 | 2026-10-24 | 修复复审发现的三项行为缺陷 | `a3c9507`, `07b2f0b`, `683f23a`, `e27a144`, `854aa25`, `3afbf4c` | `fix/review-behavior-defects` |
 | 26 | 2026-10-23 | V2 集成验收与证据范围校正 | `5a94136` | `main` |
 | 25 | 2026-10-22 | 五项实现偏差修复交付 | `8e6e459`, `8341e01`, `7ab3b14`, `3de76df`, `d65152c`, `f6fdf21` | `fix/processing-default-filter` |
 | 24 | 2026-10-22 | F-01 保留 Fact 重处理历史并归档 | `8e6e459`, `ff0807b` | `fix/fact-reprocess-history` |

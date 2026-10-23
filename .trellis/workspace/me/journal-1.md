@@ -853,3 +853,30 @@ V2 任务列表已全部交付归档后，处理跨任务待验收登记中的 P
 ### Status
 
 [OK] **Completed**
+
+
+## Session 27: 修复复审发现的三项行为缺陷
+<!-- trellis-session: v=2 fp=848e365805f4460b -->
+
+**Date**: 2026-10-24
+**Task**: 修复复审发现的三项行为缺陷
+**Branch**: `fix/review-behavior-defects`
+
+### Summary
+
+顺序修复并分别验收三项复审缺陷：补证复用已完成解析/分类后继续 Fact（并对 NOT_APPLICABLE 跳过不误记缺口）、MCP SSE 收到完整响应即返回、报告页无 report 参数时默认打开最新成功报告。补充真实入库/领取路径复用回归；新增 SSE 增量读取与报告页初始选择的前后端规范。所有验证仅在 100.120.14.84:/tmp/stocks-review-fixes-20261023、专用 stocks_review_fixes 数据库执行：补证+研究 28 passed；tools 69 passed；前端 vitest 10 passed、tsc 与 vite build 通过。未做真实外部 MCP、真实浏览器视口或设备验收，V1/V2 阶段退出条件不变。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `a3c9507` | fix(research): continue Fact processing after reused classification |
+| `07b2f0b` | fix(tools): finish MCP SSE reads at the matching response |
+| `683f23a` | fix(web): default the research page to the latest successful report |
+| `e27a144` | test(research): drive reused-stage supplement through the real claim path |
+| `854aa25` | docs(spec): dispatch sub-agents with Pi's native subagent |
+| `3afbf4c` | docs(trellis): record the three behavior fixes and their verification |
+
+### Status
+
+[OK] **Completed**
