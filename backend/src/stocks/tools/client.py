@@ -4,7 +4,7 @@ import json
 import logging
 import os
 import time
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Iterator, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any
 from urllib.parse import SplitResult
@@ -651,6 +651,14 @@ class _EndpointClient:
         *,
         deadline: float,
     ) -> bytes:
+        return b"".join(self._iter_body(response, deadline=deadline))
+
+    def _iter_body(
+        self,
+        response: httpx.Response,
+        *,
+        deadline: float,
+    ) -> Iterator[bytes]:
         limit = self.tool.budgets.max_result_bytes
         declared = response.headers.get("Content-Length")
         if declared is not None:
@@ -676,7 +684,6 @@ class _EndpointClient:
                 "UNSUPPORTED_CONTENT_ENCODING",
                 "MCP response content encoding is not allowed",
             )
-        chunks: list[bytes] = []
         size = 0
         try:
             for chunk in response.iter_raw():
@@ -692,7 +699,7 @@ class _EndpointClient:
                         "MCP response exceeds the configured byte limit",
                         details={"limit_bytes": limit},
                     )
-                chunks.append(chunk)
+                yield chunk
         except ToolError:
             raise
         except (httpx.HTTPError, httpcore.NetworkError):
@@ -700,7 +707,6 @@ class _EndpointClient:
                 "RESPONSE_READ_FAILED",
                 "MCP response could not be read",
             ) from None
-        return b"".join(chunks)
 
     def _read_sse(
         self,
@@ -709,41 +715,50 @@ class _EndpointClient:
         request_id: int,
         deadline: float,
     ) -> tuple[bytes, dict[str, Any]]:
-        payload = self._read_body(response, deadline=deadline)
-        return payload, self._parse_sse(
-            payload,
-            request_id=request_id,
-        )
-
-    def _parse_sse(
-        self,
-        payload: bytes,
-        *,
-        request_id: int,
-    ) -> dict[str, Any]:
-        try:
-            text = payload.decode("utf-8")
-        except UnicodeDecodeError:
-            raise McpProtocolError(
-                "INVALID_SSE",
-                "MCP SSE response is not UTF-8",
-            ) from None
-        normalized = text.replace("\r\n", "\n").replace("\r", "\n")
-        data_lines: list[str] = []
+        chunks: list[bytes] = []
+        event_lines: list[bytes] = []
+        line = bytearray()
+        skip_lf = False
         event_count = 0
 
-        def process_event() -> dict[str, Any] | None:
+        def process_event(*, count_empty: bool = True) -> dict[str, Any] | None:
             nonlocal event_count
-            event_count += 1
-            if event_count > self.tool.max_sse_events:
+            try:
+                text = b"\n".join(event_lines).decode("utf-8")
+            except UnicodeDecodeError:
                 raise McpProtocolError(
-                    "TOO_MANY_SSE_EVENTS",
-                    "MCP SSE response exceeds the event limit",
-                )
-            if not data_lines:
-                return None
+                    "INVALID_SSE",
+                    "MCP SSE response is not UTF-8",
+                ) from None
+            event_lines.clear()
+            data_lines: list[str] = []
+            for event_line in text.split("\n"):
+                if not event_line or event_line.startswith(":"):
+                    continue
+                if event_line.startswith("data:"):
+                    value = event_line[5:]
+                    if value.startswith(" "):
+                        value = value[1:]
+                    data_lines.append(value)
+                elif (
+                    event_line.startswith("event:")
+                    or event_line.startswith("id:")
+                    or event_line.startswith("retry:")
+                ):
+                    continue
+                else:
+                    raise McpProtocolError(
+                        "INVALID_SSE",
+                        "MCP SSE response contains an invalid field",
+                    )
+            if count_empty or data_lines:
+                event_count += 1
+                if event_count > self.tool.max_sse_events:
+                    raise McpProtocolError(
+                        "TOO_MANY_SSE_EVENTS",
+                        "MCP SSE response exceeds the event limit",
+                    )
             data = "\n".join(data_lines)
-            data_lines.clear()
             if not data:
                 return None
             parsed = _parse_json(
@@ -767,34 +782,34 @@ class _EndpointClient:
                 request_id=request_id,
             )
 
-        for line in normalized.split("\n"):
-            if not line:
-                result = process_event()
-                if result is not None:
-                    return result
-                continue
-            if line.startswith(":"):
-                continue
-            if line.startswith("data:"):
-                value = line[5:]
-                if value.startswith(" "):
-                    value = value[1:]
-                data_lines.append(value)
-            elif (
-                line.startswith("event:")
-                or line.startswith("id:")
-                or line.startswith("retry:")
-            ):
-                continue
-            else:
-                raise McpProtocolError(
-                    "INVALID_SSE",
-                    "MCP SSE response contains an invalid field",
-                )
-        if data_lines:
-            result = process_event()
-            if result is not None:
-                return result
+        for chunk in self._iter_body(response, deadline=deadline):
+            chunks.append(chunk)
+            for byte in chunk:
+                # CR terminates a line immediately; swallow a following LF
+                # even when CRLF is split across network chunks.
+                if skip_lf:
+                    skip_lf = False
+                    if byte == 10:
+                        continue
+                if byte not in (10, 13):
+                    line.append(byte)
+                    continue
+                skip_lf = byte == 13
+                if line:
+                    event_lines.append(bytes(line))
+                    line.clear()
+                else:
+                    result = process_event()
+                    if result is not None:
+                        return b"".join(chunks), result
+
+        # Preserve the former split("\n") parser's final line/empty event
+        # and its acceptance of a final data event without a blank separator.
+        if line:
+            event_lines.append(bytes(line))
+        result = process_event(count_empty=not line)
+        if result is not None:
+            return b"".join(chunks), result
         raise McpProtocolError(
             "MCP_RESPONSE_MISSING",
             "MCP SSE response ended before the requested result",

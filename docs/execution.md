@@ -305,6 +305,7 @@ Tool 与 Connector 处于不同边界：
 
 - **有效权限 = 交集。** `config/tools.yaml` 中 `enabled` 的目录条目 ∩ Task/Agent 的 `tools` 白名单 ∩ 通过 `input_schema` 校验的请求。模型只能提出结构化请求（`tool`、`arguments`、`purpose` 与要解决的缺口/问题），不能扩大工具集合，也不能修改 scope、`as_of`、增量窗口、预算、凭据、endpoint 或授权；不需要 Provider 原生 function calling，任何能输出受约束 JSON 的模型都可参与。
 - **执行边界。** Stocks 校验后执行：先读 Repository，只有资料缺失、过期、存在冲突或需要交叉核实时才发出外部请求；外部只支持远程 Streamable HTTP（`2025-11-25` 握手 + `Mcp-Session-Id`），不实现 stdio。Tool 目录条目的 `source_id` 指向已配置 Source，取回的原件通过统一入库入口登记，Publisher 仍是原网站。
+- **SSE 响应完成。** 客户端增量解析 SSE；当前请求 ID 对应的完整 JSON-RPC 响应事件通过校验后立即返回并关闭响应，不等待连接 EOF 或读取后续事件。支持跨网络块的 UTF-8、data 行、多行事件及 LF/CRLF/CR 换行；结果前的通知与注释可跳过，错误响应、错配 ID、非法 JSON/UTF-8 或流结束仍无结果须明确失败。EOF 时保留末尾未终止 data 事件的既有解析行为；累计接收字节（包括结果所在块中已接收的后续字节）、总截止时间、包括空事件的事件数及 JSON 深度限制始终生效，普通 JSON 响应仍完整读取。受控流回归覆盖完整结果后连接保持及读取异常，不代表真实 MCP 服务验收。
 - **有界与终止。** 每 Tool 的调用数/Token/请求与响应字节由 `ToolBudgets` 约束，单 Run 另有轮次与每轮请求上限；预算耗尽、重复查询或无进展即终止，最多再做一次补充计划。补证循环位于既有最终 Research Agent 步骤内，不新增编排层或隐式子 Agent；终止后仍用已有证据完成报告。
 - **拒绝与失败。** 未授权、未知、已停用或参数非法的请求在发出网络请求前拒绝；瞬时传输失败只做有限重试；预算耗尽、超时、映射失败与“只有摘要、没有可引用原文”都记录为本次 Run 的显式缺口（`tool_*` / `supplement_*` 代码），不伪装成“资料不存在”，也不丢弃已保存证据。
 - **凭据与输出卫生。** 凭据仅通过环境变量提供（`bearer_token_env` 只保存变量名），执行时才读取；endpoint、Authorization、请求与响应正文不进入日志、Run 快照、ModelCall、StepResult 或报告。Tool 返回一律视为数据：原始响应不直接粘贴进报告，只有经统一入库并成为持久 Chunk 的内容才能被引用；持久化只保留 Tool 调用身份与安全元数据。

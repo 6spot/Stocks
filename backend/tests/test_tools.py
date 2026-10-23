@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+from collections.abc import Callable, Iterator
 from typing import Any
 
 import httpx
@@ -206,7 +207,7 @@ class _MockServer:
 
 
 def _client(
-    server: _MockServer,
+    server: Callable[[httpx.Request], httpx.Response],
     *,
     tool: ToolConfig | None = None,
     resolver: Any = _public_resolver,
@@ -227,6 +228,56 @@ def _client(
     if clock is not None:
         kwargs["clock"] = clock
     return McpClient(**kwargs)
+
+
+class _ControlledStream(httpx.SyncByteStream):
+    def __init__(
+        self,
+        chunks: list[bytes],
+        *,
+        after_chunks: Exception | None = None,
+        on_chunk: Callable[[int], None] | None = None,
+    ) -> None:
+        self.chunks = chunks
+        self.after_chunks = after_chunks
+        self.on_chunk = on_chunk
+        self.reads = 0
+        self.tail_read = False
+        self.closed = False
+
+    def __iter__(self) -> Iterator[bytes]:
+        for chunk in self.chunks:
+            self.reads += 1
+            if self.on_chunk is not None:
+                self.on_chunk(self.reads)
+            yield chunk
+        self.tail_read = True
+        if self.after_chunks is not None:
+            raise self.after_chunks
+
+    def close(self) -> None:
+        self.closed = True
+
+
+def _sse_client(
+    stream: _ControlledStream,
+    *,
+    method: str = "tools/call",
+    headers: dict[str, str] | None = None,
+    **kwargs: Any,
+) -> McpClient:
+    server = _MockServer()
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if json.loads(request.content)["method"] == method:
+            return httpx.Response(
+                200,
+                headers={"Content-Type": "text/event-stream", **(headers or {})},
+                stream=stream,
+            )
+        return server(request)
+
+    return _client(handler, **kwargs)
 
 
 def test_default_tool_configuration_is_deny_by_default(tmp_path):
@@ -375,6 +426,297 @@ def test_sse_response_accepts_notifications_and_finds_matching_response():
     discovered = client.list_tools()
 
     assert [item.id for item in discovered] == ["search"]
+
+
+@pytest.mark.parametrize("method", ["initialize", "tools/list", "tools/call"])
+@pytest.mark.parametrize("tail", ["open", "timeout", "disconnect"])
+def test_sse_complete_response_returns_without_reading_tail(method, tail):
+    result = {"content": [{"type": "text", "text": "complete"}]}
+    if method == "initialize":
+        message = _initialized_payload()
+    elif method == "tools/list":
+        message = {
+            "jsonrpc": "2.0",
+            "id": 2,
+            "result": {"tools": [{"name": "search", "inputSchema": _input_schema()}]},
+        }
+    else:
+        message = {"jsonrpc": "2.0", "id": 2, "result": result}
+    payload = b"data: " + _json_body(message) + b"\n\n"
+    # A sentinel represents a connection held open without blocking the test.
+    # Either transport failure would break a client that requested another chunk.
+    failures = {
+        "open": AssertionError("response stream must not be read again"),
+        "timeout": httpx.ReadTimeout("controlled timeout"),
+        "disconnect": httpx.RemoteProtocolError("controlled disconnect"),
+    }
+    stream = _ControlledStream([payload], after_chunks=failures[tail])
+    client = _sse_client(
+        stream,
+        method=method,
+        headers={"Mcp-Session-Id": SESSION_ID},
+    )
+
+    with client:
+        if method in {"initialize", "tools/list"}:
+            assert [item.id for item in client.list_tools()] == ["search"]
+        else:
+            response = client.call_tool("search", {"query": "x"})
+            assert response.result == result
+            assert response.response_bytes == payload
+            assert response.content_type == "text/event-stream"
+        assert stream.closed is True
+
+    assert stream.reads == 1
+    assert stream.tail_read is False
+
+
+@pytest.mark.parametrize("newline", [b"\n", b"\r\n", b"\r"])
+@pytest.mark.parametrize("chunk_size", [1, 7])
+def test_sse_handles_split_utf8_lines_multiline_events_and_notifications(newline, chunk_size):
+    result = {"content": [{"type": "text", "text": "营收📈"}]}
+    lines = [
+        b": keepalive",
+        b"",
+        b"event: message",
+        b"id: ignored",
+        b"retry: 1000",
+        b'data: {"jsonrpc":"2.0","method":"notifications/progress"}',
+        b"",
+        b'data: {"jsonrpc":"2.0",',
+        b'data: "id":2,"result":' + _json_body(result) + b"}",
+        b"",
+        b"",
+    ]
+    payload = newline.join(lines)
+    chunks = [payload[i:i + chunk_size] for i in range(0, len(payload), chunk_size)]
+    stream = _ControlledStream(chunks, after_chunks=AssertionError("unexpected read"))
+
+    with _sse_client(stream) as client:
+        response = client.call_tool("search", {"query": "x"})
+
+    assert response.result == result
+    assert response.response_bytes == b"".join(chunks[:stream.reads])
+    assert stream.tail_read is False
+    assert stream.closed is True
+
+
+def test_sse_mixed_line_endings_and_same_chunk_tail_are_not_parsed():
+    payload = (
+        b": keepalive\r\ndata: {\"jsonrpc\":\"2.0\",\"method\":\"notifications/progress\"}\r\r"
+        b'data: {"jsonrpc":"2.0","id":2,"result":{"content":[]}}\n\n'
+        b"data: invalid trailing JSON\n\n\xff"
+    )
+    stream = _ControlledStream([payload], after_chunks=AssertionError("unexpected read"))
+
+    with _sse_client(stream) as client:
+        response = client.call_tool("search", {"query": "x"})
+
+    assert response.result == {"content": []}
+    assert response.response_bytes == payload
+    assert stream.tail_read is False
+    assert stream.closed is True
+
+
+@pytest.mark.parametrize("suffix", [b"", b"\n", b"\r", b"\r\n"])
+def test_sse_preserves_final_event_without_blank_separator_at_eof(suffix):
+    payload = b'data: {"jsonrpc":"2.0","id":2,"result":{"content":[]}}' + suffix
+    stream = _ControlledStream([payload])
+
+    with _sse_client(stream) as client:
+        response = client.call_tool("search", {"query": "x"})
+
+    assert response.result == {"content": []}
+    assert stream.tail_read is True
+    assert stream.closed is True
+
+
+@pytest.mark.parametrize(
+    "data, code",
+    [
+        (b"data: {", "INVALID_JSON"),
+        (b"data: \xff", "INVALID_SSE"),
+        (b": \xff", "INVALID_SSE"),
+        (b"unknown: field", "INVALID_SSE"),
+        (b"data: []", "INVALID_JSON_RPC"),
+        (b'data: {"jsonrpc":"1.0","method":"notification"}', "INVALID_JSON_RPC"),
+        (b'data: {"jsonrpc":"1.0","id":2,"result":{}}', "INVALID_JSON_RPC"),
+        (b'data: {"jsonrpc":"2.0","id":99,"result":{}}', "INVALID_RESPONSE_ID"),
+        (b'data: {"jsonrpc":"2.0","id":true,"result":{}}', "INVALID_RESPONSE_ID"),
+        (b'data: {"jsonrpc":"2.0","id":2}', "INVALID_JSON_RPC"),
+        (b'data: {"jsonrpc":"2.0","id":2,"result":[]}', "INVALID_JSON_RPC"),
+        (b'data: {"jsonrpc":"2.0","id":2,"result":{},"error":{}}', "INVALID_JSON_RPC"),
+        (b'data: {"jsonrpc":"2.0","id":2,"error":{"code":-32603,"message":"secret"}}', "MCP_RPC_ERROR"),
+    ],
+)
+def test_sse_rejects_invalid_events_before_a_later_matching_result(data, code):
+    stream = _ControlledStream([
+        data + b"\n\n",
+        b'data: {"jsonrpc":"2.0","id":2,"result":{"content":[]}}\n\n',
+    ])
+
+    with _sse_client(stream) as client:
+        with pytest.raises(McpProtocolError) as invalid:
+            client.call_tool("search", {"query": "x"})
+
+    assert invalid.value.code == code
+    assert "secret" not in str(invalid.value)
+    assert stream.reads == 1
+    assert stream.closed is True
+
+
+@pytest.mark.parametrize(
+    "payload, code",
+    [
+        (b"", "MCP_RESPONSE_MISSING"),
+        (b": keepalive\n\n", "MCP_RESPONSE_MISSING"),
+        (b'data: {"jsonrpc":"2.0","method":"notification"}\n\n', "MCP_RESPONSE_MISSING"),
+        (b"data: {", "INVALID_JSON"),
+        (b"data: \xe8\x90", "INVALID_SSE"),
+    ],
+)
+def test_sse_eof_without_a_complete_result_is_rejected(payload, code):
+    stream = _ControlledStream([payload])
+
+    with _sse_client(stream) as client:
+        with pytest.raises(McpProtocolError) as invalid:
+            client.call_tool("search", {"query": "x"})
+
+    assert invalid.value.code == code
+    assert stream.tail_read is True
+    assert stream.closed is True
+
+
+@pytest.mark.parametrize("limit", [2, 3])
+def test_sse_event_limit_counts_empty_events(limit):
+    payload = b'\n\ndata: {"jsonrpc":"2.0","id":2,"result":{"content":[]}}\n\n'
+    stream = _ControlledStream([payload])
+
+    with _sse_client(stream, tool=_tool(max_sse_events=limit)) as client:
+        if limit == 2:
+            with pytest.raises(McpProtocolError) as invalid:
+                client.call_tool("search", {"query": "x"})
+            assert invalid.value.code == "TOO_MANY_SSE_EVENTS"
+        else:
+            assert client.call_tool("search", {"query": "x"}).result == {"content": []}
+
+    assert stream.closed is True
+
+
+@pytest.mark.parametrize(
+    "payload, code",
+    [
+        (b": comment\n\n", "TOO_MANY_SSE_EVENTS"),
+        (b"\n: trailing comment", "MCP_RESPONSE_MISSING"),
+    ],
+)
+def test_sse_eof_preserves_empty_event_counting(payload, code):
+    stream = _ControlledStream([payload])
+
+    with _sse_client(stream, tool=_tool(max_sse_events=1)) as client:
+        with pytest.raises(McpProtocolError) as invalid:
+            client.call_tool("search", {"query": "x"})
+
+    assert invalid.value.code == code
+    assert stream.closed is True
+
+
+@pytest.mark.parametrize("content_length", [None, "2048"])
+def test_sse_response_byte_limit_checks_declared_and_cumulative_size(content_length):
+    stream = _ControlledStream([
+        b":" + b"x" * 600 + b"\n",
+        b":" + b"y" * 600 + b"\n",
+        b'data: {"jsonrpc":"2.0","id":2,"result":{"content":[]}}\n\n',
+    ])
+    tool = _tool(budgets={**_tool_payload()["budgets"], "max_result_bytes": 1024})
+    headers = {"Content-Length": content_length} if content_length else None
+
+    with _sse_client(stream, tool=tool, headers=headers) as client:
+        with pytest.raises(McpTransportError) as oversized:
+            client.call_tool("search", {"query": "x"})
+
+    assert oversized.value.code == "TOOL_RESPONSE_TOO_LARGE"
+    assert stream.reads == (0 if content_length else 2)
+    assert stream.closed is True
+
+
+def test_sse_byte_limit_includes_tail_already_received_with_result():
+    payload = (
+        b'data: {"jsonrpc":"2.0","id":2,"result":{"content":[]}}\n\n'
+        + b"x" * 1024
+    )
+    stream = _ControlledStream([payload])
+    tool = _tool(budgets={**_tool_payload()["budgets"], "max_result_bytes": 1024})
+
+    with _sse_client(stream, tool=tool) as client:
+        with pytest.raises(McpTransportError) as oversized:
+            client.call_tool("search", {"query": "x"})
+
+    assert oversized.value.code == "TOOL_RESPONSE_TOO_LARGE"
+    assert stream.closed is True
+
+
+@pytest.mark.parametrize("notification", [True, False])
+def test_sse_json_depth_limit_applies_to_every_message(notification):
+    nested: dict[str, Any] = {}
+    for _ in range(14):
+        nested = {"nested": nested}
+    message = (
+        {"jsonrpc": "2.0", "method": "notification", "params": nested}
+        if notification
+        else {"jsonrpc": "2.0", "id": 2, "result": nested}
+    )
+    payload = b"data: " + _json_body(message) + b"\n\n"
+    stream = _ControlledStream([
+        payload,
+        b'data: {"jsonrpc":"2.0","id":2,"result":{"content":[]}}\n\n',
+    ])
+
+    with _sse_client(stream) as client:
+        with pytest.raises(McpProtocolError) as invalid:
+            client.call_tool("search", {"query": "x"})
+
+    assert invalid.value.code == "JSON_DEPTH_EXCEEDED"
+    assert stream.reads == 1
+    assert stream.closed is True
+
+
+@pytest.mark.parametrize("error_type", [httpx.ReadTimeout, httpx.RemoteProtocolError])
+def test_sse_read_failure_before_result_remains_a_safe_transport_error(error_type):
+    stream = _ControlledStream(
+        [b": keepalive\n\n"],
+        after_chunks=error_type("remote body secret"),
+    )
+
+    with _sse_client(stream) as client:
+        with pytest.raises(McpTransportError) as failure:
+            client.call_tool("search", {"query": "x"})
+
+    assert failure.value.code == "RESPONSE_READ_FAILED"
+    assert "remote body secret" not in str(failure.value)
+    assert stream.tail_read is True
+    assert stream.closed is True
+
+
+def test_sse_deadline_is_checked_between_chunks_before_accepting_result():
+    now = [0.0]
+
+    def on_chunk(reads: int) -> None:
+        if reads == 2:
+            now[0] = 10.0
+
+    stream = _ControlledStream([
+        b": keepalive\n\n",
+        b'data: {"jsonrpc":"2.0","id":2,"result":{"content":[]}}\n\n',
+    ], on_chunk=on_chunk)
+
+    with _sse_client(stream, clock=lambda: now[0]) as client:
+        with pytest.raises(McpTransportError) as timeout:
+            client.call_tool("search", {"query": "x"})
+
+    assert timeout.value.code == "TIMEOUT"
+    assert stream.reads == 2
+    assert stream.closed is True
 
 
 def test_result_mapping_and_output_schema_validate_mapped_data():
