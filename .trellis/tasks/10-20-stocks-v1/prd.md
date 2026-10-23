@@ -45,9 +45,15 @@
   容器重建换地址后 `<web>/health` 与 `/api/` 持续 502，而两个容器仍报告 `healthy`、
   `compose --wait` 返回成功。修复提交 `7c334c4`，契约已同步到
   `.trellis/spec/backend/deployment-guidelines.md`。
-- **第二条退出条件仍不成立**：V1 章节的真实端到端验收需要真实模型 Provider 闭环，
-  与 V0-07 AC-1 同一阻塞（登录 PA-1）。真实手机视觉、跨设备登录与公网/HTTPS 入口同样未执行。
-  因此本阶段保持 `planning`，不因八项子任务已验收而标记完成。
+- **第二条退出条件部分成立（2026-10-23）**：V1 章节中依赖真实模型的行为验收已执行，
+  与 V0 共用同一环境（真实库、真实 S3、模型经 magpie 网关）。逐条结果：调度 `registered`
+  → `not_due` 不触发 → 拨到过去 `triggered` 并成功执行；晚提交实测（未提交时扫描看不到、
+  提交后下一窗口可见）；失败 Run 游标保持不动、成功 Run 才推进；活跃 Run 存在时调度返回
+  `skipped_active_run`；一次 Run 的 3 条引用实际来自 2 Chunk / 1 Document，同一证据链未重复
+  计数；七个受保护视图认证后全 200、未认证全 401；`/api/sources` 把 `status`/
+  `request_success`/`no_update` 与 `processing_backlog` 分开返回。
+- **仍未完成**：真实移动设备视觉与跨设备登录、真实 ARM 实机、公网/HTTPS 发布。这些属于
+  V1-08/V1-09 的「日常界面与部署」条，本阶段保持 `planning`，不因行为验收已执行而标记完成。
 
 
 ## 排除项

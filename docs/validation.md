@@ -37,6 +37,18 @@ V1 在 V0 的证据链上增加定时采集、定时研究、结构化 Fact、�
 - **运行恢复**：同一 Task 同时最多一份待执行/运行 Run。有限重试后仍失败的采集、解析、分类、抽取、索引或研究可定位并由 Owner 重试；已完成步骤不重复制造资料。中断的 Document 阶段不自动接管，Owner 确认旧进程停止后才释放，已提交的解析批次与向量批次保留并只续做缺失部分。来源无更新、请求失败与处理积压分别呈现。
 - **日常界面与部署**：受保护的 Overview、Intelligence、Tasks、Research 和基础 Runs 视图能查看来源、处理状态、报告及证据，并手动触发/重试。Web/API 跨设备开放前完成访问控制；按目标 ARM + Docker Compose 环境验证部署。报告失败保留最后成功报告。
 
+**V1 端到端验收（2026-10-23 执行）：** 在 V0 同一隔离环境（独立库、真实 S3、真实模型经 magpie 网关）上逐条验证日常运行行为。
+
+- **独立调度**：`scheduled_collection`（`every: 15m`）启用后，首轮 `action=registered` 并持久化 `next_due_at`；未到期轮次返回 `not_due` 且不建 Run；把 `next_due_at` 拨到过去后返回 `triggered` 并真实执行成功。`scheduled_market_brief` 的 `cron: "0 8,20 * * *"` + `timezone: America/New_York` 解析正常。Source 配置未定义第二套采集周期。
+- **统一处理**：parse/classify/facts/index 四阶段独立记录状态（`/api/processing` 返回 `by_stage` 与 `by_status` 分布，实测 `parse` 2 completed/18 pending 等）。真实 LLM Fact 抽取跑出 3 条 Fact，`evidence_ref` 带 `chunk_id`+`position`+`parse_batch_id`。
+- **Fact 与数字**：抽取出的 Fact 保留 `subject_name`、`unit`、`period_start/end`、`available_at`、`attributes`；数值与单位为空时保持空而不猜测。
+- **统一取材**：一次 Run 的 3 条 `evidence_refs` 实际只来自 2 个不同 Chunk、1 份 Document——同一 Document 与其 Fact 同时命中时按一条证据链计数，未算成多份独立支持。
+- **可靠增量**：用两个连接实测晚提交——A 插入未提交时 B 的扫描看不到（0 条），A 提交后下一窗口可见（1 条），水位在提交前保持 23。失败 Run（坏端点 `MODEL_ROUTE_SNAPSHOT_INVALID`）后游标保持 23 不动，即使计数器已到 24；随后成功 Run 把游标推进到 24。
+- **运行恢复**：已有活跃 Run 时调度返回 `skipped_active_run`，不重复创建；活跃 Run 数始终 ≤1。`/api/processing?status=failed` 返回 200 且 `items: 0`，`counts` 给出分阶段积压。
+- **日常界面**：`/api/overview`、`/documents`、`/reports`、`/tasks`、`/runs`、`/processing`、`/sources` 认证后全部 200，未认证全部 401。`/api/sources` 把 `status`、`request_success`、`no_update` 作为独立字段返回，与 `processing_backlog` 分开，来源无更新、请求失败与处理积压可区分。
+
+**仍未完成**：真实移动设备视觉与跨设备登录、真实 ARM 实机、公网/HTTPS 发布（见「待最终验收」）。
+
 **已实现与待补的边界（截至 V1-09）：** 独立 API/Worker 进程、manual/schedule/retry 统一原子触发、`cron`+时区与 `every` 固定锚点的持久 due 调度、跨 Task 失败隔离、最小 `collection` Task 接入、Owner 显式确认停机后的结束/重试，Document 四阶段（parse/classify/facts/index）统一待办、独立有界文档处理槽位、有限自动重试、中断恢复与 `stocks.processing status|retry|reprocess`，轻量分类、通用 Fact 与 `http_api` Source Mapper 已在当前代码实现。可靠增量已实现提交可见水位、Task + Scope 独立游标、固定 `(start,end]` 窗口、按冻结窗口条件先过滤后分页的原始变化读取、TaskRun 版本化扫描检查点、正常 Run 恢复最新有效未完成检查点、retry 复制来源窗口与进度，以及最终 Research Agent Step/Analysis/Report/游标/Run 成功的原子提交。V1-06 已实现同一 Document 的增量与历史证据合并、Fact 与来源 Chunk 关联、`evidence_groups` 持久化以及 discovered/screened/selected/证据组/filtered-out/unexamined 的分项覆盖统计；跨 Document 转载识别与跨源冲突解释由 V2-03 实现，见下。V1-07 已实现环境凭据驱动的单 Owner 会话、受保护报告/原件/操作、稳定游标分页、Overview/Sources/Tasks/Runs/积压/检索接口，以及来源采集结果、更新预期和后处理积压的分离展示；自动化验收覆盖未认证、过期/损坏会话、CSRF、重复触发、确认结束、来源失败、安全原件和分页边界。V1-08 已实现受保护的 Overview、Intelligence、Tasks、Research、Runs 响应式 Web 控制台，包含运行时响应解码、内存 CSRF、统一会话恢复、URL 承载检索与详情、分段处理状态、历史引用证据优先阅读、受保护原件入口和 Owner 确认后的恢复操作；测试服务器上的类型检查、类型与行为测试、生产构建、生产依赖审计及桌面/手机浏览器 smoke 已通过。V1-09 已完成单机 Compose 生产形态：Nginx 提供前端并同源代理 `/api`、`/health`，生产容器不常驻 Node；API、Worker、PostgreSQL 不发布主机端口，只有 Web 入口可绑定；健康检查、SPA fallback、认证、CSRF、原件保护和模型配置缺失时的稳定错误已在实际服务栈验证。2026-10-23 补做 ARM：在测试服务器安装 qemu `binfmt` 后，`api` 与 `web` 镜像均构建为 `linux/arm64`，容器内 `aarch64` 可运行，全新库 `alembic upgrade head` 与 `alembic check` 无漂移，四服务全栈 `healthy`，入口、登录、受保护读取、处理筛选与 CSRF 边界均在该 arm64 栈上通过；同轮发现并修复 Nginx 只在启动时解析 `api` 上游、导致容器重建后 Web 持续 502 的缺陷（`deploy/nginx.conf`，提交 `7c334c4`）。ARM 实机、真实移动设备视觉验收、跨设备登录与公网/TLS 发布仍为 pending，模拟结果不等于目标硬件已通过；真实第三方 API 与 Decision/Generation Provider 闭环、真实 S3 接入及 mapper 覆盖的指标范围同样仍为 pending。
 
 ## V2：研究深化
