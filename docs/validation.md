@@ -13,6 +13,18 @@ V0 证明“少量真实资料 → 原件与可检索证据 → 手动综合研�
 - **证据阅读**：Owner 可通过简单页面或 API 读取报告、打开引用片段与对应原件，看到来源、时间和版本。旧报告在新版本入库后仍指向旧证据。HTML 原件以安全文本或下载方式提供，不执行脚本。
 - **运行边界**：采集或研究失败不删除已保存资料，也不覆盖最后成功报告。V0 只报告本次查询实际覆盖范围，不写“已扫描完上次以来全部变化”。未经认证的早期 API 仅绑定本机，不对公网开放。
 
+**V0 端到端验收（2026-10-23 执行）：** 在测试服务器 `100.120.14.84` 的隔离目录与独立数据库上，用真实来源与真实模型跑通整条链路。**前提如实记录**：模型经本机 magpie 网关转发，chat 走 `group/openai`（Codex Plus 订阅，实测严格遵循 `json_schema`），embedding 走 `workbuddy/bge-m3`（1024 维）；因此当前向量空间为 1024，不是标准 OpenAI 端点的 1536。
+
+- **真实原件**：Fed 与 SEC 公开 RSS 各采集 20 条，40 份 Document 全部带 S3 快照，平均原件 86KB，正文 Chunk 平均 994 字——是公告正文而非 RSS 摘要。SEC 在 `user_agent` 换成真实联系邮箱后返回正常（此前占位邮箱会 403）。
+- **身份与版本**：对同一来源重复采集，Document 数保持 20→20，原始字节相同不增版。对一份被报告引用的 Document 显式重处理，生成 attempt 2 且 attempt 1 的 Chunk 全部保留（同一文档 4 个 Chunk 分布在 2 个批次）；旧批次不进当前检索，`embeddings=112` 少于 `chunks=114` 正是这个差异，`document_embedding_states` 对当前批次仍记 `completed 2/2`。
+- **可检索证据**：语义检索命中且相似度有区分（利率政策查询 0.618/0.557/0.551），跨来源查询同时返回 Fed 与 SEC 结果；`--source-id` 过滤生效；精确检索 `FOMC` 走不依赖向量的短代码路径，返回 3 条。
+- **手动研究**：Run `7b8959e9-67f6-4d86-92ff-c0ea2a89495e` 状态 `succeeded`，产出 Report `92d9b19b-45a3-45ec-b28e-7540f382920b`：Summary 728 字、6 条 findings、3 个 open questions，12 条 `evidence_refs` 指向 7 个不同 Chunk、4 份不同 Document，每条都带 `document_version` 与 `parse_batch_id`。
+- **证据阅读**：`GET /api/reports/{id}` 返回 6248 字正文与 50 条证据，`cited_chunk_ids` 为 7 条；`GET /api/documents/{id}/original` 以 `text/plain; charset=utf-8` + `x-content-type-options: nosniff` 返回 85KB 原件，不执行脚本；未认证访问原件与报告均返回 401。
+- **AC-2（旧报告指向旧证据）**：对报告引用的一份 Document 显式重处理后重新读取同一报告——7/7 旧引用仍可解析、引用文本零变化、报告正文与重处理前逐字相同。
+- **运行边界**：把 chat 端点改成不可达地址触发失败，得到 `MODEL_ROUTE_SNAPSHOT_INVALID` 与 `MODEL_CONNECTION_FAILED`；失败前后 Document 20→20、Report 1→1，已保存资料未被删除、最后成功报告未被覆盖。
+
+**仍未完成**：SEC EDGAR submissions API 的真实响应映射（样例保持 `enabled: false`，CIK 与访问政策待确认）；调度长期运行与第三方限流下的有界终止；真实 MCP 与返回费用的端点。以上均按 Owner 安排留给最终验收。
+
 ## V1：日常运行
 
 V1 在 V0 的证据链上增加定时采集、定时研究、结构化 Fact、失败恢复与受保护的日常界面。
@@ -85,7 +97,7 @@ V2 在日常运行稳定后改善资料缺口、来源冲突和历史比较的�
 
 按 Owner「按任务列表逐个实施，需要真人验收或第三方 API 的先留存」的安排，各阶段未完成的人工与外部依赖项集中列在此处，供最终验收逐条确认；每项的实际边界以前文各阶段「已实现与待补的边界」段落为准，操作细节与凭据要求见 `.trellis/tasks/10-20-stocks-roadmap/pending-acceptance.md`。
 
-- **真实模型闭环与真实外网采集**（V0-07 AC-1）：chat 与 embedding 现可由不同供应商提供（`MODEL_API_BASE_URL`/`MODEL_API_KEY`/`MODEL_NAME` 与 `EMBEDDING_API_BASE_URL`/`EMBEDDING_API_KEY`/`EMBEDDING_MODEL_NAME` 各自独立），但测试服务器与本工作区仍没有可用的真实凭据，真实采集 → 解析 → pgvector 索引 → 模型研究 → 阅读报告与原件这条闭环尚未执行；SEC 联系邮箱仍需 Owner 确认（当前为 `owner@example.com` 占位）。
+- **真实模型闭环与真实外网采集**（V0-07 AC-1）：**已于 2026-10-23 执行并通过**，证据见 V0 章节「V0 端到端验收」段落。模型经本机 magpie 网关（chat=`group/openai`，embedding=`workbuddy/bge-m3` 1024 维），SEC 联系邮箱已换为真实地址。仍未完成：SEC EDGAR submissions 的真实响应映射（样例保持 `enabled: false`）、调度长期运行与第三方限流。
 - **真实远程 MCP 与授权工具**（V2-01）：需要可用的远程 MCP 服务地址与凭据，才能验收真实供应商接通、真实原件字节链路与第三方限流行为。
 - **真实来源联系方式与 SEC 映射**（V2-02）：Fed/SEC 的 `user_agent` 仍是占位联系邮箱，首次真实持续采集前需换成真实地址；SEC EDGAR submissions API 的 CIK 与真实响应映射未验收，样例保持 `enabled: false`。
 - **真实同源转载与冲突样例**（V2-03）：需要真实的多来源转载同一原文、以及同一指标给出互相矛盾取值的公开样例。

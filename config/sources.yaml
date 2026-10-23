@@ -10,7 +10,7 @@ sources:
     max_response_bytes: 5000000
     max_redirects: 3
     max_items: 20
-    user_agent: StocksIntelligence/0.1 (owner@example.com)
+    user_agent: StocksIntelligence/0.1 (6spot07@gmail.com)
 
   # Public macro policy releases. The feed carries the full statement, so a
   # research Run can cite the original Fed page like any other Source. Replace
@@ -26,7 +26,7 @@ sources:
     max_response_bytes: 5000000
     max_redirects: 3
     max_items: 20
-    user_agent: StocksIntelligence/0.1 (owner@example.com)
+    user_agent: StocksIntelligence/0.1 (6spot07@gmail.com)
 
   # SEC EDGAR submissions API (disabled example). The endpoint needs no API key
   # but SEC requires a real contact address in the User-Agent and accepts only
@@ -44,7 +44,7 @@ sources:
     max_response_bytes: 5000000
     max_redirects: 3
     max_items: 10
-    user_agent: StocksIntelligence/0.1 (owner@example.com)
+    user_agent: StocksIntelligence/0.1 (6spot07@gmail.com)
     mapper:
       id: sec-edgar-submissions
       fields:
@@ -83,7 +83,7 @@ sources:
     max_response_bytes: 2000000
     max_redirects: 3
     max_items: 10
-    user_agent: StocksIntelligence/0.1 (owner@example.com)
+    user_agent: StocksIntelligence/0.1 (6spot07@gmail.com)
     mapper:
       id: cpi-series
       fields:

@@ -33,7 +33,7 @@
     "docs/architecture.md",
     "docs/validation.md"
   ],
-  "notes": "8/8 子任务已实施并归档，PRD 验收均已完成。阶段退出条件第 2 条仍不成立：V0-07 AC-1（真实来源采集 → 真实 pgvector 索引 → 真实模型研究 → 阅读该报告并打开原件）延后为 PA-1，阻塞于模型 Provider 凭据与 config/sources.yaml 的真实联系邮箱。2026-10-23 已探测本地 magpie 代理并判定不可用（DeepSeek 忽略 strict json_schema，无 1536 维 embedding），结论已记录在 roadmap/pending-acceptance.md，不要重复探测。阶段保持 planning。",
+  "notes": "八个子任务均已实施、归档并通过 PRD 验收。2026-10-23 在测试服务器隔离目录与独立库完成 V0 真实闭环：经本机 magpie 网关（chat=group/openai 走 Codex Plus，严格遵循 json_schema；embedding=workbuddy/bge-m3 1024 维），Fed 与 SEC 各 20 条真实采集入库，40 份 Document 全部带 S3 快照，重复采集不增版，显式重处理保留旧批次 Chunk；Run 7b8959e9 succeeded 并产出 6248 字报告，12 条引用指向 7 Chunk / 4 Document 且带版本；重处理后旧报告 7/7 引用可解析、文本零变化；失败路径不删资料、不覆盖最后成功报告。联系邮箱已换为真实地址，SEC 采集恢复。仍留最终验收：SEC EDGAR 真实映射、调度长期运行与限流、真实 MCP 与费用端点。",
   "meta": {
     "milestone": "V0",
     "kind": "milestone",
@@ -41,6 +41,9 @@
     "planning_review": "pending",
     "planning_depth": "coordination",
     "implementation_authorized": false,
-    "exit_condition_blocked_by": "docs/validation.md pending final acceptance items"
+    "exit_condition_blocked_by": "docs/validation.md pending final acceptance items",
+    "vector_dimensions": 1024,
+    "real_loop_verified": "2026-10-23",
+    "real_loop_model_route": "magpie gateway: chat=group/openai, embedding=workbuddy/bge-m3"
   }
 }
