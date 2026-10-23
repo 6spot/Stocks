@@ -4,6 +4,8 @@ import json
 import os
 from datetime import UTC, datetime
 from hashlib import sha256
+from types import SimpleNamespace
+from uuid import uuid4
 
 import pytest
 from sqlalchemy import create_engine, func, select
@@ -25,6 +27,7 @@ from stocks.research.service import (
     evidence_package_hash,
     merged_research_refs,
 )
+from stocks.research import supplement
 from stocks.research.supplement import (
     GAP_TOOL_BUDGET_EXHAUSTED,
     GAP_TOOL_CALL_DUPLICATE,
@@ -44,6 +47,96 @@ PROCESS_TOKEN = "process-supplement"
 SOURCE_ID = "tool_search_source"
 TOOL_ID = "research_search"
 CREATED_AT = datetime(2026, 10, 21, 9, tzinfo=UTC)
+
+
+@pytest.mark.parametrize("classification_reused", [True, False])
+@pytest.mark.parametrize(
+    ("fact_status", "expected_code"),
+    [
+        ("completed", None),
+        ("waiting", supplement.GAP_SUPPLEMENT_FACTS_UNAVAILABLE),
+        ("failed", supplement.GAP_SUPPLEMENT_FACTS_FAILED),
+        (None, supplement.GAP_SUPPLEMENT_FACTS_UNAVAILABLE),
+    ],
+)
+def test_completed_classification_does_not_skip_fact_processing(
+    monkeypatch, classification_reused, fact_status, expected_code
+):
+    visited = []
+
+    def run_stage(_factory, _settings, _registry, _document_id, stage, **kwargs):
+        visited.append(stage)
+        assert kwargs["owner_token"] == "owner"
+        if stage == "parse" or (stage == "classify" and classification_reused):
+            return None  # Already completed stages cannot be claimed again.
+        status = fact_status if stage == "facts" else "completed"
+        return SimpleNamespace(status=status) if status else None
+
+    monkeypatch.setattr(supplement, "run_stage_now", run_stage)
+    monkeypatch.setattr(
+        supplement, "_fresh_stage_status",
+        lambda _runtime, _document_id, stage: (
+            "waiting" if stage == "facts" else "completed", None
+        ),
+    )
+    runtime = ToolRuntime(None, {}, None, None, None, "owner")
+    gaps = supplement._process_document(
+        make_config(), document_id=uuid4(), runtime=runtime, now=CREATED_AT
+    )
+
+    assert visited == ["parse", "classify", "facts"]
+    assert [gap["code"] for gap in gaps] == (
+        [expected_code] if expected_code else []
+    )
+
+
+@pytest.mark.parametrize(
+    ("reason", "expected_codes"),
+    [
+        ("NOT_APPLICABLE", []),
+        ("DEPENDENCY_SKIPPED", [supplement.GAP_SUPPLEMENT_FACTS_UNAVAILABLE]),
+        (None, [supplement.GAP_SUPPLEMENT_FACTS_UNAVAILABLE]),
+    ],
+)
+def test_reused_fact_skip_requires_explicit_applicability(
+    monkeypatch, reason, expected_codes
+):
+    monkeypatch.setattr(supplement, "run_stage_now", lambda *args, **kwargs: None)
+    monkeypatch.setattr(
+        supplement, "_fresh_stage_status",
+        lambda _runtime, _document_id, stage: (
+            ("skipped", reason) if stage == "facts" else ("completed", None)
+        ),
+    )
+    gaps = supplement._process_document(
+        make_config(), document_id=uuid4(),
+        runtime=ToolRuntime(None, {}, None, None, None, "owner"), now=CREATED_AT,
+    )
+    assert [gap["code"] for gap in gaps] == expected_codes
+
+
+@pytest.mark.parametrize("parse_status", ["waiting", "failed"])
+def test_unavailable_parse_stops_supplement_before_classification(
+    monkeypatch, parse_status
+):
+    visited = []
+
+    def run_stage(_factory, _settings, _registry, _document_id, stage, **kwargs):
+        visited.append(stage)
+        return SimpleNamespace(status=parse_status)
+
+    monkeypatch.setattr(supplement, "run_stage_now", run_stage)
+    runtime = ToolRuntime(None, {}, None, None, None, "owner")
+    gaps = supplement._process_document(
+        make_config(), document_id=uuid4(), runtime=runtime, now=CREATED_AT
+    )
+
+    assert visited == ["parse"]
+    assert [gap["code"] for gap in gaps] == [
+        supplement.GAP_SUPPLEMENT_PARSE_FAILED
+        if parse_status == "failed"
+        else supplement.GAP_SUPPLEMENT_PARSE_UNAVAILABLE
+    ]
 
 
 def make_config(**overrides) -> Settings:

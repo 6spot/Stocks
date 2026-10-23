@@ -37,7 +37,12 @@ from stocks.models import (
     TaskRun,
 )
 from stocks.processing.runner import run_stage_now
-from stocks.processing.stages import STAGE_CLASSIFY, STAGE_FACTS, STAGE_PARSE
+from stocks.processing.stages import (
+    SKIP_NOT_APPLICABLE,
+    STAGE_CLASSIFY,
+    STAGE_FACTS,
+    STAGE_PARSE,
+)
 from stocks.repository import (
     DocumentInput,
     current_document_hits,
@@ -1018,13 +1023,15 @@ def _process_document(
             gaps.append(_stage_gap(stage, failed=True))
             break
         if execution is None:
-            status, wait_reason = _fresh_stage_status(
+            status, reason = _fresh_stage_status(
                 runtime, document_id, stage
             )
-            if status == "completed":
-                if stage == STAGE_PARSE:
-                    continue
-                return gaps
+            if status == "completed" or (
+                stage == STAGE_FACTS
+                and status == "skipped"
+                and reason == SKIP_NOT_APPLICABLE
+            ):
+                continue
             gaps.append(_stage_gap(stage, failed=status == "failed"))
             if stage == STAGE_PARSE:
                 return gaps
@@ -1053,7 +1060,8 @@ def _fresh_stage_status(
         )
         if state is None:
             return None, None
-        return state.status, state.wait_reason
+        reason = state.skip_reason if state.status == "skipped" else state.wait_reason
+        return state.status, reason
 
 
 def _stage_gap(stage: str, *, failed: bool) -> dict:
