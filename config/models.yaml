@@ -1,22 +1,29 @@
-# This is a generic HTTP API example, not a dedicated proxy configuration.
+# Chat and embedding may come from different vendors: each model names its own
+# provider, so a chat-only API and an embedding API can be configured side by
+# side. Every provider still speaks the OpenAI-compatible protocol.
 providers:
-  default:
+  chat:
     protocol: openai_compatible
     base_url: ${MODEL_API_BASE_URL}
     api_key: ${MODEL_API_KEY}
     capabilities: [chat, text, structured_output]
     timeout_seconds: 60
+  embedder:
+    protocol: openai_compatible
+    base_url: ${EMBEDDING_API_BASE_URL}
+    api_key: ${EMBEDDING_API_KEY}
+    timeout_seconds: 60
 models:
   fast:
-    provider: default
+    provider: chat
     name: ${MODEL_NAME}
     capabilities: [chat, text, structured_output]
   research:
-    provider: default
+    provider: chat
     name: ${MODEL_NAME}
     capabilities: [chat, text, structured_output]
   embedding:
-    provider: default
+    provider: embedder
     name: ${EMBEDDING_MODEL_NAME}
     dimensions: 1536
 embedding:

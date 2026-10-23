@@ -25,6 +25,7 @@ from stocks.providers import (
     ModelClient,
     ModelTarget,
     load_embedding_targets,
+    load_models,
 )
 from stocks.repository import (
     SearchFilters,
@@ -527,3 +528,51 @@ def test_reparse_makes_old_batch_vectors_unsearchable_until_reindexed(engine):
                 ),
                 radius=1,
             )
+
+
+def test_chat_and_embedding_may_use_different_providers(tmp_path, monkeypatch):
+    """A chat-only vendor can be paired with a separate embedding vendor.
+
+    Each model names its own provider, so the two endpoints and keys stay
+    independent instead of forcing one base_url and key for both.
+    """
+
+    monkeypatch.setenv("MODEL_API_BASE_URL", "https://chat.example/v1")
+    monkeypatch.setenv("MODEL_API_KEY", "chat-key")
+    monkeypatch.setenv("MODEL_NAME", "chat-model")
+    monkeypatch.setenv("EMBEDDING_API_BASE_URL", "https://embed.example/v1")
+    monkeypatch.setenv("EMBEDDING_API_KEY", "embed-key")
+    monkeypatch.setenv("EMBEDDING_MODEL_NAME", "embed-model")
+    path = tmp_path / "models.yaml"
+    path.write_text(
+        """
+providers:
+  chat:
+    protocol: openai_compatible
+    base_url: ${MODEL_API_BASE_URL}
+    api_key: ${MODEL_API_KEY}
+  embedder:
+    protocol: openai_compatible
+    base_url: ${EMBEDDING_API_BASE_URL}
+    api_key: ${EMBEDDING_API_KEY}
+models:
+  research:
+    provider: chat
+    name: ${MODEL_NAME}
+  embedding:
+    provider: embedder
+    name: ${EMBEDDING_MODEL_NAME}
+    dimensions: 1536
+embedding:
+  models: [embedding]
+""",
+        encoding="utf-8",
+    )
+
+    models = load_models(str(path))
+    embedding = load_embedding_targets(str(path))
+
+    assert models["research"].base_url == "https://chat.example/v1"
+    assert models["research"].api_key == "chat-key"
+    assert embedding.targets[0].base_url == "https://embed.example/v1"
+    assert embedding.targets[0].api_key == "embed-key"

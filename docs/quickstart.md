@@ -310,11 +310,14 @@ therefore a new Fact, so an older report keeps citing the value it actually used
 
 ## Manual embedding indexing and search
 
-Configure `EMBEDDING_MODEL_NAME` alongside the existing model provider variables. The
-selected provider must expose the OpenAI-compatible `/embeddings` operation. The current
-vector space is fixed at 1,536 dimensions, matching the HNSW cosine index in the fresh
-database schema. Any configured embedding fallback must use the same model name and
-dimensions.
+Chat and embedding are separate providers, so a chat-only API can be paired with a
+different embedding API. Set `MODEL_API_BASE_URL` / `MODEL_API_KEY` / `MODEL_NAME` for the
+chat vendor and `EMBEDDING_API_BASE_URL` / `EMBEDDING_API_KEY` / `EMBEDDING_MODEL_NAME`
+for the embedding vendor; `config/models.yaml` points each model at its own provider, and
+both must expose the OpenAI-compatible operation with a `/v1` base URL. The embedding
+provider must serve `/embeddings`. The current vector space is fixed at 1,536 dimensions,
+matching the HNSW cosine index in the fresh database schema. Any configured embedding
+fallback must use the same model name and dimensions.
 
 After parsing, index up to 20 actionable Documents or select explicit IDs:
 
