@@ -30,7 +30,7 @@
     "docs/architecture.md",
     "docs/validation.md"
   ],
-  "notes": "本轮仅规划；依赖写入 meta.depends_on 及规划文档，Trellis 父子关系不会自动调度。开工前复核现状和技术细节并取得该子任务的实施确认。",
+  "notes": "五个子任务均已实施、归档并通过 PRD 验收。阶段退出条件第 2 条仍不成立：真实远程 MCP、真实同源转载与冲突样例、真实连续两份报告对照、真实返回费用的端点、调度与限流下的长期运行、SEC CIK 映射均需真实第三方服务与长期观察，已逐项登记在 docs/validation.md 的「待最终验收」与 roadmap/pending-acceptance.md。阶段保持 planning。",
   "meta": {
     "milestone": "V2",
     "kind": "milestone",
@@ -39,6 +39,7 @@
     ],
     "planning_review": "pending",
     "planning_depth": "coordination",
-    "implementation_authorized": false
+    "implementation_authorized": false,
+    "exit_condition_blocked_by": "docs/validation.md pending final acceptance items"
   }
 }

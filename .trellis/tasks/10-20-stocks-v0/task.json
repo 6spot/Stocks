@@ -33,13 +33,14 @@
     "docs/architecture.md",
     "docs/validation.md"
   ],
-  "notes": "8/8 子任务已实施并归档，但 **V0 阶段尚未验收通过**：V0-07 AC-1（真实来源采集 → 真实 pgvector 索引 → 真实模型研究 → 阅读该报告并打开原件）因测试服务器与本工作区无模型 Provider 凭据而未执行，详见 archive/2026-10/10-20-v0-07-evidence-api-acceptance/acceptance.md。Owner 2026-10-21 决定将真实闭环**延后到最后统一验收**，登记在 ../10-20-stocks-roadmap/pending-acceptance.md（PA-1；PA-2 解析器逐字符换行缺陷已于 2026-10-22 修复）。父任务保持 planning 不得标 completed；list 中的 8/8 done 只表示子任务归档，不等于阶段退出条件达成。",
+  "notes": "8/8 子任务已实施并归档，PRD 验收均已完成。阶段退出条件第 2 条仍不成立：V0-07 AC-1（真实来源采集 → 真实 pgvector 索引 → 真实模型研究 → 阅读该报告并打开原件）延后为 PA-1，阻塞于模型 Provider 凭据与 config/sources.yaml 的真实联系邮箱。2026-10-23 已探测本地 magpie 代理并判定不可用（DeepSeek 忽略 strict json_schema，无 1536 维 embedding），结论已记录在 roadmap/pending-acceptance.md，不要重复探测。阶段保持 planning。",
   "meta": {
     "milestone": "V0",
     "kind": "milestone",
     "depends_on": [],
     "planning_review": "pending",
     "planning_depth": "coordination",
-    "implementation_authorized": false
+    "implementation_authorized": false,
+    "exit_condition_blocked_by": "docs/validation.md pending final acceptance items"
   }
 }
