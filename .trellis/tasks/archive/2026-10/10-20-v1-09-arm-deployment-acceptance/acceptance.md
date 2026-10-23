@@ -43,14 +43,56 @@
 唯一测试警告为现有 FastAPI/Starlette TestClient 对当前 httpx 版本的弃用提示。
 没有把 skip、未开始步骤或 amd64 运行结果计作 ARM/真实外部依赖已通过。
 
+## 2026-10-23 补充：真实 arm64 镜像构建与全栈运行
+
+上一轮 ARM 构建因 Registry `i/o timeout` 未开始。本轮在测试服务器安装 qemu
+`binfmt`（`docker run --privileged --rm tonistiigi/binfmt --install arm64`）后重试，
+在隔离目录 `/tmp/stocks-arm64-10231540` 完成真实跨平台构建与运行：
+
+| 范围 | 实际结果 |
+| --- | --- |
+| 跨平台构建能力 | `docker buildx inspect` 列表加入 `linux/arm64`；此前只有 amd64 变体 |
+| 后端镜像 | `docker compose build api`（`TARGET_PLATFORM=linux/arm64`）exit 0；镜像 `Architecture: arm64` |
+| 后端容器内运行 | `platform.machine()` → `aarch64`，Python 3.12.15 |
+| Web 镜像 | `docker compose build web` exit 0；镜像 `Architecture: arm64` |
+| Web 容器内运行 | `uname -m` → `aarch64`，`nginx/1.27.5`，静态产物存在 |
+| 全新库初始化 | arm64 容器内 `alembic upgrade head` exit 0；`alembic check` → `No new upgrade operations detected.` |
+| 全栈启动 | `docker compose up -d --wait`：postgres、api、worker、web 全部 `healthy`，exit 0 |
+| 入口探针 | `/health` 200、`/` 200、匿名 `/api/documents` 401 |
+| Owner 会话（arm64 栈） | 登录 200 并返回 `csrf_token`；`/api/documents`、`/api/reports`、`/api/overview`、`/api/tasks` 均 200 |
+| 筛选边界（arm64 栈） | `?status=failed&limit=100` → 200；`?stage=failed` → 422（非法阶段值） |
+| CSRF 边界 | 无 CSRF 的 `POST /api/tasks/collect/pause` → 403 |
+
+### 本轮发现并修复的部署缺陷
+
+全栈首次可用后，重建 `api` 容器会拿到新地址，而 `web` 仍代理到旧地址：**`/health`
+与 `/api/` 持续 502，但两个容器都报告 `healthy`、`compose --wait` 也返回成功**。
+复现方式是用占位容器占住旧地址后再启动 `api`，修复前稳定返回 502。
+
+原因：`deploy/nginx.conf` 的 `proxy_pass http://api:8000` 是字面上游名，Nginx 只在
+worker 启动时解析一次并永久缓存。已改为 `resolver 127.0.0.11 valid=10s` 加变量
+`proxy_pass`，并显式转发 `$request_uri`。修复后同一复现序列（不重启 `web`）返回
+`/health` 200、匿名 `/api/documents` 401。提交 `7c334c4`，契约同步到
+`.trellis/spec/backend/deployment-guidelines.md`。
+
+### AC-1 状态更新
+
+- **已从 pending 缩小到“仅剩实机与真机”**：跨平台镜像构建成功、arm64 容器内运行成功、
+  全新库初始化无漂移、四服务全栈 `healthy`、入口/登录/受保护读取/CSRF 边界均在 arm64
+  栈上通过。此前“ARM 镜像未构建”的阻塞已解除。
+- **仍为 pending 的部分**：没有目标 ARM 实机，qemu 模拟不等于真实硬件；真实手机视觉、
+  跨设备登录与公网/HTTPS 入口仍未执行。因此 AC-1 不改为通过。
+
+本轮未修改应用代码以外的行为；未在本机运行 Docker、构建或任何项目验证。
+
 ## AC 对照
 
 ### AC-1：目标 ARM + Compose 可启动并跨设备认证使用；未认证不能读报告或原件，数据库未向公网开放 — pending
 
 - 已在 amd64 任务栈通过：完整服务启动、Owner 登录、Cookie、受保护报告/原件、
   同源 Web 代理、SPA fallback、安全响应头，以及 API/数据库/Worker 无发布端口。
-- ARM 配置可解析，但测试机的 buildx 构建器无法解析所需基础镜像，跨平台镜像未构建。
-  当前没有目标 ARM 主机，因此未验证镜像启动、数据库初始化、服务连通和跨设备登录。
+- 2026-10-23 已在 qemu 下补齐跨平台镜像构建与 arm64 全栈运行（见上节“补充”），
+  此前“ARM 镜像未构建”的阻塞已解除；剩余项只有真实硬件、真机与公网入口。
 - 真实手机、公网/TLS 入口也没有执行。生产部署需显式设置
   `TARGET_PLATFORM=linux/arm64`、`OWNER_COOKIE_SECURE=true`，并由目标主机提供
   HTTPS 或私网反向代理。

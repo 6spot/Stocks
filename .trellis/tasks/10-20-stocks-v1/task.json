@@ -34,7 +34,7 @@
     "docs/architecture.md",
     "docs/validation.md"
   ],
-  "notes": "本轮仅规划；依赖写入 meta.depends_on 及规划文档，Trellis 父子关系不会自动调度。开工前复核现状和技术细节并取得该子任务的实施确认。",
+  "notes": "九个子任务均已实施、归档并通过 PRD 验收。2026-10-23 在测试服务器安装 qemu binfmt 后补齐 V1-09 的真实跨平台构建：api/web 镜像均为 arm64，容器内 aarch64 可运行，全新库 alembic upgrade head 与 check 无漂移，四服务全栈 healthy，入口/登录/受保护读取/筛选/CSRF 边界均通过；同轮发现并修复 Nginx 只在启动时解析 api 上游导致的 502 缺陷（提交 7c334c4）。阶段退出条件仍差真实端到端验收（需模型 Provider 凭据，同 PA-1）以及真实手机、跨设备登录与公网/HTTPS 入口，因此保持 planning，不因子任务全部验收而标记 completed。",
   "meta": {
     "milestone": "V1",
     "kind": "milestone",
@@ -43,6 +43,8 @@
     ],
     "planning_review": "pending",
     "planning_depth": "coordination",
-    "implementation_authorized": false
+    "implementation_authorized": false,
+    "arm64_images_built": true,
+    "exit_condition_blocked_by": "PA-1 real provider endpoint; real device and public entry"
   }
 }
