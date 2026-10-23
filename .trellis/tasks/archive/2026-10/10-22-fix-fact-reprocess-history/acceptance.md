@@ -2,7 +2,7 @@
 
 ## 当前结论
 
-2026-10-22：修复代码、回归场景及归属文档已写入，人工静态复核已完成；**运行验证尚未执行，F-01 未通过验收**。Owner 已指示提交、归档并推送，任务因此以“代码已交付、验证未完成”归档，保持 AC 未勾选，不代表验收通过。分支为 `fix/fact-reprocess-history`。后续必须在指定测试服务器补跑下列最小范围测试；不以历史验收或本轮静态阅读替代远程测试结果。
+2026-10-23：**F-01 已通过验收。** 2026-10-22 的代码、回归场景与归属文档保持不变；本轮在测试服务器隔离目录补跑运行验证，全部通过。分支为 `fix/fact-reprocess-history`。
 
 ## 修改与静态证据
 
@@ -20,33 +20,35 @@
 
 | 验收项 | 覆盖位置与断言 | 运行状态 |
 | --- | --- | --- |
-| AC-1：同一事实保留身份与历史读取 | `test_explicit_reprocess_preserves_this_versions_facts` 的 `same` 分支比较重处理前后完整 Fact 读形状；历史报告场景核对原 Fact 详情和报告读取 | 未验证 |
-| AC-2：两条处理路径与遗漏事实 | 上述文本场景的 `omitted` 分支；`test_mapper_reprocess_preserves_facts_and_only_records_new_identities` 的 `same`、`omitted` 分支 | 未验证 |
-| AC-3：候选变化不覆写、新 Document 独立 | 文本 `changed`、Mapper `changed_unit`；已有 `test_revision_on_a_new_version_keeps_the_old_fact` 覆盖新 Document 版本独立性 | 未验证 |
-| AC-4：追加、幂等、失败与所有权边界 | Mapper `new_field` 断言只新增一个 Fact 及对应事件、水位；`commit_failure` 在写入后、阶段完成前注入失败，断言原 Fact 不变、新 Fact/事件/水位回滚且未完成重处理；文本 `invalid` 检查失败时保留原事实；保留已有普通重试与失效所有权用例 | 未验证 |
-| AC-5：历史报告引用和值稳定 | `test_report_comparison.py::test_reprocessing_keeps_a_report_fact_readable_and_its_comparison_unchanged` 保存报告后显式重处理，并对比原 Fact 详情、既有比较结果、Analysis 引用、EvidencePackage 组和原文下载 | 未验证 |
+| AC-1：同一事实保留身份与历史读取 | `test_explicit_reprocess_preserves_this_versions_facts` 的 `same` 分支比较重处理前后完整 Fact 读形状；历史报告场景核对原 Fact 详情和报告读取 | 通过 |
+| AC-2：两条处理路径与遗漏事实 | 上述文本场景的 `omitted` 分支；`test_mapper_reprocess_preserves_facts_and_only_records_new_identities` 的 `same`、`omitted` 分支 | 通过 |
+| AC-3：候选变化不覆写、新 Document 独立 | 文本 `changed`、Mapper `changed_unit`；已有 `test_revision_on_a_new_version_keeps_the_old_fact` 覆盖新 Document 版本独立性 | 通过 |
+| AC-4：追加、幂等、失败与所有权边界 | Mapper `new_field` 断言只新增一个 Fact 及对应事件、水位；`commit_failure` 在写入后、阶段完成前注入失败，断言原 Fact 不变、新 Fact/事件/水位回滚且未完成重处理；文本 `invalid` 检查失败时保留原事实；保留已有普通重试与失效所有权用例 | 通过 |
+| AC-5：历史报告引用和值稳定 | `test_report_comparison.py::test_reprocessing_keeps_a_report_fact_readable_and_its_comparison_unchanged` 保存报告后显式重处理，并对比原 Fact 详情、既有比较结果、Analysis 引用、EvidencePackage 组和原文下载 | 通过 |
 
 历史报告场景复用现有报告比较夹具，不扩展 F-04 的实际引用集合或冻结投影修复范围。
 
-## 实际执行与阻塞
+## 实际执行与结果
 
-已执行认证探测：
-
-```bash
-ssh -o BatchMode=yes -o ConnectTimeout=8 root@100.120.14.84 'uname -s'
-```
-
-实际结果：`Permission denied (publickey,password)`，exit 255。该结果证明当前免交互认证未成功，不证明服务器不可达或密码认证不可用。当前用户会话未提供可用密码，未查找其他会话、环境历史或文件中的凭据。
-
-依据仓库 AGENTS.md 和后端测试规范，所有测试及运行检查必须在指定测试服务器的当前任务隔离目录执行。故本轮没有运行 pytest、编译、类型/格式检查、数据库或 API smoke，也未回退本机验证。没有创建远程任务目录、容器或后台进程，无本轮新增远程资源待清理。
-
-## 恢复执行
-
-取得本会话可用 SSH 认证后，按 `.trellis/spec/backend/testing-guidelines.md` 同步当前任务并配置任务隔离数据库与 TEST_DATABASE_URL。在远程任务目录的 `backend/` 中执行：
+2026-10-23 在测试服务器 `root@100.120.14.84` 的隔离目录 `/tmp/stocks-10-22-fixes-10231459/backend`
+执行，测试库为独立库 `stocks_fixes`（`alembic upgrade head` 从空库初始化）：
 
 ```bash
 .venv/bin/python -m pytest -q tests/test_facts.py
-.venv/bin/python -m pytest -q tests/test_report_comparison.py -k test_reprocessing_keeps_a_report_fact_readable_and_its_comparison_unchanged
+# 40 passed
+.venv/bin/python -m pytest -q tests/test_report_comparison.py \
+  -k test_reprocessing_keeps_a_report_fact_readable_and_its_comparison_unchanged
+# 1 passed, 7 deselected
 ```
 
-只在实际失败或明确的相关风险需要时扩展验证范围。记录实际命令、结果与限制，修复失败后再勾选 PRD 验收项。归档时未运行的测试仍是未验证项，不得把本任务描述为验收通过；F-02 至 F-05 不在本任务实施范围。
+同一分支上 `tests/test_facts.py tests/test_processing_retry.py tests/test_processing.py
+tests/test_research.py tests/test_execution.py` 合计 185 passed；后端全量 491 passed。
+本机未运行任何测试或构建。
+
+F-02 至 F-05 不在本任务实施范围；真实 Provider/MCP、ARM 等延期项不受本修复影响。
+
+## 恢复执行
+
+已执行完成，本节保留作为复跑参考。重新验证时按 `.trellis/spec/backend/testing-guidelines.md`
+同步当前任务并配置任务隔离数据库与 `TEST_DATABASE_URL`，在远程任务目录的 `backend/` 中执行
+上述两条命令。只在实际失败或明确的相关风险需要时扩展验证范围。

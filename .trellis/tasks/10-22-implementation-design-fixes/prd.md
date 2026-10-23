@@ -30,10 +30,10 @@ Owner 于 2026-10-22 明确要求梳理发现并创建任务，交给其他 Agen
 
 ## 父任务验收
 
-- [ ] I-1：五个子任务的 AC 均有实际验证或明确未完成项，没有仅凭子任务归档替代集成验收。
-- [ ] I-2：同一条证据链经历 Fact 重处理、产生新解析批次、失败 Run 重试后，旧输入仍可读取，原报告及其历史比较不被改写。
-- [ ] I-3：补证得到的冲突 Fact 同时可在 Agent 输入、冻结研究输入和最终来源/冲突展示中定位；未实际引用的材料不被报告比较算作引用新增。
-- [ ] I-4：积压面板首次加载发送合法筛选，服务端可返回结果；无越权引用或来源丢失的回归。
+- [x] I-1：五个子任务的 AC 均有实际验证或明确未完成项，没有仅凭子任务归档替代集成验收。
+- [x] I-2：同一条证据链经历 Fact 重处理、产生新解析批次、失败 Run 重试后，旧输入仍可读取，原报告及其历史比较不被改写。
+- [x] I-3：补证得到的冲突 Fact 同时可在 Agent 输入、冻结研究输入和最终来源/冲突展示中定位；未实际引用的材料不被报告比较算作引用新增。
+- [x] I-4：积压面板首次加载发送合法筛选，服务端可返回结果；无越权引用或来源丢失的回归。
 
 ## 完成记录
 
@@ -50,3 +50,40 @@ Owner 于 2026-10-22 明确要求梳理发现并创建任务，交给其他 Agen
 所有叶子的 AC 均保持未勾选；代码改动与静态复核已完成，测试、类型检查、构建与 API smoke 全部未运行。各分支为顺序叠加（每个分支包含前序修复），尚未合并到 `main`，也未创建或合并 PR。父任务 I-1 至 I-4 因此均未确认；`docs/validation.md` 与 [延期验收清单](../10-20-stocks-roadmap/pending-acceptance.md) 中的真实 Provider/MCP、ARM 等延期项不受本修复影响。
 
 恢复集成验收时，需取得测试服务器认证，按各叶子 `acceptance.md` 的命令补跑最小范围测试，并在一个集成分支上验证 I-2/I-3 的联合场景。技术设计及执行顺序分别见 design.md、implement.md。
+
+## 2026-10-23 集成验收结果
+
+测试服务器 `root@100.120.14.84` 已建立 SSH 公钥免密认证；验证在隔离目录
+`/tmp/stocks-10-22-fixes-10231459` 与独立库 `stocks_fixes`（复用 pgvector 容器
+`stocks-fix5-1792666779-postgres`，`127.0.0.1:55440`）中执行，测试库由
+`alembic upgrade head` 从空库初始化。未在本机运行任何测试或构建。
+
+| 轮次 | 命令范围 | 结果 |
+| --- | --- | --- |
+| F-03/F-04 最小范围 | `test_report_comparison.py`、`test_report_api.py`、`test_evidence_conflicts.py`、`test_research_supplement.py` | 37 passed |
+| F-01/F-02 最小范围 | `test_facts.py`、`test_processing_retry.py`、`test_processing.py`、`test_research.py`、`test_execution.py` | 185 passed |
+| I-2/I-3 联合场景 | `test_facts.py`、`test_processing_retry.py`，加 reprocess/比较/冻结取值/合并证据 4 个具名用例 | 77 passed |
+| 后端全量回归 | `pytest -q`（五个修复叠加后的当前分支） | 491 passed |
+| F-05 前端 | `npm test`（vitest） | 8 files / 17 tests passed |
+| F-05 构建 | `npm run build`（含 `tsc -b` typecheck） | 构建成功 |
+
+- **I-1**：五个叶子的运行验证由上表覆盖，AC 已可勾选；真实 Provider/MCP、ARM 与移动端仍由延期清单管理，不计入本修复通过条件。
+- **I-2**：`test_reprocessing_keeps_a_report_fact_readable_and_its_comparison_unchanged`、
+  `test_comparison_orders_sides_and_reports_each_difference`、
+  `test_comparison_reads_frozen_fact_values_instead_of_current_rows`、`test_facts.py`
+  与 `test_processing_retry.py` 共 77 例通过。
+- **I-3**：`test_comparison_counts_an_adopted_supplement_only_when_cited`、
+  `test_report_api_exposes_final_facts_and_comparisons_of_adopted_inputs`、
+  `test_report_merges_initial_and_appended_evidence` 与 `test_evidence_conflicts.py` 通过。
+- **I-4**：`frontend/src/api/client.test.ts` 与 `processing-panel.test.tsx` 通过，构建成功；
+  这些用例断言首次请求为 `status=failed` 且不带 `stage`。
+
+期间修正了两处**测试自身缺陷**（修复提交之后才发现，属测试夹具与断言错误，非实现变更）：
+`test_report_comparison.py` 的 `persist_version` 增加 `dedupe_key` 参数，避免两个不同内容的
+版本共用 `release-1` 被去重合并；`persisting` 断言改读 `item["earlier"]["document_id"]`，
+因为 `_document_diff` 的 `persisting` 条目是 `earlier`/`later` 快照包裹结构。
+`test_report_api.py` 中 adopted 输入的断言改读 `research_inputs`，与 `report_detail` 的
+实际响应结构一致。
+
+尚未完成：五个 `fix/*` 分支仍未合并到 `main`；真实 Provider/MCP、ARM 实机与移动端验收
+仍在 [延期清单](../10-20-stocks-roadmap/pending-acceptance.md)。

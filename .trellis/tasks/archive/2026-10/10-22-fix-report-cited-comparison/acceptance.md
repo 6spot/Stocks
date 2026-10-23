@@ -2,7 +2,7 @@
 
 ## 当前结论
 
-2026-10-22：报告比较已改为按保存的 Analysis/Findings 实际引用确定集合，Fact 原值取自冻结投影；回归场景与归属文档已更新，人工静态复核完成。**运行验证尚未执行，F-04 未通过验收，AC 全部保持未勾选。** 归档只表示代码已交付，不表示测试通过。
+2026-10-23：**F-04 已通过验收。** 报告比较按保存的 Analysis/Findings 实际引用确定集合，Fact 原值取自冻结投影；本轮在测试服务器隔离目录补跑运行验证，全部通过。
 
 ## 修改与静态证据
 
@@ -23,28 +23,34 @@
 
 | 验收项 | 覆盖位置与断言 | 运行状态 |
 | --- | --- | --- |
-| AC-1：未引用 B 不产生新增/修订 | `test_report_comparison.py::test_comparison_ignores_material_a_report_did_not_cite` 在后续包的 `selected_chunks` 追加未引用 Document，断言 Document/Fact 的 `appeared` 与 `disappeared` 均为 0，仅保留两侧实际引用的 Document | 未验证 |
-| AC-2：引用新增/消失、版本变化与值修订正确，覆盖补证 | `test_comparison_counts_an_adopted_supplement_only_when_cited` 断言被引用补证作为 Document 与 Fact 新增出现、值为 2.1，且同一初始 Fact 不双算；既有 `test_comparison_explains_a_metric_revision_as_a_source_change` 保留版本与值修订覆盖 | 未验证 |
-| AC-3：集合来自保存引用、不遗漏 Findings、不双算 | `_cited_research_refs()` 合并 Analysis 顶层与所有 Finding 的引用；同一用例让两份报告引用同一初始 Fact 并断言 `disappeared` 为 0 | 未验证 |
-| AC-4：来源后续变化不影响旧侧 | `test_comparison_reads_frozen_fact_values_instead_of_current_rows` 修改当前 Fact 值后重新比较，断言响应与修改前完全一致、旧侧仍为 2.4；F-01 的真实重处理场景 `test_reprocessing_keeps_a_report_fact_readable_and_its_comparison_unchanged` 保留 | 未验证 |
-| AC-5：失败 Run、错配/越权引用拒绝，缺失值如实标未知 | 既有 `test_comparison_rejects_self_unknown_and_failed_reports` 保留；保存引用不在冻结输入内返回 409；冻结投影缺失的 Fact 以 `unavailable: true` 与 `null` 值呈现 | 未验证 |
+| AC-1：未引用 B 不产生新增/修订 | `test_report_comparison.py::test_comparison_ignores_material_a_report_did_not_cite` 在后续包的 `selected_chunks` 追加未引用 Document，断言 Document/Fact 的 `appeared` 与 `disappeared` 均为 0，仅保留两侧实际引用的 Document | 通过 |
+| AC-2：引用新增/消失、版本变化与值修订正确，覆盖补证 | `test_comparison_counts_an_adopted_supplement_only_when_cited` 断言被引用补证作为 Document 与 Fact 新增出现、值为 2.1，且同一初始 Fact 不双算；既有 `test_comparison_explains_a_metric_revision_as_a_source_change` 保留版本与值修订覆盖 | 通过 |
+| AC-3：集合来自保存引用、不遗漏 Findings、不双算 | `_cited_research_refs()` 合并 Analysis 顶层与所有 Finding 的引用；同一用例让两份报告引用同一初始 Fact 并断言 `disappeared` 为 0 | 通过 |
+| AC-4：来源后续变化不影响旧侧 | `test_comparison_reads_frozen_fact_values_instead_of_current_rows` 修改当前 Fact 值后重新比较，断言响应与修改前完全一致、旧侧仍为 2.4；F-01 的真实重处理场景 `test_reprocessing_keeps_a_report_fact_readable_and_its_comparison_unchanged` 保留 | 通过 |
+| AC-5：失败 Run、错配/越权引用拒绝，缺失值如实标未知 | 既有 `test_comparison_rejects_self_unknown_and_failed_reports` 保留；保存引用不在冻结输入内返回 409；冻结投影缺失的 Fact 以 `unavailable: true` 与 `null` 值呈现 | 通过 |
 
-## 实际执行与阻塞
+## 实际执行与结果
 
-```bash
-ssh -o BatchMode=yes -o ConnectTimeout=8 root@100.120.14.84 'uname -s'
-# root@100.120.14.84: Permission denied (publickey,password)  exit 255
-```
-
-当前会话仍无可用测试服务器认证。依据仓库 AGENTS.md 与后端测试规范，测试与运行检查只能在指定服务器的任务隔离目录执行，因此本轮未运行 pytest 或任何项目检查，也未回退本机。编辑过程中只做过本地语法解析，**不计为通过证据**。未创建远程目录、容器或后台进程。
-
-## 恢复执行
-
-取得本会话可用 SSH 认证后，在远程任务隔离目录的 `backend/` 中执行：
+2026-10-23 在测试服务器 `root@100.120.14.84` 的隔离目录 `/tmp/stocks-10-22-fixes-10231459/backend`
+执行，测试库为独立库 `stocks_fixes`：
 
 ```bash
 .venv/bin/python -m pytest -q tests/test_report_comparison.py
-.venv/bin/python -m pytest -q tests/test_report_api.py -k "evidence or snapshot or merged"
+# 8 passed
+.venv/bin/python -m pytest -q tests/test_report_api.py tests/test_evidence_conflicts.py tests/test_research_supplement.py
+# 与上项合计 37 passed
 ```
 
-`test_report_comparison.py` 覆盖本次全部新增用例及 F-01 的联合重处理场景；若出现相关失败再缩小到单个用例排查。记录实际命令与结果后再勾选 AC。
+同分支后端全量 491 passed。本轮修正了两处**测试自身缺陷**（修复提交之后才发现，属夹具与断言错误，非实现变更）：
+
+- `persist_version()` 增加 `dedupe_key` 参数，避免两个不同内容的版本共用 `release-1` 被去重合并。
+- `persisting` 断言改读 `item["earlier"]["document_id"]`，因为 `_document_diff` 的 `persisting`
+  条目是 `earlier`/`later` 快照包裹结构，旧断言读顶层 `document_id` 会 KeyError。
+
+本机未运行任何测试或构建。
+
+## 恢复执行
+
+已执行完成，本节保留作为复跑参考。重新验证时在远程任务隔离目录的 `backend/` 中执行
+`tests/test_report_comparison.py`（覆盖本次全部新增用例及 F-01 的联合重处理场景），
+若出现相关失败再缩小到单个用例排查。

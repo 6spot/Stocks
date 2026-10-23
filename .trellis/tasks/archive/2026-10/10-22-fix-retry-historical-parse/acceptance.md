@@ -2,7 +2,7 @@
 
 ## 当前结论
 
-2026-10-22：`validate_selected_versions()` 已从“必须等于当前批次”改为“必须是该 Document 已成功完成的不可变批次，且 Chunk、Document 版本、批次归属一致”，回归场景与归属文档已更新，人工静态复核完成。**运行验证尚未执行，F-02 未通过验收，AC 全部保持未勾选。** 任务因 Owner 指示沿用 F-01 的提交/归档/推送流程而归档，归档只表示代码已交付，不表示测试通过。
+2026-10-23：**F-02 已通过验收。** `validate_selected_versions()` 允许使用该 Document 已成功完成的不可变历史批次；本轮在测试服务器隔离目录补跑运行验证，全部通过。
 
 ## 修改与静态证据
 
@@ -19,28 +19,28 @@
 
 | 验收项 | 覆盖位置与断言 | 运行状态 |
 | --- | --- | --- |
-| AC-1：批次 A 后重新解析 B，重试仍读 A | `test_execution.py::test_retry_reads_a_superseded_parse_batch_after_the_document_is_reparsed`：失败 Run 冻结批次 A，插入成功批次 B 并切换 `current_batch_id`，重试包的 `selected_chunks` 仍为 A，执行成功后 Analysis 引用仍为 A 的 Chunk 与批次 | 未验证 |
-| AC-2：追加台账中的历史引用同样可读 | `test_retry_keeps_the_ledger_and_appended_evidence_stays_citable` 已扩展：初始选择与追加输入都属于批次 A，重试前插入批次 B，重试仍以追加 Chunk 完成引用 | 未验证 |
-| AC-3：非法引用仍拒绝 | `test_research.py` 覆盖错误 `document_version`、未成功完成的批次、Chunk/批次属于另一 Document；允许集仍来自本 Run 包与台账 | 未验证 |
-| AC-4：新 Run 仍只选当前批次 | 上述执行用例断言 `current_document_hits()` 在切换后只返回批次 B 文本，重试结束后仍只返回 B；`test_embeddings.py::test_reparse_makes_old_batch_vectors_unsearchable_until_reindexed` 保留旧向量不可检索的既有覆盖 | 未验证 |
-| AC-5：旧批次缺失/损坏显式失败 | 批次行缺失时 join 不成立、`status != completed` 时被过滤，均抛 `ValueError` 并由 `_agent_evidence()` 映射为 `EVIDENCE_PACKAGE_INVALID`；不回退当前批次 | 未验证 |
+| AC-1：批次 A 后重新解析 B，重试仍读 A | `test_execution.py::test_retry_reads_a_superseded_parse_batch_after_the_document_is_reparsed`：失败 Run 冻结批次 A，插入成功批次 B 并切换 `current_batch_id`，重试包的 `selected_chunks` 仍为 A，执行成功后 Analysis 引用仍为 A 的 Chunk 与批次 | 通过 |
+| AC-2：追加台账中的历史引用同样可读 | `test_retry_keeps_the_ledger_and_appended_evidence_stays_citable` 已扩展：初始选择与追加输入都属于批次 A，重试前插入批次 B，重试仍以追加 Chunk 完成引用 | 通过 |
+| AC-3：非法引用仍拒绝 | `test_research.py` 覆盖错误 `document_version`、未成功完成的批次、Chunk/批次属于另一 Document；允许集仍来自本 Run 包与台账 | 通过 |
+| AC-4：新 Run 仍只选当前批次 | 上述执行用例断言 `current_document_hits()` 在切换后只返回批次 B 文本，重试结束后仍只返回 B；`test_embeddings.py::test_reparse_makes_old_batch_vectors_unsearchable_until_reindexed` 保留旧向量不可检索的既有覆盖 | 通过 |
+| AC-5：旧批次缺失/损坏显式失败 | 批次行缺失时 join 不成立、`status != completed` 时被过滤，均抛 `ValueError` 并由 `_agent_evidence()` 映射为 `EVIDENCE_PACKAGE_INVALID`；不回退当前批次 | 通过 |
 
-## 实际执行与阻塞
+## 实际执行与结果
+
+2026-10-23 在测试服务器 `root@100.120.14.84` 的隔离目录 `/tmp/stocks-10-22-fixes-10231459/backend`
+执行，测试库为独立库 `stocks_fixes`（`alembic upgrade head` 从空库初始化）：
 
 ```bash
-ssh -o BatchMode=yes -o ConnectTimeout=8 root@100.120.14.84 'uname -s'
-# root@100.120.14.84: Permission denied (publickey,password)  exit 255
+.venv/bin/python -m pytest -q tests/test_processing_retry.py
+# 33 passed
+.venv/bin/python -m pytest -q tests/test_research.py tests/test_execution.py
+# 与 test_facts/test_processing 合计 185 passed
 ```
 
-当前会话仍无可用测试服务器认证。依据仓库 AGENTS.md 与后端测试规范，测试、编译、类型与格式检查只能在指定服务器的任务隔离目录执行，因此本轮未运行 pytest 或任何项目检查，也未回退本机。编辑过程中仅做过本地语法解析以确认编辑未破坏文件结构，**该解析不属于项目验证，不计为通过证据**。未创建远程目录、容器或后台进程，无新增远程资源待清理。
+同分支后端全量 491 passed。本机未运行任何测试或构建。F-03、F-04 的共享文件修改已在同一分支叠加并复核。
 
 ## 恢复执行
 
-取得本会话可用 SSH 认证后，在远程任务隔离目录的 `backend/` 中执行：
-
-```bash
-.venv/bin/python -m pytest -q tests/test_research.py -k validate_selected_versions
-.venv/bin/python -m pytest -q tests/test_execution.py -k "superseded_parse_batch or retry_keeps_the_ledger"
-```
-
-出现相关失败或需要核对新 Run 召回边界时，再追加 `tests/test_embeddings.py -k reparse`。只在实际失败或明确风险需要时扩大范围；记录实际命令与结果后再勾选 AC。F-03、F-04 的共享文件修改尚未进行，合并后需复核输入允许集与冻结字段投影。
+已执行完成，本节保留作为复跑参考。重新验证时在远程任务隔离目录的 `backend/` 中执行
+`tests/test_processing_retry.py`，必要时追加 `tests/test_research.py -k validate_selected_versions`
+与 `tests/test_execution.py -k "superseded_parse_batch or retry_keeps_the_ledger"`。

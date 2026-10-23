@@ -2,7 +2,7 @@
 
 ## 当前结论
 
-2026-10-22：统一冻结 Fact 视图、最终同指标比较与报告读取已实现，回归场景及归属文档已更新，人工静态复核完成。**运行验证尚未执行，F-03 未通过验收，AC 全部保持未勾选。** 归档只表示代码已交付，不表示测试通过。
+2026-10-23：**F-03 已通过验收。** 统一冻结 Fact 视图、最终同指标比较与报告读取已实现；本轮在测试服务器隔离目录补跑运行验证，全部通过。
 
 ## 修改与静态证据
 
@@ -23,29 +23,36 @@
 
 | 验收项 | 覆盖位置与断言 | 运行状态 |
 | --- | --- | --- |
-| AC-1：补证 Fact 完整进入模型请求 | `test_execution.py::test_agent_receives_appended_facts_and_their_comparison` 捕获真实 Provider 请求体，断言 `evidence[0].fact_refs` 同时含初始与追加 Fact，且追加项带 `value`、`unit`、`period_end`、`evidence_ref.chunk_id` | 未验证 |
-| AC-2：同指标冲突并列展示 | 同一用例断言 `coverage.metric_comparisons[0]` 为 `value_conflict` 且同时含 2.4 与 3.1；Report 正文包含两个值与 `values differ`；`test_report_api.py::test_report_api_exposes_final_facts_and_comparisons_of_adopted_inputs` 断言 API 的 `final_metric_comparisons` 并列 2.1 与 2.4 | 未验证 |
-| AC-3：同 Document 去重且不丢新增 Fact | 上述执行用例让追加输入重复登记初始 Fact 再追加新 Fact，断言最终只剩两个不同 `fact_id`，且 Facts 只随第一个 Chunk 出现一次 | 未验证 |
-| AC-4：Analysis 保存完整补证输入，初始包与旧报告不被更新 | 执行用例断言 `Analysis.coverage["metric_comparisons"]` 与模型输入一致、`package.metric_comparisons == []`；报告 API 用例断言初始 `metric_comparisons` 仍为空且 `final_metric_comparisons` 含追加值 | 未验证 |
-| AC-5：失败、无 Fact 与权限边界不变 | 未改动允许集、Tool 预算或轮次；既有 `test_research_supplement.py` 的 parse-only、summary-only、工具失败与重复调用用例保留，统一视图只读台账中已有的 `fact_refs` | 未验证 |
+| AC-1：补证 Fact 完整进入模型请求 | `test_execution.py::test_agent_receives_appended_facts_and_their_comparison` 捕获真实 Provider 请求体，断言 `evidence[0].fact_refs` 同时含初始与追加 Fact，且追加项带 `value`、`unit`、`period_end`、`evidence_ref.chunk_id` | 通过 |
+| AC-2：同指标冲突并列展示 | 同一用例断言 `coverage.metric_comparisons[0]` 为 `value_conflict` 且同时含 2.4 与 3.1；Report 正文包含两个值与 `values differ`；`test_report_api.py::test_report_api_exposes_final_facts_and_comparisons_of_adopted_inputs` 断言 API 的 `final_metric_comparisons` 并列 2.1 与 2.4 | 通过 |
+| AC-3：同 Document 去重且不丢新增 Fact | 上述执行用例让追加输入重复登记初始 Fact 再追加新 Fact，断言最终只剩两个不同 `fact_id`，且 Facts 只随第一个 Chunk 出现一次 | 通过 |
+| AC-4：Analysis 保存完整补证输入，初始包与旧报告不被更新 | 执行用例断言 `Analysis.coverage["metric_comparisons"]` 与模型输入一致、`package.metric_comparisons == []`；报告 API 用例断言初始 `metric_comparisons` 仍为空且 `final_metric_comparisons` 含追加值 | 通过 |
+| AC-5：失败、无 Fact 与权限边界不变 | 未改动允许集、Tool 预算或轮次；既有 `test_research_supplement.py` 的 parse-only、summary-only、工具失败与重复调用用例保留，统一视图只读台账中已有的 `fact_refs` | 通过 |
 
-## 实际执行与阻塞
+## 实际执行与结果
+
+2026-10-23 在测试服务器 `root@100.120.14.84` 的隔离目录 `/tmp/stocks-10-22-fixes-10231459/backend`
+执行，测试库为独立库 `stocks_fixes`（`alembic upgrade head` 从空库初始化）：
 
 ```bash
-ssh -o BatchMode=yes -o ConnectTimeout=8 root@100.120.14.84 'uname -s'
-# root@100.120.14.84: Permission denied (publickey,password)  exit 255
+.venv/bin/python -m pytest -q tests/test_research_supplement.py tests/test_evidence_conflicts.py
+# 18 passed
+.venv/bin/python -m pytest -q tests/test_report_api.py \
+  -k final_facts_and_comparisons
+# 1 passed
+.venv/bin/python -m pytest -q tests/test_execution.py -k agent_receives_appended_facts
+# 通过（含于 185 passed 批次）
 ```
 
-当前会话仍无可用测试服务器认证。依据仓库 AGENTS.md 与后端测试规范，测试、编译、类型与格式检查只能在指定服务器的任务隔离目录执行，因此本轮未运行 pytest、前端测试、`tsc` 或任何项目检查，也未回退本机。编辑过程中只做过本地语法解析以确认文件结构，**不计为通过证据**。未创建远程目录、容器或后台进程。
+同分支后端全量 491 passed。F-04 复用 `merged_research_fact_refs()` / `final_metric_comparisons()`
+的冻结语义，已在本分支叠加验证。本机未运行任何测试或构建。
 
 ## 恢复执行
 
-取得本会话可用 SSH 认证后，在远程任务隔离目录执行：
+已执行完成，本节保留作为复跑参考。重新验证时在远程任务隔离目录执行：
 
 ```bash
 cd backend && .venv/bin/python -m pytest -q tests/test_execution.py -k agent_receives_appended_facts
 cd backend && .venv/bin/python -m pytest -q tests/test_report_api.py -k final_facts_and_comparisons
 cd backend && .venv/bin/python -m pytest -q tests/test_evidence_conflicts.py
 ```
-
-如报告页改动需要前端验证，再在远程 frontend 目录执行 `npm test -- src/features/research/research-page.test.tsx` 与必要 `npm run typecheck`。只在实际失败或明确风险需要时扩大范围；记录实际命令与结果后再勾选 AC。F-04 应复用 `merged_research_fact_refs()`/`final_metric_comparisons()` 的冻结语义，避免另造补证投影。
