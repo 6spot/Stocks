@@ -268,3 +268,107 @@ def test_embedding_rejects_response_from_another_model():
         )
 
     assert exc_info.value.code == "EMBEDDING_MODEL_MISMATCH"
+
+
+def test_embedding_accepts_a_gateway_echoing_the_bare_model_id():
+    """A gateway may namespace the request but echo the bare model id back.
+
+    magpie takes `workbuddy/bge-m3` and reports `model: "bge-m3"`. It is the
+    same model, so the response is usable.
+    """
+
+    target = ModelTarget("https://example/v1", "key", "workbuddy/bge-m3", 3)
+
+    def mock(request):
+        return httpx.Response(
+            200,
+            json={
+                "model": "bge-m3",
+                "data": [{"index": 0, "embedding": [1.0, 0.0, 0.0]}],
+            },
+        )
+
+    response = asyncio.run(
+        ModelClient({"embedding": target}, httpx.MockTransport(mock)).embed(
+            ["query"], aliases=["embedding"]
+        )
+    )
+
+    assert response.embeddings == ((1.0, 0.0, 0.0),)
+
+
+def test_embedding_still_rejects_a_bare_id_from_a_different_model():
+    """Relaxing the namespace must not stop a real substitution being caught."""
+
+    target = ModelTarget("https://example/v1", "key", "workbuddy/bge-m3", 3)
+
+    def mock(request):
+        return httpx.Response(
+            200,
+            json={
+                "model": "text-embedding-3-small",
+                "data": [{"index": 0, "embedding": [1.0, 0.0, 0.0]}],
+            },
+        )
+
+    with pytest.raises(EmbeddingError) as exc_info:
+        asyncio.run(
+            ModelClient({"embedding": target}, httpx.MockTransport(mock)).embed(
+                ["query"], aliases=["embedding"]
+            )
+        )
+
+    assert exc_info.value.code == "EMBEDDING_MODEL_MISMATCH"
+
+
+def test_embedding_accepts_a_gateway_dropping_the_first_index():
+    """magpie returns [None, 1, 2, ...]; positions still fix the order."""
+
+    target = ModelTarget("https://example/v1", "key", "embedding-model", 3)
+
+    def mock(request):
+        return httpx.Response(
+            200,
+            json={
+                "model": "embedding-model",
+                "data": [
+                    {"embedding": [1.0, 0.0, 0.0]},
+                    {"index": 1, "embedding": [0.0, 1.0, 0.0]},
+                ],
+            },
+        )
+
+    response = asyncio.run(
+        ModelClient({"embedding": target}, httpx.MockTransport(mock)).embed(
+            ["a", "b"], aliases=["embedding"]
+        )
+    )
+
+    assert response.embeddings == ((1.0, 0.0, 0.0), (0.0, 1.0, 0.0))
+
+
+def test_embedding_rejects_two_vectors_claiming_the_same_slot():
+    """Duplicate indexes leave a slot empty, so the order is unresolvable."""
+
+    target = ModelTarget("https://example/v1", "key", "embedding-model", 3)
+
+    def mock(request):
+        return httpx.Response(
+            200,
+            json={
+                "model": "embedding-model",
+                "data": [
+                    {"index": 0, "embedding": [1.0, 0.0, 0.0]},
+                    {"index": 0, "embedding": [0.0, 1.0, 0.0]},
+                ],
+            },
+        )
+
+    with pytest.raises(EmbeddingError) as exc_info:
+        asyncio.run(
+            ModelClient({"embedding": target}, httpx.MockTransport(mock)).embed(
+                ["a", "b"], aliases=["embedding"]
+            )
+        )
+
+    assert exc_info.value.code == "EMBEDDING_RESPONSE_INVALID"

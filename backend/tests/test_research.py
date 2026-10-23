@@ -25,6 +25,7 @@ from stocks.providers import (
 from stocks.repository import SearchHit
 from stocks.research.service import select_evidence, validate_selected_versions
 from stocks.settings import Settings
+from stocks.embedding_space import VECTOR_DIMENSIONS
 
 
 def make_config() -> Settings:
@@ -178,7 +179,7 @@ agents:
 def fake_embed(client, targets, texts):
     return EmbeddingResponse(
         model_alias=targets.primary,
-        embeddings=((0.0,) * 1536,),
+        embeddings=((0.0,) * VECTOR_DIMENSIONS,),
     )
 
 
@@ -190,7 +191,7 @@ def embedding_targets() -> EmbeddingTargets:
                 base_url="https://embedding.example/v1",
                 api_key="test",
                 name="embedding",
-                dimensions=1536,
+                dimensions=VECTOR_DIMENSIONS,
                 capabilities=("embedding",),
             ),
         ),

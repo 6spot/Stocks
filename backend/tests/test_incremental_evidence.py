@@ -52,6 +52,7 @@ from stocks.repository import SearchHit
 from stocks.research.evidence import mark_conflicting_facts
 from stocks.research.service import select_evidence
 from stocks.settings import Settings
+from stocks.embedding_space import VECTOR_DIMENSIONS
 
 
 def make_config() -> Settings:
@@ -88,7 +89,7 @@ def embedding_targets() -> EmbeddingTargets:
                 base_url="https://embedding.example/v1",
                 api_key="test",
                 name="embedding",
-                dimensions=1536,
+                dimensions=VECTOR_DIMENSIONS,
                 capabilities=("embedding",),
             ),
         ),
@@ -98,7 +99,7 @@ def embedding_targets() -> EmbeddingTargets:
 def fake_embed(client, targets, texts):
     return EmbeddingResponse(
         model_alias=targets.primary,
-        embeddings=((0.0,) * 1536,),
+        embeddings=((0.0,) * VECTOR_DIMENSIONS,),
     )
 
 

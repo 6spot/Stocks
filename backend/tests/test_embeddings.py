@@ -169,21 +169,21 @@ def test_embedding_configuration_rejects_incompatible_fallback(tmp_path, monkeyp
     monkeypatch.setenv("EMBEDDING_MODEL_NAME", "embedding")
     path = tmp_path / "models.yaml"
     path.write_text(
-        """
+        f"""
 providers:
   default:
     protocol: openai_compatible
-    base_url: ${MODEL_API_BASE_URL}
-    api_key: ${MODEL_API_KEY}
+    base_url: ${{MODEL_API_BASE_URL}}
+    api_key: ${{MODEL_API_KEY}}
 models:
   first:
     provider: default
-    name: ${EMBEDDING_MODEL_NAME}
-    dimensions: 1536
+    name: ${{EMBEDDING_MODEL_NAME}}
+    dimensions: {VECTOR_DIMENSIONS}
   second:
     provider: default
-    name: ${MODEL_NAME}
-    dimensions: 1536
+    name: ${{MODEL_NAME}}
+    dimensions: {VECTOR_DIMENSIONS}
 embedding:
   models: [first, second]
 """,
@@ -219,7 +219,7 @@ embedding:
         encoding="utf-8",
     )
 
-    with pytest.raises(ValueError, match="must match 1536"):
+    with pytest.raises(ValueError, match=f"must match {VECTOR_DIMENSIONS}"):
         load_embedding_targets(str(path))
 
 
@@ -545,24 +545,24 @@ def test_chat_and_embedding_may_use_different_providers(tmp_path, monkeypatch):
     monkeypatch.setenv("EMBEDDING_MODEL_NAME", "embed-model")
     path = tmp_path / "models.yaml"
     path.write_text(
-        """
+        f"""
 providers:
   chat:
     protocol: openai_compatible
-    base_url: ${MODEL_API_BASE_URL}
-    api_key: ${MODEL_API_KEY}
+    base_url: ${{MODEL_API_BASE_URL}}
+    api_key: ${{MODEL_API_KEY}}
   embedder:
     protocol: openai_compatible
-    base_url: ${EMBEDDING_API_BASE_URL}
-    api_key: ${EMBEDDING_API_KEY}
+    base_url: ${{EMBEDDING_API_BASE_URL}}
+    api_key: ${{EMBEDDING_API_KEY}}
 models:
   research:
     provider: chat
-    name: ${MODEL_NAME}
+    name: ${{MODEL_NAME}}
   embedding:
     provider: embedder
-    name: ${EMBEDDING_MODEL_NAME}
-    dimensions: 1536
+    name: ${{EMBEDDING_MODEL_NAME}}
+    dimensions: {VECTOR_DIMENSIONS}
 embedding:
   models: [embedding]
 """,

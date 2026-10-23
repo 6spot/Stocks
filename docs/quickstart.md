@@ -315,7 +315,7 @@ different embedding API. Set `MODEL_API_BASE_URL` / `MODEL_API_KEY` / `MODEL_NAM
 chat vendor and `EMBEDDING_API_BASE_URL` / `EMBEDDING_API_KEY` / `EMBEDDING_MODEL_NAME`
 for the embedding vendor; `config/models.yaml` points each model at its own provider, and
 both must expose the OpenAI-compatible operation with a `/v1` base URL. The embedding
-provider must serve `/embeddings`. The current vector space is fixed at 1,536 dimensions,
+provider must serve `/embeddings`. The current vector space is fixed at 1,024 dimensions,
 matching the HNSW cosine index in the fresh database schema. Any configured embedding
 fallback must use the same model name and dimensions.
 

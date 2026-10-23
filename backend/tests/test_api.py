@@ -3,6 +3,7 @@ from uuid import uuid4
 
 from stocks.api import _embedding_state
 from stocks.models import DocumentEmbeddingState, DocumentParseState
+from stocks.embedding_space import VECTOR_DIMENSIONS
 
 
 def test_embedding_state_marks_chunks_pending_after_reparse():
@@ -26,7 +27,7 @@ def test_embedding_state_marks_chunks_pending_after_reparse():
         parse_batch_id=previous_batch_id,
         model_alias="embedding",
         model_name="text-embedding-3-small",
-        dimensions=1536,
+        dimensions=VECTOR_DIMENSIONS,
         chunk_count=2,
         indexed_count=2,
         error=None,
@@ -65,7 +66,7 @@ def test_embedding_state_reports_current_batch_attempt():
         parse_batch_id=batch_id,
         model_alias="embedding",
         model_name="text-embedding-3-small",
-        dimensions=1536,
+        dimensions=VECTOR_DIMENSIONS,
         chunk_count=2,
         indexed_count=1,
         error={

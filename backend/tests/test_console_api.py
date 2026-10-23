@@ -31,6 +31,7 @@ from stocks.models import (
 )
 from stocks.repository import DocumentInput, ingest_document
 from stocks.settings import Settings
+from stocks.embedding_space import VECTOR_DIMENSIONS
 
 NOW = datetime(2026, 10, 22, 8, tzinfo=UTC)
 OWNER_PASSWORD = "test-owner-password"
@@ -158,7 +159,7 @@ agents:
 
 def write_models(path: Path) -> None:
     path.write_text(
-        """
+        f"""
 providers:
   default:
     protocol: openai_compatible
@@ -174,7 +175,7 @@ models:
   embedding:
     provider: default
     name: embedding-model
-    dimensions: 1536
+    dimensions: {VECTOR_DIMENSIONS}
 embedding:
   models: [embedding]
 agents:

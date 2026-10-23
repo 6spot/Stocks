@@ -50,6 +50,7 @@ from stocks.providers import (
 from stocks.repository import DocumentInput, SearchHit, ingest_document
 from stocks.research.service import render_report, select_evidence
 from stocks.settings import Settings
+from stocks.embedding_space import VECTOR_DIMENSIONS
 
 CANONICAL = "https://origin.example/story"
 COLLECTED_AT = datetime(2026, 10, 20, 8, tzinfo=UTC)
@@ -87,7 +88,7 @@ def embedding_targets() -> EmbeddingTargets:
                 base_url="https://embedding.example/v1",
                 api_key="test",
                 name="embedding",
-                dimensions=1536,
+                dimensions=VECTOR_DIMENSIONS,
                 capabilities=("embedding",),
             ),
         ),
@@ -97,7 +98,7 @@ def embedding_targets() -> EmbeddingTargets:
 def fake_embed(client, targets, texts):
     return EmbeddingResponse(
         model_alias=targets.primary,
-        embeddings=((0.0,) * 1536,),
+        embeddings=((0.0,) * VECTOR_DIMENSIONS,),
     )
 
 

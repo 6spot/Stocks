@@ -592,6 +592,21 @@ def _endpoint_hash(base_url: str) -> str:
     return hashlib.sha256(normalized.encode()).hexdigest()
 
 
+def _reported_model_matches(reported: str, requested: str) -> bool:
+    """Whether a provider-reported model name identifies the requested one.
+
+    Some gateways namespace a model by provider (``workbuddy/bge-m3``) and echo
+    back only the bare id (``bge-m3``). Accept that suffix form, but keep
+    rejecting anything that does not name the same model, so a silently
+    substituted model is still caught.
+    """
+
+    if reported == requested:
+        return True
+    _, separator, bare = requested.rpartition("/")
+    return bool(separator and bare) and reported == bare
+
+
 def _parse_embeddings(
     payload: object, *, count: int, dimensions: int, model_name: str
 ) -> tuple[tuple[float, ...], ...]:
@@ -601,7 +616,9 @@ def _parse_embeddings(
             "Embedding provider returned an invalid response",
         )
     response_model = payload.get("model")
-    if response_model is not None and response_model != model_name:
+    if response_model is not None and not _reported_model_matches(
+        response_model, model_name
+    ):
         raise EmbeddingError(
             "EMBEDDING_MODEL_MISMATCH",
             "Embedding provider returned a different model",
@@ -613,19 +630,39 @@ def _parse_embeddings(
             "Embedding provider returned an unexpected number of vectors",
         )
     vectors: list[tuple[float, ...] | None] = [None] * count
+    # `index` positions each vector, so a reordered response is still usable.
+    # A provider may omit it (some gateways drop it for the first entry); the
+    # position in `data` then has to stand in, which the OpenAI schema defines
+    # as the order of the inputs. An entry may not claim a slot another entry
+    # already filled, so a contradictory response is still rejected.
     active_indexes = set(range(count))
-    for item in data:
-        if (
-            not isinstance(item, dict)
-            or not isinstance(item.get("index"), int)
-            or isinstance(item.get("index"), bool)
-            or item["index"] not in active_indexes
-        ):
+    for position, item in enumerate(data):
+        if not isinstance(item, dict):
             raise EmbeddingError(
                 "EMBEDDING_RESPONSE_INVALID",
                 "Embedding provider returned invalid vector indexes",
             )
-        index = item["index"]
+        if "index" in item:
+            raw_index = item["index"]
+            if (
+                not isinstance(raw_index, int)
+                or isinstance(raw_index, bool)
+                or raw_index not in active_indexes
+            ):
+                raise EmbeddingError(
+                    "EMBEDDING_RESPONSE_INVALID",
+                    "Embedding provider returned invalid vector indexes",
+                )
+            index = raw_index
+        else:
+            # No index: fall back to the position, but only if that slot is
+            # still free, otherwise the ordering is genuinely ambiguous.
+            if position not in active_indexes:
+                raise EmbeddingError(
+                    "EMBEDDING_RESPONSE_INVALID",
+                    "Embedding provider returned invalid vector indexes",
+                )
+            index = position
         active_indexes.remove(index)
         raw_vector = item.get("embedding")
         if not isinstance(raw_vector, list) or len(raw_vector) != dimensions:

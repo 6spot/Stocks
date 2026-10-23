@@ -25,7 +25,7 @@ models:
   embedding:
     provider: embedder
     name: ${EMBEDDING_MODEL_NAME}
-    dimensions: 1536
+    dimensions: 1024
 embedding:
   models: [embedding]
 agents:

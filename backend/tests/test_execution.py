@@ -55,6 +55,7 @@ from stocks.models import (
     TaskStepResult,
 )
 from stocks.settings import Settings
+from stocks.embedding_space import VECTOR_DIMENSIONS
 
 PROCESS_A = "process-a"
 PROCESS_B = "process-b"
@@ -276,7 +277,7 @@ models:
   embedding:
     provider: default
     name: embedding
-    dimensions: 1536
+    dimensions: {VECTOR_DIMENSIONS}
 embedding:
   models: [embedding]
 agents:
@@ -655,7 +656,7 @@ def _make_task_config(tmp_path, condition=None, **overrides):
 def _fake_embed(client, targets, texts):
     class Response:
         model_alias = targets.primary
-        embeddings = ((1.0,) * 1536,)
+        embeddings = ((1.0,) * VECTOR_DIMENSIONS,)
 
     return Response()
 
@@ -669,7 +670,7 @@ def _mock_transport(output_content: str | None = None, statuses=None):
                 200,
                 json={
                     "model": "embedding",
-                    "data": [{"index": 0, "embedding": [0.0] * 1536}],
+                    "data": [{"index": 0, "embedding": [0.0] * VECTOR_DIMENSIONS}],
                 },
             )
         status = statuses.pop(0)
