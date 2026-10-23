@@ -30,7 +30,7 @@
     "docs/architecture.md",
     "docs/validation.md"
   ],
-  "notes": "五个子任务均已实施、归档并通过 PRD 验收。阶段退出条件第 2 条仍不成立：真实远程 MCP、真实同源转载与冲突样例、真实连续两份报告对照、真实返回费用的端点、调度与限流下的长期运行、SEC CIK 映射均需真实第三方服务与长期观察，已逐项登记在 docs/validation.md 的「待最终验收」与 roadmap/pending-acceptance.md。阶段保持 planning。",
+  "notes": "五个子任务已实施、归档并通过各自 PRD 验收。2026-10-23 在指定服务器完成 V2 相关 173 项测试、新库初始化无漂移、两份真实成功报告的 Agent 内容与双向接口对照，读取前后 9 张相关表哈希不变；SEC Apple JSON 入库、四字段映射及重复复用通过，全文解析超过 5,000 值上限未通过；Fed XML 真实解析通过，本轮 PDF 请求超时。模型与联系邮箱已可用。仍缺真实远程 MCP、转载/冲突与跨报告版本/指标修订成对样例、返回货币费用的端点及长期调度/限流；阶段退出条件第 2 条保持未勾选，父任务保持 planning。详见 research/acceptance-2026-10-23.md 和 roadmap/pending-acceptance.md PA-3。",
   "meta": {
     "milestone": "V2",
     "kind": "milestone",

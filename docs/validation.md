@@ -13,17 +13,17 @@ V0 证明“少量真实资料 → 原件与可检索证据 → 手动综合研�
 - **证据阅读**：Owner 可通过简单页面或 API 读取报告、打开引用片段与对应原件，看到来源、时间和版本。旧报告在新版本入库后仍指向旧证据。HTML 原件以安全文本或下载方式提供，不执行脚本。
 - **运行边界**：采集或研究失败不删除已保存资料，也不覆盖最后成功报告。V0 只报告本次查询实际覆盖范围，不写“已扫描完上次以来全部变化”。未经认证的早期 API 仅绑定本机，不对公网开放。
 
-**V0 端到端验收（2026-10-23 执行）：** 在测试服务器 `100.120.14.84` 的隔离目录与独立数据库上，用真实来源与真实模型跑通整条链路。**前提如实记录**：模型经本机 magpie 网关转发，chat 走 `group/openai`（Codex Plus 订阅，实测严格遵循 `json_schema`），embedding 走 `workbuddy/bge-m3`（1024 维）；因此当前向量空间为 1024，不是标准 OpenAI 端点的 1536。
+**V0 端到端验收（2026-10-23 执行）：** 在测试服务器 `100.120.14.84` 的隔离目录与独立数据库上，用真实来源与真实模型跑通整条链路。**前提如实记录**：模型经本机 magpie 网关转发，chat 走 `group/openai`（网关路由；本轮响应提供所需结构化字段），embedding 走 `workbuddy/bge-m3`（1024 维）；因此当前向量空间为 1024，与此前 1536 维设计不同。
 
-- **真实原件**：Fed 与 SEC 公开 RSS 各采集 20 条，40 份 Document 全部带 S3 快照，平均原件 86KB，正文 Chunk 平均 994 字——是公告正文而非 RSS 摘要。SEC 在 `user_agent` 换成真实联系邮箱后返回正常（此前占位邮箱会 403）。
+- **真实原件**：Fed 与 SEC 公开 RSS 各采集 20 条，40 份 Document 全部带 S3 快照，平均原件 86KB，正文 Chunk 平均 994 字——是公告正文而非 RSS 摘要。SEC 在 `user_agent` 换成真实联系邮箱后返回正常；此前发生过 403，现有证据不能确定占位邮箱是唯一原因。
 - **身份与版本**：对同一来源重复采集，Document 数保持 20→20，原始字节相同不增版。对一份被报告引用的 Document 显式重处理，生成 attempt 2 且 attempt 1 的 Chunk 全部保留（同一文档 4 个 Chunk 分布在 2 个批次）；旧批次不进当前检索，`embeddings=112` 少于 `chunks=114` 正是这个差异，`document_embedding_states` 对当前批次仍记 `completed 2/2`。
 - **可检索证据**：语义检索命中且相似度有区分（利率政策查询 0.618/0.557/0.551），跨来源查询同时返回 Fed 与 SEC 结果；`--source-id` 过滤生效；精确检索 `FOMC` 走不依赖向量的短代码路径，返回 3 条。
 - **手动研究**：Run `7b8959e9-67f6-4d86-92ff-c0ea2a89495e` 状态 `succeeded`，产出 Report `92d9b19b-45a3-45ec-b28e-7540f382920b`：Summary 728 字、6 条 findings、3 个 open questions，12 条 `evidence_refs` 指向 7 个不同 Chunk、4 份不同 Document，每条都带 `document_version` 与 `parse_batch_id`。
 - **证据阅读**：`GET /api/reports/{id}` 返回 6248 字正文与 50 条证据，`cited_chunk_ids` 为 7 条；`GET /api/documents/{id}/original` 以 `text/plain; charset=utf-8` + `x-content-type-options: nosniff` 返回 85KB 原件，不执行脚本；未认证访问原件与报告均返回 401。
-- **AC-2（旧报告指向旧证据）**：对报告引用的一份 Document 显式重处理后重新读取同一报告——7/7 旧引用仍可解析、引用文本零变化、报告正文与重处理前逐字相同。
+- **AC-2（旧报告指向旧证据）**：对报告引用的一份 Document 显式重处理后重新读取同一报告——7/7 旧引用仍可解析、所核对的引用文本前 40 字符一致、报告正文与重处理前逐字相同。此项为同版本重处理，不是上游字节改变后新版本入库的实测，未比较完整 Chunk 文本。
 - **运行边界**：把 chat 端点改成不可达地址触发失败，得到 `MODEL_ROUTE_SNAPSHOT_INVALID` 与 `MODEL_CONNECTION_FAILED`；失败前后 Document 20→20、Report 1→1，已保存资料未被删除、最后成功报告未被覆盖。
 
-**仍未完成**：SEC EDGAR submissions API 的真实响应映射（样例保持 `enabled: false`，CIK 与访问政策待确认）；调度长期运行与第三方限流下的有界终止；真实 MCP 与返回费用的端点。以上均按 Owner 安排留给最终验收。
+**仍未完成**：SEC EDGAR submissions 的完整研究链路（本轮已补真实采集与四字段映射，全文解析超限，见 V2）；调度长期运行与第三方限流下的有界终止；真实 MCP 与返回费用的端点。以上均按 Owner 安排留给最终验收。
 
 ## V1：日常运行
 
@@ -37,19 +37,19 @@ V1 在 V0 的证据链上增加定时采集、定时研究、结构化 Fact、�
 - **运行恢复**：同一 Task 同时最多一份待执行/运行 Run。有限重试后仍失败的采集、解析、分类、抽取、索引或研究可定位并由 Owner 重试；已完成步骤不重复制造资料。中断的 Document 阶段不自动接管，Owner 确认旧进程停止后才释放，已提交的解析批次与向量批次保留并只续做缺失部分。来源无更新、请求失败与处理积压分别呈现。
 - **日常界面与部署**：受保护的 Overview、Intelligence、Tasks、Research 和基础 Runs 视图能查看来源、处理状态、报告及证据，并手动触发/重试。Web/API 跨设备开放前完成访问控制；按目标 ARM + Docker Compose 环境验证部署。报告失败保留最后成功报告。
 
-**V1 端到端验收（2026-10-23 执行）：** 在 V0 同一隔离环境（独立库、真实 S3、真实模型经 magpie 网关）上逐条验证日常运行行为。
+**V1 端到端验收（2026-10-23 执行）：** 在 V0 同一隔离环境（独立库、自建 SeaweedFS 对象存储、真实模型经 magpie 网关）上验证以下日常运行行为。
 
-- **独立调度**：`scheduled_collection`（`every: 15m`）启用后，首轮 `action=registered` 并持久化 `next_due_at`；未到期轮次返回 `not_due` 且不建 Run；把 `next_due_at` 拨到过去后返回 `triggered` 并真实执行成功。`scheduled_market_brief` 的 `cron: "0 8,20 * * *"` + `timezone: America/New_York` 解析正常。Source 配置未定义第二套采集周期。
+- **独立调度**：`scheduled_collection`（`every: 15m`）启用后，首轮 `action=registered` 并持久化 `next_due_at`；未到期轮次返回 `not_due` 且不建 Run；把 `next_due_at` 拨到过去后返回 `triggered` 并真实执行成功。`scheduled_market_brief` 的 `cron: "0 8,20 * * *"` + `timezone: America/New_York` 的配置与实现已核对；本轮没有实际等待 cron 跨时区触发。Source 配置未定义第二套采集周期。
 - **统一处理**：parse/classify/facts/index 四阶段独立记录状态（`/api/processing` 返回 `by_stage` 与 `by_status` 分布，实测 `parse` 2 completed/18 pending 等）。真实 LLM Fact 抽取跑出 3 条 Fact，`evidence_ref` 带 `chunk_id`+`position`+`parse_batch_id`。
 - **Fact 与数字**：抽取出的 Fact 保留 `subject_name`、`unit`、`period_start/end`、`available_at`、`attributes`；数值与单位为空时保持空而不猜测。
-- **统一取材**：一次 Run 的 3 条 `evidence_refs` 实际只来自 2 个不同 Chunk、1 份 Document——同一 Document 与其 Fact 同时命中时按一条证据链计数，未算成多份独立支持。
-- **可靠增量**：用两个连接实测晚提交——A 插入未提交时 B 的扫描看不到（0 条），A 提交后下一窗口可见（1 条），水位在提交前保持 23。失败 Run（坏端点 `MODEL_ROUTE_SNAPSHOT_INVALID`）后游标保持 23 不动，即使计数器已到 24；随后成功 Run 把游标推进到 24。
+- **统一取材**：一次 Run 的 3 条 `evidence_refs` 实际只来自 2 个不同 Chunk、1 份 Document。这证明引用分布，不能单独证明 Fact 与 Document 命中后的合并计数；该契约由相关集成测试覆盖。
+- **可靠增量**：用两个连接检查晚提交——A 插入未提交时 B 的 SQL 查询看不到（0 条），A 提交后查询可见（1 条），水位在提交前保持 23。此处未证明该资料经应用变化流进入后续证据包。失败 Run（坏端点 `MODEL_ROUTE_SNAPSHOT_INVALID`）后游标保持 23 不动，即使计数器已到 24；随后成功 Run 把游标推进到 24。
 - **运行恢复**：已有活跃 Run 时调度返回 `skipped_active_run`，不重复创建；活跃 Run 数始终 ≤1。`/api/processing?status=failed` 返回 200 且 `items: 0`，`counts` 给出分阶段积压。
 - **日常界面**：`/api/overview`、`/documents`、`/reports`、`/tasks`、`/runs`、`/processing`、`/sources` 认证后全部 200，未认证全部 401。`/api/sources` 把 `status`、`request_success`、`no_update` 作为独立字段返回，与 `processing_backlog` 分开，来源无更新、请求失败与处理积压可区分。
 
 **仍未完成**：真实移动设备视觉与跨设备登录、真实 ARM 实机、公网/HTTPS 发布（见「待最终验收」）。
 
-**已实现与待补的边界（截至 V1-09）：** 独立 API/Worker 进程、manual/schedule/retry 统一原子触发、`cron`+时区与 `every` 固定锚点的持久 due 调度、跨 Task 失败隔离、最小 `collection` Task 接入、Owner 显式确认停机后的结束/重试，Document 四阶段（parse/classify/facts/index）统一待办、独立有界文档处理槽位、有限自动重试、中断恢复与 `stocks.processing status|retry|reprocess`，轻量分类、通用 Fact 与 `http_api` Source Mapper 已在当前代码实现。可靠增量已实现提交可见水位、Task + Scope 独立游标、固定 `(start,end]` 窗口、按冻结窗口条件先过滤后分页的原始变化读取、TaskRun 版本化扫描检查点、正常 Run 恢复最新有效未完成检查点、retry 复制来源窗口与进度，以及最终 Research Agent Step/Analysis/Report/游标/Run 成功的原子提交。V1-06 已实现同一 Document 的增量与历史证据合并、Fact 与来源 Chunk 关联、`evidence_groups` 持久化以及 discovered/screened/selected/证据组/filtered-out/unexamined 的分项覆盖统计；跨 Document 转载识别与跨源冲突解释由 V2-03 实现，见下。V1-07 已实现环境凭据驱动的单 Owner 会话、受保护报告/原件/操作、稳定游标分页、Overview/Sources/Tasks/Runs/积压/检索接口，以及来源采集结果、更新预期和后处理积压的分离展示；自动化验收覆盖未认证、过期/损坏会话、CSRF、重复触发、确认结束、来源失败、安全原件和分页边界。V1-08 已实现受保护的 Overview、Intelligence、Tasks、Research、Runs 响应式 Web 控制台，包含运行时响应解码、内存 CSRF、统一会话恢复、URL 承载检索与详情、分段处理状态、历史引用证据优先阅读、受保护原件入口和 Owner 确认后的恢复操作；测试服务器上的类型检查、类型与行为测试、生产构建、生产依赖审计及桌面/手机浏览器 smoke 已通过。V1-09 已完成单机 Compose 生产形态：Nginx 提供前端并同源代理 `/api`、`/health`，生产容器不常驻 Node；API、Worker、PostgreSQL 不发布主机端口，只有 Web 入口可绑定；健康检查、SPA fallback、认证、CSRF、原件保护和模型配置缺失时的稳定错误已在实际服务栈验证。2026-10-23 补做 ARM：在测试服务器安装 qemu `binfmt` 后，`api` 与 `web` 镜像均构建为 `linux/arm64`，容器内 `aarch64` 可运行，全新库 `alembic upgrade head` 与 `alembic check` 无漂移，四服务全栈 `healthy`，入口、登录、受保护读取、处理筛选与 CSRF 边界均在该 arm64 栈上通过；同轮发现并修复 Nginx 只在启动时解析 `api` 上游、导致容器重建后 Web 持续 502 的缺陷（`deploy/nginx.conf`，提交 `7c334c4`）。ARM 实机、真实移动设备视觉验收、跨设备登录与公网/TLS 发布仍为 pending，模拟结果不等于目标硬件已通过；真实第三方 API 与 Decision/Generation Provider 闭环、真实 S3 接入及 mapper 覆盖的指标范围同样仍为 pending。
+**已实现与待补的边界（截至 V1-09）：** 独立 API/Worker 进程、manual/schedule/retry 统一原子触发、`cron`+时区与 `every` 固定锚点的持久 due 调度、跨 Task 失败隔离、最小 `collection` Task 接入、Owner 显式确认停机后的结束/重试，Document 四阶段（parse/classify/facts/index）统一待办、独立有界文档处理槽位、有限自动重试、中断恢复与 `stocks.processing status|retry|reprocess`，轻量分类、通用 Fact 与 `http_api` Source Mapper 已在当前代码实现。可靠增量已实现提交可见水位、Task + Scope 独立游标、固定 `(start,end]` 窗口、按冻结窗口条件先过滤后分页的原始变化读取、TaskRun 版本化扫描检查点、正常 Run 恢复最新有效未完成检查点、retry 复制来源窗口与进度，以及最终 Research Agent Step/Analysis/Report/游标/Run 成功的原子提交。V1-06 已实现同一 Document 的增量与历史证据合并、Fact 与来源 Chunk 关联、`evidence_groups` 持久化以及 discovered/screened/selected/证据组/filtered-out/unexamined 的分项覆盖统计；跨 Document 转载识别与跨源冲突解释由 V2-03 实现，见下。V1-07 已实现环境凭据驱动的单 Owner 会话、受保护报告/原件/操作、稳定游标分页、Overview/Sources/Tasks/Runs/积压/检索接口，以及来源采集结果、更新预期和后处理积压的分离展示；自动化验收覆盖未认证、过期/损坏会话、CSRF、重复触发、确认结束、来源失败、安全原件和分页边界。V1-08 已实现受保护的 Overview、Intelligence、Tasks、Research、Runs 响应式 Web 控制台，包含运行时响应解码、内存 CSRF、统一会话恢复、URL 承载检索与详情、分段处理状态、历史引用证据优先阅读、受保护原件入口和 Owner 确认后的恢复操作；测试服务器上的类型检查、类型与行为测试、生产构建、生产依赖审计及桌面/手机浏览器 smoke 已通过。V1-09 已完成单机 Compose 生产形态：Nginx 提供前端并同源代理 `/api`、`/health`，生产容器不常驻 Node；API、Worker、PostgreSQL 不发布主机端口，只有 Web 入口可绑定；健康检查、SPA fallback、认证、CSRF、原件保护和模型配置缺失时的稳定错误已在实际服务栈验证。2026-10-23 补做 ARM：在测试服务器安装 qemu `binfmt` 后，`api` 与 `web` 镜像均构建为 `linux/arm64`，容器内 `aarch64` 可运行，全新库 `alembic upgrade head` 与 `alembic check` 无漂移，四服务全栈 `healthy`，入口、登录、受保护读取、处理筛选与 CSRF 边界均在该 arm64 栈上通过；同轮发现并修复 Nginx 只在启动时解析 `api` 上游、导致容器重建后 Web 持续 502 的缺陷（`deploy/nginx.conf`，提交 `7c334c4`）。ARM 实机、真实移动设备视觉验收、跨设备登录与公网/TLS 发布仍为 pending，模拟结果不等于目标硬件已通过；真实外网采集与 magpie chat/embedding 闭环已验证；外部 MCP/返回费用端点、第三方 S3（当前为自建 SeaweedFS）及 mapper 更多指标范围仍为 pending。
 
 ## V2：研究深化
 
@@ -69,7 +69,7 @@ V2 在日常运行稳定后改善资料缺口、来源冲突和历史比较的�
 - **统一入口**：RSS/Atom 条目指向 PDF 时按文章获取并原样入库；格式化解析、分类、Fact 与索引仍走同一阶段链路，不按渠道分叉。
 - **来源配置**：新增公开的 Federal Reserve 新闻 RSS，并给出需要 Owner 确认联系邮箱、CIK 与访问政策的 SEC EDGAR submissions API 示例（保持 `enabled: false`）。
 
-**已实现与待补的边界（截至 V2-02）：** 三种格式的解析与定位、PDF 文章获取、上表的来源配置样例已在当前代码实现。测试服务器 `100.120.14.84` 隔离目录中的单元/集成测试覆盖格式定位、数值与单位保留、失败与超限码、PDF 文章获取与阶段结果；真实来源核对用隔离数据库与对象存储完成——公开 Federal Reserve 新闻 RSS 采集 20 条真实条目入库，逐个核对 S3 原件字节哈希与数据库 `content_hash` 一致；一份真实 HTML 原件解析为 `semantic-text-v2` 批次，全部片段范围可回到解码原文（42/42，21 个不同元素路径），数值逐字保留且无新增数字，普通重跑复用同一批次，显式重处理生成 attempt 2 并保留旧 Chunk；一份真实的 Fed 执行行动 PDF（189,823 字节）经文章获取通道入库后解析为 8 页、15 个 Chunk，每个页内片段按字符一一映射回该页文本。待补验收：Fed/SEC 来源的 `user_agent` 仍是占位联系邮箱，首次真实持续采集需 Owner 换成真实邮箱；SEC EDGAR submissions API 的 CIK、访问政策与真实响应映射未验收（样例保持 `enabled: false`）；调度触发的长期运行与限流行为未验收。未实现：XML 的字段映射（XPath Mapper）、OCR、PDF 表格结构重建。以上验证只在测试服务器隔离目录执行，不回退本机。
+**已实现与待补的边界（截至 V2-02）：** 三种格式的解析与定位、PDF 文章获取、上表的来源配置样例已在当前代码实现。测试服务器 `100.120.14.84` 隔离目录中的单元/集成测试覆盖格式定位、数值与单位保留、失败与超限码、PDF 文章获取与阶段结果；真实来源核对用隔离数据库与对象存储完成——公开 Federal Reserve 新闻 RSS 采集 20 条真实条目入库，逐个核对 S3 原件字节哈希与数据库 `content_hash` 一致；一份真实 HTML 原件解析为 `semantic-text-v2` 批次，全部片段范围可回到解码原文（42/42，21 个不同元素路径），数值逐字保留且无新增数字，普通重跑复用同一批次，显式重处理生成 attempt 2 并保留旧 Chunk；一份真实的 Fed 执行行动 PDF（189,823 字节）经文章获取通道入库后解析为 8 页、15 个 Chunk，每个页内片段按字符一一映射回该页文本。待补验收：联系邮箱已配置，2026-10-23 已补做 Apple CIK 的真实 JSON 入库、四字段映射与重复复用；完整 JSON parse 超过 5,000 值上限，全文研究链路与更多指标/CIK 未验收（样例保持 `enabled: false`）；调度触发的长期运行与限流行为未验收。未实现：XML 的字段映射（XPath Mapper）、OCR、PDF 表格结构重建。以上验证只在测试服务器隔离目录执行，不回退本机。
 
 ### V2-03 来源独立性与冲突证据呈现
 
@@ -87,7 +87,7 @@ V2 在日常运行稳定后改善资料缺口、来源冲突和历史比较的�
 - **修订与晚到资料**：同指标 Fact 按 `(subject_name, symbol, metric_id)` 比较，标出 `value_changed` / `basis_changed` / `period_changed` 并给出两侧真实取值，不平均、不静默覆盖；晚于较早报告 `as_of` 发布或采集的 Document 列在 `late_material`，解释为真实来源变化而不是先前已知。
 - **覆盖如实呈现**：两侧 coverage、缺口增减与 `unexamined_count` 分开显示，未知保持未知；Task 或 Scope 不同、较早 `as_of` 未推进时给出 `warnings[]`；每组差异截断于 50 条并带 `truncated`，完整快照仍在各自报告与 Evidence Package 中。
 
-**已实现与待补的边界（截至 V2-04）：** 后端 `compare_report_sides()` 与上述报告对照接口、Web 报告页的「历史报告对照」卡片（默认选中同一 Task 中最近的一份成功报告）已在当前代码实现。测试服务器 `100.120.14.84` 的隔离目录中以 PostgreSQL/pgvector 集成测试覆盖两侧排序与请求侧交换、结论新增/消失/持续与不确定性变化、Document 版本与内容变化、同指标修订取值、覆盖缺口与未知未扫描数量、晚到资料、自比 400、未知报告 404、失败 Run 409 及旧报告引用不变；前端通过类型检查与行为测试（默认预选、两侧原件链接、无对照对象时不显示卡片）。该任务不涉及数据库结构变更，全新开发库 `alembic upgrade head` + `alembic check` 无差异。**待补验收：** Owner 尚未用真实连续 Run 的两份报告做人工对照复核（需要至少两次成功的真实研究运行）；真实场景中「同一 Document 新版本被后续报告引用」与「同一指标跨报告修订」的成对样例仍需 Owner 用实际来源确认；逐条 Finding 关系图、严格历史知识回放与虚构价格/收益对比明确不在范围内。以上验证只在测试服务器隔离目录执行，不把未运行的检查写成通过。
+**已实现与待补的边界（截至 V2-04）：** 后端 `compare_report_sides()` 与上述报告对照接口、Web 报告页的「历史报告对照」卡片（默认选中同一 Task 中最近的一份成功报告）已在当前代码实现。测试服务器 `100.120.14.84` 的隔离目录中以 PostgreSQL/pgvector 集成测试覆盖两侧排序与请求侧交换、结论新增/消失/持续与不确定性变化、Document 版本与内容变化、同指标修订取值、覆盖缺口与未知未扫描数量、晚到资料、自比 400、未知报告 404、失败 Run 409 及旧报告引用不变；前端通过类型检查与行为测试（默认预选、两侧原件链接、无对照对象时不显示卡片）。该任务不涉及数据库结构变更，全新开发库 `alembic upgrade head` + `alembic check` 无差异。**待补验收：** 截至 V2-04 交付时尚无真实连续两份报告复核；2026-10-23 已补做同一 Task 两份真实成功报告的接口与内容对照，详见下文「V2 本轮集成验收」。真实场景中「同一 Document 新版本被后续报告引用」与「同一指标跨报告修订」的成对样例仍需 Owner 用实际来源确认；逐条 Finding 关系图、严格历史知识回放与虚构价格/收益对比明确不在范围内。以上验证只在测试服务器隔离目录执行，不把未运行的检查写成通过。
 
 ### V2-05 覆盖费用与异常分析及 V2 验收
 
@@ -96,7 +96,18 @@ V2 在日常运行稳定后改善资料缺口、来源冲突和历史比较的�
 - **覆盖聚合取自已存证据包**：Overview 的「研究覆盖」取最近一份成功报告的证据包，失败 Run 不充当成功历史；「近期模型用量」按最近若干个 Run 的已保存调用确定汇总。两者都不重新检索、不调用模型。
 - **异常与积压复用既有操作**：重试、继续扫描、确认结束 Run 与处理积压仍由既有服务承担，本任务不新增调度、告警或独立监控平台。
 
-**已实现与待补的边界（截至 V2-05）：** `model_calls` 新增 `provider` 与 `cost_usd`（只改 0001 初始化定义，不做增量迁移）；供应商响应中的 `usage.cost` / `usage.cost_usd` 按 `numeric(14, 6)` 保存，未返回时保持空。`GET /api/runs/{run_id}`、`GET /api/reports/{report_id}` 与 `/api/overview` 新增确定性 `usage` 汇总（调用数/成败/回退、Token、耗时、`cost_usd`、`cost_known_calls`、`cost_unknown_calls` 与有界的按模型分解），Overview 另给出来自最近一份成功报告证据包的「研究覆盖」（候选发现/筛选/入选、证据组与独立原件、未扫描候选、补证输入与来源/索引缺口），失败 Run 不充当成功历史；Web 的 Overview、Runs 与报告页显示这些字段，未提供费用显示为未知并标出次数，不显示为 0。测试服务器 `100.120.14.84` 隔离目录（独立 PostgreSQL `55442`、自有 seaweedfs bucket `18339`）中：`test_coverage_usage_api` 3 passed（未知候选剩余与未知费用保持未知、失败 Run 不充当最近覆盖、Run 与报告返回 Provider/费用/缺口），`test_providers` 9 passed（含供应商返回费用、未返回保持未知、非数值费用被拒绝），`test_execution` 63 passed（含新增全流程用例：真实执行一次 Run 后 ModelCall 记录 Provider 与供应商费用、步骤 usage 带费用与未知计数），`test_console_api` + `test_report_api` + `test_report_comparison` 与 `test_evidence_conflicts` + `test_collection` + `test_research` + `test_api` 通过；全新空库 `alembic upgrade head` + `alembic check` 无差异；前端 `npm run typecheck`、`npm run test`（8 文件 15 tests）与 `npm run build` 通过。**待补验收（不阻塞，留给最终验收）：** 费用是否可得取决于供应商响应，当前配置的 OpenAI 兼容端点通常不返回 `cost`，真实返回费用的第三方端点与真实远程 MCP 服务仍未接通；真实「连续两次成功研究 → 报告对照」的 Owner 人工复核、真实同源冲突样例以及调度/限流下的长期有界终止仍属 V2 阶段待验收项。自动投资评分、动态成本路由与独立监控平台明确不在范围内。以上验证只在测试服务器隔离目录执行，不把未运行的检查写成通过。
+**已实现与待补的边界（截至 V2-05）：** `model_calls` 新增 `provider` 与 `cost_usd`（只改 0001 初始化定义，不做增量迁移）；供应商响应中的 `usage.cost` / `usage.cost_usd` 按 `numeric(14, 6)` 保存，未返回时保持空。`GET /api/runs/{run_id}`、`GET /api/reports/{report_id}` 与 `/api/overview` 新增确定性 `usage` 汇总（调用数/成败/回退、Token、耗时、`cost_usd`、`cost_known_calls`、`cost_unknown_calls` 与有界的按模型分解），Overview 另给出来自最近一份成功报告证据包的「研究覆盖」（候选发现/筛选/入选、证据组与独立原件、未扫描候选、补证输入与来源/索引缺口），失败 Run 不充当成功历史；Web 的 Overview、Runs 与报告页显示这些字段，未提供费用显示为未知并标出次数，不显示为 0。测试服务器 `100.120.14.84` 隔离目录（独立 PostgreSQL `55442`、自有 seaweedfs bucket `18339`）中：`test_coverage_usage_api` 3 passed（未知候选剩余与未知费用保持未知、失败 Run 不充当最近覆盖、Run 与报告返回 Provider/费用/缺口），`test_providers` 9 passed（含供应商返回费用、未返回保持未知、非数值费用被拒绝），`test_execution` 63 passed（含新增全流程用例：受控 Provider 响应下执行一次 Run 后 ModelCall 记录 Provider 与供应商费用、步骤 usage 带费用与未知计数），`test_console_api` + `test_report_api` + `test_report_comparison` 与 `test_evidence_conflicts` + `test_collection` + `test_research` + `test_api` 通过；全新空库 `alembic upgrade head` + `alembic check` 无差异；前端 `npm run typecheck`、`npm run test`（8 文件 15 tests）与 `npm run build` 通过。**待补验收（不阻塞，留给最终验收）：** 费用是否可得取决于供应商响应，当前配置的 OpenAI 兼容端点通常不返回 `cost`，真实返回费用的第三方端点与真实远程 MCP 服务仍未接通；2026-10-23 已补做真实连续两份报告的 Agent 内容与接口复核；真实同源冲突样例以及调度/限流下的长期有界终止仍属 V2 阶段待验收项。自动投资评分、动态成本路由与独立监控平台明确不在范围内。以上验证只在测试服务器隔离目录执行，不把未运行的检查写成通过。
+
+### V2 本轮集成验收（2026-10-23）
+
+本轮全部运行验证在测试服务器 `100.120.14.84` 执行，数据库与真实报告库分离。新库 `alembic upgrade head` 与 `alembic check` 无漂移；9 个 V2 相关测试文件 **133 passed**，另 `test_facts.py` **40 passed**，合计 **173 passed**，两个批次各有同一 Starlette/httpx 弃用警告。初次新库未初始化的 setup errors 已通过先初始化修正，不是产品修复。授权/MCP、转载冲突、版本修订及供应商货币费用的这些结果使用受控响应，不能外推为真实第三方场景。
+
+- **真实报告对照已补做**：同一 Task 的 Report `f123a0bf-0003-4f99-a264-8527200148b2` 与 `9e9d97b2-07f3-4751-ad4a-2cce67aee741` 正反比较均成功，交换请求仍保持时间顺序；Finding 与 Open Question 各 3 新增、3 消失、0 持续，Document 1 持续，Fact 变化与晚到 Document 均为 0。逐条读取后确认两份均为同一 SEC 公告的改写，新增/消失来自精确 statement 匹配契约，不能解释为现实变化。读取/比较前后 9 张相关表的行数与全部记录哈希不变，ModelCall 仍为 2 条。持续 Finding、Document 新版本和真实指标修订仍未在这对报告中出现。
+- **真实用量与未知费用**：两次调用的 prompt/completion 为 20701/865 与 20204/834，耗时 11430ms 与 9930ms；费用均为 null，各标记 1 次未知费用，未显示为 0。真实返回费用、失败/回退调用聚合仍没有本轮真实供应商样本。
+- **SEC JSON 部分链路已补做**：只在隔离配置启用 Apple `CIK0000320193`，原件入库成功，4 个字段以 `source_mapping` 映射并保留 JSON Pointer、版本与原件哈希，重复采集复用 version 1。完整 JSON 的 parse 因超过 5,000 值上限而返回 `STRUCTURED_CONTENT_TOO_LARGE`，没有生成完整 Chunk/Embedding；字段映射成功不能当作全文解析成功。仓库样例仍为 `enabled: false`。
+- **真实 XML 与 PDF 边界**：Fed XML 实际获取 14,813 字节，parser 生成 125 segments/12 chunks 并保存 `xml_path`。本轮 Fed PDF 请求 25 秒超时，未记为通过；此前 V2-02 的真实 PDF 证据仍保留。
+
+详细命令、报告 ID、各项边界、旧记录校正和保留资源见 [本轮验收记录](../.trellis/tasks/10-20-stocks-v2/research/acceptance-2026-10-23.md)。V2 仍保持阶段未退出；真实远程 MCP、转载/冲突与跨报告修订成对样例、返回费用的端点和长期运行尚未完成。
 
 ## 所有阶段共同遵守
 
@@ -109,12 +120,12 @@ V2 在日常运行稳定后改善资料缺口、来源冲突和历史比较的�
 
 按 Owner「按任务列表逐个实施，需要真人验收或第三方 API 的先留存」的安排，各阶段未完成的人工与外部依赖项集中列在此处，供最终验收逐条确认；每项的实际边界以前文各阶段「已实现与待补的边界」段落为准，操作细节与凭据要求见 `.trellis/tasks/10-20-stocks-roadmap/pending-acceptance.md`。
 
-- **真实模型闭环与真实外网采集**（V0-07 AC-1）：**已于 2026-10-23 执行并通过**，证据见 V0 章节「V0 端到端验收」段落。模型经本机 magpie 网关（chat=`group/openai`，embedding=`workbuddy/bge-m3` 1024 维），SEC 联系邮箱已换为真实地址。仍未完成：SEC EDGAR submissions 的真实响应映射（样例保持 `enabled: false`）、调度长期运行与第三方限流。
+- **真实模型闭环与真实外网采集**（V0-07 AC-1）：**已于 2026-10-23 执行并通过**，证据见 V0 章节「V0 端到端验收」段落。模型经本机 magpie 网关（chat=`group/openai`，embedding=`workbuddy/bge-m3` 1024 维），SEC 联系邮箱已换为真实地址。仍未完成：SEC EDGAR submissions 全文研究链路（本轮仅真实采集与四字段映射成功，全文解析超限）、调度长期运行与第三方限流。
 - **真实远程 MCP 与授权工具**（V2-01）：需要可用的远程 MCP 服务地址与凭据，才能验收真实供应商接通、真实原件字节链路与第三方限流行为。
-- **真实来源联系方式与 SEC 映射**（V2-02）：Fed/SEC 的 `user_agent` 仍是占位联系邮箱，首次真实持续采集前需换成真实地址；SEC EDGAR submissions API 的 CIK 与真实响应映射未验收，样例保持 `enabled: false`。
+- **真实来源联系方式与 SEC 映射**（V2-02）：联系邮箱已配置，2026-10-23 已用 Apple CIK 验证真实 JSON 入库、四字段映射与重复采集。全文解析因 5,000 值上限失败；完整 JSON 的 Chunk/Embedding/报告链路和更多字段/CIK 范围仍未验收，样例保持 `enabled: false`。
 - **真实同源转载与冲突样例**（V2-03）：需要真实的多来源转载同一原文、以及同一指标给出互相矛盾取值的公开样例。
-- **真实连续两份报告**（V2-04）：人工对照复核需要同一 Task 至少两次成功的真实研究运行，以及「同一 Document 新版本被后续报告引用」「同一指标跨报告修订」的真实样例。
+- **真实报告差异样例**（V2-04）：同一 Task 两次真实成功报告的 Agent 内容与接口对照已于 2026-10-23 完成；这对样本只有同一公告的改写，仍缺「同一 Document 新版本被后续报告引用」「同一指标跨报告修订」和真实晚到资料的成对样例。
 - **真实返回费用的模型端点**（V2-05）：费用能否得到取决于供应商响应，当前配置的 OpenAI 兼容端点通常不返回 `cost`；需要 Owner 提供会返回费用的端点，确认费用落地与非零显示。
 - **调度与限流下的长期运行**（V2-02、V2-05）：调度触发的长期采集与研究、第三方限流与预算耗尽下的有界终止，需在真实持续运行中观察，不用模拟结果代替。
 - **真实移动设备与 ARM 实机**（V1-08、V1-09）：真实移动设备的视觉验收与跨设备登录尚未执行。ARM 侧已于 2026-10-23 在测试服务器安装 qemu `binfmt` 后补齐：`api` 与 `web` 镜像均构建为 `linux/arm64`、容器内 `aarch64` 可运行、全新库 `alembic upgrade head` 与 `alembic check` 无漂移、四服务全栈 `healthy`，入口/登录/受保护读取/处理筛选/CSRF 边界均通过；同轮修复了 Nginx 只在启动时解析 `api` 上游导致的 502 缺陷（提交 `7c334c4`）。仍缺真实 ARM 实机（模拟不等于硬件）与公网/HTTPS 入口。
-- **真实第三方闭环与发布**（V1-09）：真实第三方 API 与 Decision/Generation Provider 的端到端闭环、真实 S3 接入、mapper 覆盖的指标范围及公网/TLS 发布仍为 pending。
+- **真实第三方闭环与发布**（V1-09）：真实外网采集与 magpie chat/embedding 模型闭环已验证；外部 MCP/返回费用端点、第三方 S3（当前为自建 SeaweedFS）、mapper 更多指标范围及公网/TLS 发布仍为 pending。

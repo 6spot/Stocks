@@ -46,11 +46,12 @@
   `compose --wait` 返回成功。修复提交 `7c334c4`，契约已同步到
   `.trellis/spec/backend/deployment-guidelines.md`。
 - **第二条退出条件部分成立（2026-10-23）**：V1 章节中依赖真实模型的行为验收已执行，
-  与 V0 共用同一环境（真实库、真实 S3、模型经 magpie 网关）。逐条结果：调度 `registered`
-  → `not_due` 不触发 → 拨到过去 `triggered` 并成功执行；晚提交实测（未提交时扫描看不到、
-  提交后下一窗口可见）；失败 Run 游标保持不动、成功 Run 才推进；活跃 Run 存在时调度返回
-  `skipped_active_run`；一次 Run 的 3 条引用实际来自 2 Chunk / 1 Document，同一证据链未重复
-  计数；七个受保护视图认证后全 200、未认证全 401；`/api/sources` 把 `status`/
+  与 V0 共用同一环境（独立库、自建 SeaweedFS、模型经 magpie 网关）。结果：调度 `registered`
+  → `not_due` 不触发 → 拨到过去 `triggered` 并成功执行；晚提交检查证明 SQL 可见性，尚未
+  证明该条资料经应用变化流进入后续证据包；失败 Run 游标保持不动、成功 Run 才推进；活跃
+  Run 存在时返回 `skipped_active_run`；一次 Run 的 3 条引用来自 2 Chunk / 1 Document，
+  此处只说明引用分布，取材合并计数另有集成测试覆盖；七个受保护视图认证后全 200、
+  未认证全 401；`/api/sources` 把 `status`/
   `request_success`/`no_update` 与 `processing_backlog` 分开返回。
 - **仍未完成**：真实移动设备视觉与跨设备登录、真实 ARM 实机、公网/HTTPS 发布。这些属于
   V1-08/V1-09 的「日常界面与部署」条，本阶段保持 `planning`，不因行为验收已执行而标记完成。
@@ -60,4 +61,4 @@
 
 外部研究补证、高级冲突解释、历史比较和完整费用分析。
 
-各阶段共同不建设证券主数据、Fan-out、全文检索、自动交易或复杂编排；开发迭代不迁移不兼容。所有任务当前仅 planning。
+各阶段共同不建设证券主数据、Fan-out、全文检索、自动交易或复杂编排；开发迭代不迁移不兼容。本阶段父任务保持 planning，子任务状态以各自归档记录为准。
