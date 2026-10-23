@@ -3,7 +3,7 @@
   "name": "implementation-design-fixes",
   "title": "修复实现与设计一致性偏差",
   "description": "修复静态审查发现的五项证据保留、研究输入和控制台行为偏差，并完成跨任务集成验收。",
-  "status": "planning",
+  "status": "completed",
   "dev_type": "fullstack",
   "scope": null,
   "package": null,
@@ -11,11 +11,11 @@
   "creator": "me",
   "assignee": "me",
   "createdAt": "2026-10-22",
-  "completedAt": null,
-  "branch": null,
+  "completedAt": "2026-10-23",
+  "branch": "fix/processing-default-filter",
   "base_branch": "main",
   "worktree_path": null,
-  "commit": null,
+  "commit": "175a2f0",
   "pr_url": null,
   "subtasks": [],
   "children": [
@@ -33,12 +33,14 @@
     "docs/research.md",
     "docs/interface.md"
   ],
-  "notes": "2026-10-22 Owner 依次授权实施 F-01 至 F-05，五个叶子均已完成代码、回归场景与归属文档，并提交、归档、推送到各自顺序叠加的 fix/* 分支（F-01 8e6e459、F-02 8341e01、F-03 7ab3b14、F-04 3de76df、F-05 d65152c）。F-04 的 F-01 硬依赖已满足。当前会话无可用测试服务器 SSH 认证（免交互返回 Permission denied，exit 255），所有测试、类型检查、构建与 API smoke 均未执行，叶子 AC 与父任务 I-1 至 I-4 全部未勾选；归档只表示代码交付，不代表验收通过。分支尚未合并 main、未创建 PR。恢复集成验收需先取得远程认证，按各叶子 acceptance.md 补跑最小测试并验证 I-2/I-3 联合场景。真实 Provider/MCP、ARM 等延期项不变。",
+  "notes": "2026-10-22 Owner 依次授权实施 F-01 至 F-05，五个叶子各自完成代码、回归场景与归属文档。2026-10-23 在测试服务器 root@100.120.14.84 的隔离目录 /tmp/stocks-10-22-fixes-10231459 与独立库 stocks_fixes 补跑运行验证：叶子最小范围 40/33/18/8 例通过，I-2/I-3 联合场景 77 例通过，后端全量 491 passed，前端 8 files 17 tests passed 且 npm run build（含 tsc -b）成功。五个叶子 AC 与父任务 I-1 至 I-4 全部确认；分支线性叠加且 main 为祖先，已 fast-forward 合入 main 并推送（175a2f0）。期间修正两处测试夹具缺陷（dedupe_key、persisting 断言）与一处响应结构断言，提交 76ea120。真实 Provider/MCP 凭据下的端到端运行、ARM 实机部署与移动端人工验收仍由 pending-acceptance.md 管理。",
   "meta": {
     "depends_on": [],
     "source_review": ".trellis/tasks/10-20-stocks-roadmap/research/implementation-design-review.md",
     "kind": "repair-program",
     "planning_review": "completed",
-    "implementation_authorized": "true"
+    "implementation_authorized": "true",
+    "integration_acceptance": "passed",
+    "merged_to_main": "175a2f0"
   }
 }

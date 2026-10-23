@@ -50,7 +50,38 @@ F-01 至 F-05 均已在各自分支完成代码、回归场景与归属文档，
 
 ## 收尾
 
-- [ ] 五个叶子均有 AC 证据和真实状态。
-- [ ] 集成场景通过，报告与原始证据可追溯。
-- [ ] 领域契约与实现一致，未引入新迁移或旧版兼容。
-- [ ] 记录延期验收与限制，按用户授权提交/归档；不把 planning 材料作为实施完成证明。
+- [x] 五个叶子均有 AC 证据和真实状态。
+- [x] 集成场景通过，报告与原始证据可追溯。
+- [x] 领域契约与实现一致，未引入新迁移或旧版兼容。
+- [x] 记录延期验收与限制，按用户授权提交/归档；不把 planning 材料作为实施完成证明。
+
+## 2026-10-23 集成验收与合入
+
+测试服务器 `root@100.120.14.84` 已建立 SSH 公钥免密认证。验证在隔离目录
+`/tmp/stocks-10-22-fixes-10231459` 与独立库 `stocks_fixes`（复用 pgvector 容器
+`stocks-fix5-1792666779-postgres`，`127.0.0.1:55440`；空库执行 `alembic upgrade head` 初始化）
+完成，本机未运行任何测试或构建。
+
+| 轮次 | 范围 | 结果 |
+| --- | --- | --- |
+| F-03/F-04 | `test_report_comparison.py`、`test_report_api.py`、`test_evidence_conflicts.py`、`test_research_supplement.py` | 37 passed |
+| F-01/F-02 | `test_facts.py`、`test_processing_retry.py`、`test_processing.py`、`test_research.py`、`test_execution.py` | 185 passed |
+| I-2/I-3 联合 | 上述两批中的 reprocess、比较、冻结取值、合并证据具名用例 | 77 passed |
+| 后端回归 | `pytest -q` | 491 passed |
+| F-05 | `npm test` / `npm run build`（含 `tsc -b`） | 8 files 17 tests passed；构建成功 |
+
+叶子级最小范围复核：`test_facts.py` 40 passed、`test_processing_retry.py` 33 passed、
+`test_research_supplement.py` + `test_evidence_conflicts.py` 18 passed、
+`test_report_comparison.py` 8 passed、F-01 联合场景 1 passed（7 deselected）。
+
+期间修正了两处**测试自身缺陷**（修复提交之后才发现，属夹具与断言错误，非实现变更）：
+`persist_version()` 增加 `dedupe_key` 参数，避免不同内容的版本共用 `release-1` 被去重合并；
+`persisting` 断言改读 `item["earlier"]["document_id"]`，因为 `_document_diff` 用的是
+`earlier`/`later` 快照包裹结构。另将 `test_report_api.py` 的 adopted 输入断言改为读取
+`research_inputs`，与 `report_detail` 实际响应结构一致。修正提交 `76ea120`。
+
+五个叶子 AC 与父任务 I-1 至 I-4 已全部确认。分支线性叠加且 `main` 是其祖先，
+已 fast-forward 合入 `main` 并推送（`175a2f0`）。未创建 PR（单 Owner 线性开发，无审阅方）。
+
+仍未完成并继续由 [延期清单](../10-20-stocks-roadmap/pending-acceptance.md) 管理：
+真实 Provider/MCP 凭据下的端到端运行、ARM 实机部署与移动端人工验收。
