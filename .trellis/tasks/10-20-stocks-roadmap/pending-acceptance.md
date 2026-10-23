@@ -24,6 +24,37 @@
 - **已归档证据**：`.trellis/tasks/archive/2026-10/10-20-v0-07-evidence-api-acceptance/`
   的 `acceptance.md` 与 `research/verification-2026-10-20.md`。
 
+### 2026-10-23 本地代理（magpie）探测结果：不可用
+
+Owner 提议用本机 `127.0.0.1:3425` 的 magpie 代理（当前 DeepSeek 路由）跑 V0 闭环。实测结论是
+**不能支撑**，因为两个硬阻塞各自都会直接中断链路；未把代理路径当作已可用方案。
+
+- **严格结构化输出不成立。** `providers.research_chat()` 对每次模型调用都发送
+  `response_format: {"type": "json_schema", "strict": true}`，并用 `validate_content`
+  做确定性校验。以分类、Tool 计划、研究 writer 三份真实 schema 各发多轮：
+  - `group/openai` 3/3 严格符合 schema（可用）；
+  - `workbuddy/deepseek-v4.1-flash`、`group/deepseek` 0/3，忽略 schema 并自由发挥成
+    `{"category": "Business"}`、`{"label": "company"}` 等形状，会被
+    `ClassificationInvalid` / `Tool plan does not match the required schema` 直接拒绝。
+  - 即 Agent 输入和输出都无法通过，研究 Run 必然失败。
+- **没有 1536 维 embedding。** `/v1/models` 的 21 个模型没有一个是 embedding 模型；
+  唯一能返回向量的名字是 `workbuddy/bge-m3`，实测 **1024 维**，且 `dimensions: 1536`
+  参数被忽略。`providers._embedding_routing()` 与 `repository` 都硬性要求
+  `VECTOR_DIMENSIONS`（1536），直接不匹配；`qoder`/`anyrouter` 均 404 声明
+  “only chat completions are served”，`codex` 系列为 `/v1/responses` 无 embeddings。
+
+**若要复用该代理链跑 PA-1**，需同时满足以下之一，均尚未具备：
+
+1. 换到真正支持 strict `json_schema` 与 1536 维 `/embeddings` 的端点（例如官方
+   OpenAI 的 `group/openai` + `text-embedding-3-small`）；`group/openai` 值得先复核
+   它是否同时支持 `/embeddings`（本次只验证了 chat 侧）。
+2. 或接受把当前向量空间改成 1024 维（改 `embedding_space.py`、`models.py` 建表定义、
+   `config/models.yaml` 的 `dimensions` 与测试常量），并接受 V0-07 AC-1 只剩 chat 侧能用
+   真实模型、embedding 仍为真实供应商返回。开发阶段改当前结构即可，不写迁移。
+
+本次未修改任何代码、配置或数据库，也未启动远程容器；探测只在本机读取代理响应，
+不属于项目验证结果。
+
 ## PA-2：V0-03 解析器缺陷（正文直接位于 article/main/body 时逐字符换行）
 
 - **状态**：2026-10-22 已修复并验证，不再是待验收项。
