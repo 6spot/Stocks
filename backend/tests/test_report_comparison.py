@@ -11,7 +11,7 @@ from copy import deepcopy
 from datetime import UTC, datetime, timedelta
 from hashlib import sha256
 from types import SimpleNamespace
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import pytest
 from fastapi.testclient import TestClient
@@ -139,6 +139,7 @@ def persist_version(
     collected_at: datetime,
     payload: bytes,
     text: str,
+    dedupe_key: str = "release-1",
 ) -> dict:
     """Ingest and parse one content version of the same source document."""
 
@@ -147,14 +148,14 @@ def persist_version(
         config,
         DocumentInput(
             source_id="sec",
-            dedupe_key="release-1",
+            dedupe_key=dedupe_key,
             title="CPI release",
             payload=payload,
             content_type="text/html; charset=utf-8",
             collected_at=collected_at,
             published_at=collected_at - timedelta(hours=2),
             source_updated_at=collected_at,
-            original_url="https://www.sec.gov/news/release-1",
+            original_url=f"https://www.sec.gov/news/{dedupe_key}",
             completeness="complete",
         ),
         store=store,
@@ -657,6 +658,7 @@ def test_comparison_counts_an_adopted_supplement_only_when_cited(
             collected_at=LATER_CREATED,
             payload=ARTICLES[2],
             text=CHUNKS[2],
+            dedupe_key="release-2",
         )
         supplemental_fact = persist_fact(
             session, supplemental, value=2.1, available_at=LATER_CREATED
@@ -790,6 +792,7 @@ def test_comparison_ignores_material_a_report_did_not_cite(
             collected_at=LATER_CREATED,
             payload=ARTICLES[2],
             text=CHUNKS[2],
+            dedupe_key="release-2",
         )
         uncited_fact = persist_fact(
             session, uncited, value=2.1, available_at=LATER_CREATED
@@ -851,9 +854,10 @@ def test_comparison_ignores_material_a_report_did_not_cite(
     assert data["facts"]["metric_changes"]["count"] == 0
     assert str(uncited["document_id"]) not in str(data["documents"])
     assert str(uncited_fact["fact_id"]) not in str(data["facts"])
-    assert {item["document_id"] for item in data["documents"]["persisting"]["items"]} == {
-        str(first["document_id"])
-    }
+    assert {
+        item["earlier"]["document_id"]
+        for item in data["documents"]["persisting"]["items"]
+    } == {str(first["document_id"])}
 
 
 def test_comparison_reads_frozen_fact_values_instead_of_current_rows(

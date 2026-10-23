@@ -974,15 +974,12 @@ def test_report_api_exposes_final_facts_and_comparisons_of_adopted_inputs(
     assert final[0]["metric_id"] == "cpi_yoy"
     assert final[0]["value_conflict"] is True
     assert sorted(item["value"] for item in final[0]["facts"]) == [2.1, 2.4]
-    assert {item["fact_id"] for item in detail["facts"]} == {
-        str(initial_fact.created_ids[0]),
-        str(adopted_fact.created_ids[0]),
-    }
-    assert str(adopted_fact.created_ids[0]) in {
-        fact_id
-        for entry in detail["evidence"]
-        for fact_id in entry["fact_ids"]
-    }
+    # The adopted input stays visible beside the initial package, and its value
+    # is the frozen one used in the comparison above.
+    assert detail["research_inputs"]["count"] == 1
+    adopted_entry = detail["research_inputs"]["entries"][0]
+    assert adopted_entry["document_id"] == str(second["document_id"])
+    assert adopted_entry["chunk_ids"] == [str(second["chunk_id"])]
 
 
 def test_report_merges_initial_and_appended_evidence(
