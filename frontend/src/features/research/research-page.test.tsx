@@ -1,15 +1,27 @@
-import { render, screen } from "@testing-library/react";
-import { MemoryRouter } from "react-router-dom";
-import { beforeEach, describe, expect, it, vi } from "vitest";
-import { ReportReader } from "@/features/research/research-page";
+import { act, render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import {
+  createMemoryRouter,
+  MemoryRouter,
+  RouterProvider,
+  useLocation,
+  useNavigationType,
+} from "react-router-dom";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { ReportListItem } from "@/api/schemas";
+import { ReportReader, ResearchPage } from "@/features/research/research-page";
 
-const { reportMock } = vi.hoisted(() => ({
+const { reportMock, reportsMock, reportComparisonMock } = vi.hoisted(() => ({
   reportMock: vi.fn(),
+  reportsMock: vi.fn(),
+  reportComparisonMock: vi.fn(),
 }));
 
 vi.mock("@/api/dashboard", () => ({
   dashboardApi: {
     report: reportMock,
+    reports: reportsMock,
+    reportComparison: reportComparisonMock,
   },
   originalEndpoint: (id: string) => `/api/documents/${id}/original`,
   downloadEndpoint: (id: string) => `/api/documents/${id}/original?download=true`,
@@ -287,5 +299,274 @@ describe("ReportReader", () => {
       await screen.findByText("<script>window.alert('unsafe')</script>"),
     ).toBeVisible();
     expect(document.querySelector("script")).not.toBeInTheDocument();
+  });
+});
+
+function RouteProbe() {
+  const location = useLocation();
+  const navigationType = useNavigationType();
+  return (
+    <output data-testid="route">
+      {location.pathname}
+      {location.search}|{navigationType}
+    </output>
+  );
+}
+
+function reportItem(
+  overrides: Partial<ReportListItem> & { report_id: string; title: string },
+): ReportListItem {
+  return {
+    run_id: `run-${overrides.report_id}`,
+    analysis_id: `analysis-${overrides.report_id}`,
+    task_id: "research",
+    created_at: "2026-10-20T05:00:00Z",
+    run_status: "succeeded",
+    ...overrides,
+  };
+}
+
+function reportsPage(items: ReportListItem[]) {
+  return { items, next_cursor: null, has_more: false, limit: 100 };
+}
+
+const originalMatchMedia = window.matchMedia;
+
+function setViewport(isMobile: boolean) {
+  Object.defineProperty(window, "matchMedia", {
+    configurable: true,
+    writable: true,
+    value: vi.fn((query: string) => ({
+      matches: query === "(min-width: 80rem)" ? !isMobile : false,
+      media: query,
+      onchange: null,
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      dispatchEvent: vi.fn(),
+    })),
+  });
+}
+
+function renderResearch(initialEntry = "/research") {
+  return render(
+    <MemoryRouter initialEntries={[initialEntry]}>
+      <RouteProbe />
+      <ResearchPage />
+    </MemoryRouter>,
+  );
+}
+
+describe("ResearchPage initial selection", () => {
+  beforeEach(() => {
+    reportMock.mockReset();
+    reportMock.mockResolvedValue(report);
+    reportsMock.mockReset();
+    // The comparison card stays in its loading state; this suite only covers
+    // which report the page selects initially.
+    reportComparisonMock.mockReset();
+    reportComparisonMock.mockReturnValue(new Promise(() => {}));
+  });
+
+  afterEach(() => {
+    Object.defineProperty(window, "matchMedia", {
+      configurable: true,
+      writable: true,
+      value: originalMatchMedia,
+    });
+  });
+
+  it("opens the latest successful report with replace navigation on desktop", async () => {
+    setViewport(false);
+    reportsMock.mockResolvedValue(
+      reportsPage([
+        reportItem({
+          report_id: "r-failed",
+          title: "Newest failed run",
+          run_status: "failed",
+        }),
+        reportItem({ report_id: "r-latest", title: "Latest succeeded report" }),
+        reportItem({
+          report_id: "r-older",
+          title: "Older succeeded report",
+          created_at: "2026-10-18T05:00:00Z",
+        }),
+      ]),
+    );
+
+    renderResearch();
+
+    await waitFor(() =>
+      expect(screen.getByTestId("route")).toHaveTextContent(
+        "/research?report=r-latest|REPLACE",
+      ),
+    );
+    expect(reportMock).toHaveBeenCalledWith("r-latest", expect.anything());
+    expect(reportMock).not.toHaveBeenCalledWith("r-failed", expect.anything());
+    expect(
+      screen.getByRole("button", { name: /Latest succeeded report/ }),
+    ).toHaveAttribute("aria-pressed", "true");
+    expect(
+      screen.getByRole("button", { name: /Newest failed run/ }),
+    ).toHaveAttribute("aria-pressed", "false");
+
+    // Manual selection still works after the automatic one.
+    await userEvent.click(
+      screen.getByRole("button", { name: /Older succeeded report/ }),
+    );
+    await waitFor(() =>
+      expect(screen.getByTestId("route")).toHaveTextContent(
+        "/research?report=r-older|REPLACE",
+      ),
+    );
+    expect(reportMock).toHaveBeenLastCalledWith("r-older", expect.anything());
+  });
+
+  it("keeps the selection prompt on small screens and opens the latest report on click", async () => {
+    setViewport(true);
+    reportsMock.mockResolvedValue(
+      reportsPage([
+        reportItem({ report_id: "r-latest", title: "Latest succeeded report" }),
+        reportItem({ report_id: "r-older", title: "Older succeeded report" }),
+      ]),
+    );
+
+    renderResearch();
+
+    await screen.findByRole("button", { name: /Latest succeeded report/ });
+    expect(screen.getByText("选择一份报告")).toBeVisible();
+    expect(screen.getByTestId("route")).toHaveTextContent("/research|POP");
+    expect(reportMock).not.toHaveBeenCalled();
+
+    await userEvent.click(
+      screen.getByRole("button", { name: "打开最新报告" }),
+    );
+
+    await waitFor(() =>
+      expect(screen.getByTestId("route")).toHaveTextContent(
+        "/research?report=r-latest",
+      ),
+    );
+    expect(reportMock).toHaveBeenCalledWith("r-latest", expect.anything());
+  });
+
+  it("keeps an explicit report param even when it is missing from the list page", async () => {
+    setViewport(false);
+    reportsMock.mockResolvedValue(
+      reportsPage([
+        reportItem({ report_id: "r-latest", title: "Latest succeeded report" }),
+      ]),
+    );
+
+    renderResearch("/research?report=r-history");
+
+    expect(await screen.findByText("Saved Evidence Brief")).toBeVisible();
+    expect(reportMock).toHaveBeenCalledWith("r-history", expect.anything());
+    expect(reportMock).not.toHaveBeenCalledWith("r-latest", expect.anything());
+    await waitFor(() =>
+      expect(screen.getByTestId("route")).toHaveTextContent(
+        "/research?report=r-history|POP",
+      ),
+    );
+    expect(
+      screen.getByRole("button", { name: /Latest succeeded report/ }),
+    ).toHaveAttribute("aria-pressed", "false");
+  });
+
+  it("does not create a selection when the report list is empty", async () => {
+    setViewport(false);
+    reportsMock.mockResolvedValue(reportsPage([]));
+
+    renderResearch();
+
+    expect(await screen.findByText("尚无成功报告")).toBeVisible();
+    expect(
+      screen.queryByRole("button", { name: "打开最新报告" }),
+    ).not.toBeInTheDocument();
+    expect(reportMock).not.toHaveBeenCalled();
+    expect(screen.getByTestId("route")).toHaveTextContent("/research|POP");
+  });
+
+  it("does not create a selection while the report list is loading", () => {
+    setViewport(false);
+    reportsMock.mockReturnValue(new Promise(() => {}));
+
+    renderResearch();
+
+    expect(screen.getByLabelText("正在读取报告列表")).toBeVisible();
+    expect(reportMock).not.toHaveBeenCalled();
+    expect(screen.getByTestId("route")).toHaveTextContent("/research|POP");
+  });
+
+  it("does not create a selection when the report list fails", async () => {
+    setViewport(false);
+    reportsMock.mockRejectedValue(new Error("列表读取失败"));
+
+    renderResearch();
+
+    expect(await screen.findByText("列表读取失败")).toBeVisible();
+    expect(
+      screen.queryByRole("button", { name: "打开最新报告" }),
+    ).not.toBeInTheDocument();
+    expect(reportMock).not.toHaveBeenCalled();
+    expect(screen.getByTestId("route")).toHaveTextContent("/research|POP");
+  });
+
+  it("keeps explicit selections across back and forward navigation", async () => {
+    setViewport(false);
+    reportsMock.mockResolvedValue(
+      reportsPage([
+        reportItem({ report_id: "r-latest", title: "Latest succeeded report" }),
+        reportItem({ report_id: "r-older", title: "Older succeeded report" }),
+      ]),
+    );
+    const router = createMemoryRouter(
+      [
+        {
+          path: "/research",
+          element: (
+            <>
+              <RouteProbe />
+              <ResearchPage />
+            </>
+          ),
+        },
+      ],
+      {
+        initialEntries: [
+          "/research?report=r-older",
+          "/research?report=r-latest",
+        ],
+        initialIndex: 1,
+      },
+    );
+
+    render(<RouterProvider router={router} />);
+
+    await waitFor(() =>
+      expect(reportMock).toHaveBeenCalledWith("r-latest", expect.anything()),
+    );
+
+    await act(async () => {
+      await router.navigate(-1);
+    });
+
+    await waitFor(() =>
+      expect(screen.getByTestId("route")).toHaveTextContent(
+        "/research?report=r-older|POP",
+      ),
+    );
+    expect(reportMock).toHaveBeenLastCalledWith("r-older", expect.anything());
+
+    await act(async () => {
+      await router.navigate(1);
+    });
+
+    await waitFor(() =>
+      expect(screen.getByTestId("route")).toHaveTextContent(
+        "/research?report=r-latest|POP",
+      ),
+    );
   });
 });

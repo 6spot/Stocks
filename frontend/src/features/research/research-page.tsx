@@ -42,22 +42,24 @@ export function ResearchPage() {
     (signal) => dashboardApi.reports(100, signal),
     [],
   );
-  const selectedReport = reports.data?.items.find(
-    (report) => report.report_id === selectedId,
-  );
+  // The list is ordered newest first, so this is the most recent report whose
+  // Run actually succeeded; failed Runs never replace the last readable one.
+  const latestSuccessfulId = reports.data?.items.find(
+    (report) => report.run_status === "succeeded",
+  )?.report_id;
 
   useEffect(() => {
     if (
       selectedId ||
-      !selectedReport ||
-      window.matchMedia("(max-width: 1279px)").matches
+      !latestSuccessfulId ||
+      !window.matchMedia("(min-width: 80rem)").matches
     ) {
       return;
     }
     const next = new URLSearchParams(params);
-    next.set("report", selectedReport.report_id);
+    next.set("report", latestSuccessfulId);
     setParams(next, { replace: true });
-  }, [params, selectedId, selectedReport, setParams]);
+  }, [params, selectedId, latestSuccessfulId, setParams]);
 
   function selectReport(reportId: string) {
     const next = new URLSearchParams(params);
@@ -142,11 +144,11 @@ export function ResearchPage() {
               title="选择一份报告"
               description="正文、覆盖缺口和引用证据会一起显示。"
               action={
-                selectedReport ? (
+                latestSuccessfulId ? (
                   <button
                     type="button"
                     className="text-sm font-medium text-primary underline-offset-4 hover:underline"
-                    onClick={() => selectReport(selectedReport.report_id)}
+                    onClick={() => selectReport(latestSuccessfulId)}
                   >
                     打开最新报告
                   </button>
