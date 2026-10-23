@@ -1,7 +1,5 @@
 {
   "enableSkillCommands": true,
-  "defaultProvider": "magpie",
-  "defaultModel": "group/openai",
   "extensions": [
     "./extensions/trellis/index.ts"
   ],

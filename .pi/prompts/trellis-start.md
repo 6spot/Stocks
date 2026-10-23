@@ -37,9 +37,12 @@ Index files list the specific guideline docs to read when you actually start cod
 From Step 1 you know the current task and status. Check the task directory:
 
 - **Active task status `planning` + no `prd.md`** → Phase 1.1. Load the `trellis-brainstorm` skill.
-- **Active task status `planning` + `prd.md` exists** → complete Phase 1 artifacts and review. Lightweight tasks can be PRD-only; complex tasks need `design.md` + `implement.md`. Reuse existing explicit execution authorization and load step 1.4 before `task.py start`; ask only if a user-owned decision or permission is still missing.
-- **Active task status `in_progress`** → Phase 2 step 2.1. Load the step detail with `--platform pi` and implement in the main session.
-- **No active task** → first resolve an existing task named by the user or uniquely identified as the authorized next task. Resume it under the existing execution instruction; archive or planning refinement does not renew the approval requirement. Ask for task-creation consent only for genuinely new work when it has not already been given. If the user declines creation, follow the workflow's scope rules.
+- **Active task status `planning` + `prd.md` exists** → stay in Phase 1. Lightweight tasks can be PRD-only; complex tasks need `design.md` + `implement.md`. Load the relevant Phase 1 step detail before `task.py start`.
+- **Active task status `in_progress`** → Phase 2 step 2.1. Load the step detail:
+  ```bash
+  python3 ./.trellis/scripts/get_context.py --mode phase --step 2.1 --platform pi
+  ```
+- **No active task** → classify first. For simple conversation / small task, ask only whether this turn should create a Trellis task. For complex work, ask whether you may create a Trellis task and enter planning. If the user says no, skip Trellis for this session.
 
 ---
 

@@ -7,11 +7,11 @@ description: "Guides collaborative requirements discovery before implementation.
 
 ## Non-Negotiable Planning Contract
 
-Task-creation consent alone is not implementation approval. An explicit user instruction to build, implement, fix, refactor, or execute an existing / uniquely resolved next task is execution authorization within that scope. Honor it while completing the planning gates; do not require another user response merely because the technical plan was refined.
+A request to build, implement, fix, refactor, or "go ahead" is not approval to leave planning. Task-creation consent is also not implementation approval.
 
-Before asking for approval, check the current request, prior user decisions, and task history. If the user asked only for planning or has not authorized execution, present the final summary and obtain approval. If execution is already authorized and no unresolved user-owned decision remains, present the summary, finish artifact review, and proceed to `task.py start` in the same turn.
+For every non-trivial task, the user must respond at least once after the initial request before implementation begins. If no clarification is needed, that response must approve the final planning summary described below.
 
-While any user-owned product, scope, UX, compatibility, risk, or acceptance decision remains unresolved, ask the highest-value missing decision. Do not edit product code, dispatch implementation, or run `task.py start` until that decision is resolved. Routine technical planning within the authorized scope is not a new permission request.
+While any user-owned product, scope, UX, compatibility, risk, or acceptance decision remains unresolved, end the turn with exactly one highest-value question. Do not edit product code, dispatch implementation, or run `task.py start`.
 
 ## Non-Negotiable Evidence Rule
 
@@ -57,8 +57,8 @@ Use a concise title from the user's request. Both the title and `--description` 
 5. After each user answer, update `prd.md`, recompute the decision inventory, and repeat from step 2.
 6. When no user-owned decision remains, create or update `design.md` and `implement.md` for complex tasks.
 7. Run the requirement convergence gate, then the PRD convergence pass.
-8. Present the final planning summary. If execution is already authorized and no user-owned decision remains, complete the review/start gate and continue; otherwise stop for the missing approval or decision.
-9. A subsequent approval message is needed only when execution authorization is absent or the plan introduces a user-owned decision outside the authorized scope. Completing or refining technical artifacts does not revoke existing authorization. An explicit instruction to finish the current task and execute the next remains valid across commit, archive, and journal recording; resolve the next task before continuing.
+8. Present the final planning summary and stop. Do not run `task.py start` or edit product code in the same turn.
+9. Only a subsequent user message that explicitly approves the latest planning summary authorizes `task.py start` and implementation. If the artifacts change materially after approval, repeat the final review.
 
 Do not invent a project-specific product/spec hierarchy. If the repository already has product, domain, or spec docs, use them. If it does not, proceed with the evidence that exists.
 
@@ -77,9 +77,9 @@ Do not ask process questions such as whether to search, inspect files, or contin
 
 Recommendations are not default selections. Never choose a recommended product decision on the user's behalf merely because the user asked for implementation.
 
-Do not manufacture clarification questions when the request and repository evidence already resolve every decision. In that case, present the final summary and use the existing execution authorization to proceed; ask for implementation approval only if it is missing.
+Do not manufacture clarification questions when the request and repository evidence already resolve every decision. In that case, proceed directly to the final planning summary, which still requires a subsequent explicit approval.
 
-The final review checks artifact completeness and agreement with the authorized scope. It does not always require another user turn. Task-creation consent alone is insufficient, but an explicit implementation request can satisfy execution approval before the latest summary. Ask again only for a genuinely missing decision or permission.
+The final review is a required phase-transition gate, not a prohibited process question. Task-creation consent, the initial implementation request, and approval given before the latest final summary do not satisfy this gate.
 
 ## Thinking Framework: First Principles Analysis
 
@@ -135,7 +135,7 @@ Before final review, verify all of the following:
 - blocking open questions are empty
 - technical unknowns are researched or explicitly deferred without changing MVP behavior
 
-Lightweight tasks may omit `design.md` and `implement.md`; they may not skip evidence inspection, requirement convergence, final review, or explicit execution authorization. An existing user instruction counts; a fresh response is not required solely for the phase transition.
+Lightweight tasks may omit `design.md` and `implement.md`; they may not skip evidence inspection, requirement convergence, final review, or fresh implementation approval.
 
 The final planning summary must show Goal, In Scope, Out of Scope, Acceptance Criteria, Key Decisions, relevant Risks or Deferred Items, and artifact status.
 
@@ -195,6 +195,6 @@ Before declaring planning ready:
 - Complex tasks have `design.md` and `implement.md`.
 - Sub-agent-dispatch tasks have real curated entries in both `implement.jsonl` and `check.jsonl`; seed-only manifests are not ready.
 - The latest final planning summary has been presented to the user.
-- Explicit execution authorization covers the task, and no unresolved user-owned decision remains. A prior instruction to execute this task or the uniquely resolved next task counts.
+- In a subsequent message, the user explicitly approved that summary for implementation.
 
-Do not start implementation when the user authorized only planning or when the reviewed scope exceeds their instruction. Do not stop for a duplicate approval when execution is already authorized and the plan stays within that scope.
+Do not start implementation merely because the user originally asked for implementation.

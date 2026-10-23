@@ -22,13 +22,12 @@ Shows the Phase Index (Plan / Execute / Finish) with routing + skill mapping.
 
 ## Step 3: Decide Where You Are
 
-`get_context.py` shows the active task's `status` field. Route by `status` + artifact presence, while preserving execution and follow-up actions already authorized by the user. A generic continue command alone does not grant new permissions, but it must not erase an explicit instruction to execute this or the uniquely resolved next task.
+`get_context.py` shows the active task's `status` field. Route by `status` + artifact presence. This command replaces the user needing to remember the Trellis flow; it does not itself approve implementation.
 
-- No active pointer + user names an existing task or authorizes the unique next task → resolve that task and use the routes below; do not ask to create an existing task or renew the same execution approval.
 - `status=planning` + no `prd.md` → **1.1** (load `trellis-brainstorm`)
 - `status=planning` + `prd.md` only → decide whether the task is lightweight or complex. Lightweight can move to **1.4** review; complex returns to **1.1** to add `design.md` + `implement.md`.
-- `status=planning` + complex artifacts complete + dispatch-platform jsonl not curated (empty, or only a legacy `_example` placeholder row) → **1.3**; inline platforms skip this step
-- `status=planning` + required artifacts complete + required jsonl curated for dispatch platforms or inline mode → **1.4** (review artifacts, reuse existing explicit execution authorization, then `task.py start`; ask only if authorization or a user-owned decision is missing)
+- `status=planning` + complex artifacts complete + sub-agent jsonl not curated (empty, or only a legacy `_example` placeholder row) → **1.3**
+- `status=planning` + required artifacts complete + required jsonl curated or inline mode → **1.4** (ask for start review; only run `task.py start` after user confirms)
 - `status=in_progress` + implementation not started → **2.1**
 - `status=in_progress` + implementation done, not yet checked → **2.2**
 - `status=in_progress` + check passed → **3.3** (spec update) → **3.4** (commit)
@@ -49,8 +48,6 @@ python3 ./.trellis/scripts/get_context.py --mode phase --step <X.X> --platform p
 ```
 
 Follow the loaded instructions. After each `[required]` step completes, move to the next.
-
-In Pi, after artifact review and the task start gate, preserve existing execution authorization and do implementation, checking, and approved validation directly in the main session. Planning refinement or archiving the previous task does not require another approval turn. Follow the project's testing restrictions and do not use sub-agent dispatch for Trellis work.
 
 ---
 
