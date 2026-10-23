@@ -19,6 +19,11 @@
 
 - Nginx 必须提供 `/` 与 SPA fallback，并把 `/api/`、`/health` 代理到 `api:8000`；
   浏览器保持单源 Cookie 与 CSRF 语义，API 和数据库不得绕开认证直接暴露。
+- Nginx 必须按请求解析 `api` 的地址，不得只在启动时解析并缓存：Compose 重建 `api`
+  会分配新 IP，缓存地址会让 Web 一直代理到已消失的容器并返回 `502`，而
+  `api` 自身仍是 `healthy`，`--wait` 也不会报错。当前实现用
+  `resolver 127.0.0.11 valid=10s` 加变量 `proxy_pass`；此时不能再用字面 URI，
+  需显式转发 `$request_uri`（`/health` 转发固定后缀）。
 - PostgreSQL、API、Worker 不配置 `ports`。如需测试 SSH 访问，用 SSH 隧道或
   仅绑定 `127.0.0.1` 的临时 override，不改生产 `compose.yaml`。
 - `TARGET_PLATFORM` 默认 `linux/amd64`；目标 ARM 部署显式设为 `linux/arm64`。
@@ -39,6 +44,7 @@
 | 变更请求缺少 CSRF | `403`，状态不变 |
 | 模型配置不可用 | 触发或续扫返回 `503 MODEL_CONFIGURATION_UNAVAILABLE`，固定消息，不创建 Run |
 | Web 或 API 未就绪 | Compose `--wait` 返回失败；不能把单个容器 running 当作可用 |
+| 重建 `api` 后经 Web 访问 | 新地址立即可用（最多一个 `valid` 周期）；不得持续 `502` |
 | 目标 ARM 实机不可用 | 记录构建或运行哪一步未执行，保留 pending |
 
 ## Good / Base / Bad Cases
@@ -60,6 +66,9 @@
   `X-Frame-Options: DENY`；API location 设置了自己的 `add_header` 后需重复继承所需
   安全头，并设置 `Cache-Control: no-store`。确认静态资源可缓存、HTML 入口不缓存。
 - 运行 Worker `--once`，空队列应正常退出并输出 scheduler/execution/processing 摘要。
+- 验证 `api` 地址变化时 Web 仍可达：重建或换 IP 后不重启 `web`，经 Web 端口访问
+  `/health` 与 `/api/` 应仍为 `200`/`401`。仅在 `web` 启动时解析一次的配置会在这一步
+  返回 `502`，而两个容器各自仍报告 `healthy`。
 - ARM 验证区分“配置解析成功”“跨平台镜像构建成功”“ARM 实机启动与端点 smoke 成功”。
 
 ## Wrong vs Correct
