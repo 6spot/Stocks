@@ -1,0 +1,3 @@
+{"file": "docs/architecture.md", "reason": "部署形态、进程边界与网络暴露面的归属契约"}
+{"file": ".trellis/spec/backend/deployment-guidelines.md", "reason": "Compose 部署、健康检查、Nginx 上游与回环绑定要求"}
+{"file": ".trellis/spec/backend/testing-guidelines.md", "reason": "远程环境操作、凭据处理与资源清理规范"}

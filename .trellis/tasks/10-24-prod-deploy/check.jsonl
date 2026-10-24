@@ -1,0 +1,2 @@
+{"file": ".trellis/spec/backend/deployment-guidelines.md", "reason": "核对部署边界、端口暴露与健康检查是否合规"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "核对交付记录精度与未完成项表述"}
