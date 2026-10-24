@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 29
+- **Total Sessions**: 30
 - **Last Active**: 2026-10-24
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~926 | Active |
+| `journal-1.md` | ~948 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 30 | 2026-10-24 | Embedding 请求携带 dimensions 参数 | `e10322c` | `main` |
 | 29 | 2026-10-24 | 在测试服务器部署 Stocks 真实运行环境 | `b176024` | `main` |
 | 28 | 2026-10-24 | 探测真实来源转载与修订样本（未取得，保留 PA-3） | `21b3367` | `main` |
 | 27 | 2026-10-24 | 修复复审发现的三项行为缺陷 | `a3c9507`, `07b2f0b`, `683f23a`, `e27a144`, `854aa25`, `3afbf4c` | `fix/review-behavior-defects` |

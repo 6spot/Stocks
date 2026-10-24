@@ -924,3 +924,25 @@ V2 任务列表已全部交付归档后，处理跨任务待验收登记中的 P
 ### Status
 
 [OK] **Completed**
+
+
+## Session 30: Embedding 请求携带 dimensions 参数
+<!-- trellis-session: v=2 fp=bd695566c6e0842c -->
+
+**Date**: 2026-10-24
+**Task**: Embedding 请求携带 dimensions 参数
+**Branch**: `main`
+
+### Summary
+
+为支持火山方舟 doubao-embedding-text-240715（默认 2048 维、支持降维）在 embedding 请求体加入 dimensions。原计划的「未配置则不携带」经审查确认不可达：load_embedding_targets 与 embed 都在发请求前要求维度非空（该值还用于校验返回向量长度），故改为无条件携带并修正 PRD 与 docs/data.md、docs/quickstart.md 中错误表述。远程 test_providers + test_embeddings 26 passed；新增用例断言完整请求体，且用改前代码运行会失败，证明回归有效。未用真实方舟凭据验证。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `e10322c` | fix(providers): send the configured embedding dimensions in the request |
+
+### Status
+
+[OK] **Completed**
