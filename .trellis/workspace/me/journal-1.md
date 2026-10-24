@@ -902,3 +902,25 @@ V2 任务列表已全部交付归档后，处理跨任务待验收登记中的 P
 ### Status
 
 [OK] **Completed**
+
+
+## Session 29: 在测试服务器部署 Stocks 真实运行环境
+<!-- trellis-session: v=2 fp=28fc6515d8c29dc5 -->
+
+**Date**: 2026-10-24
+**Task**: 在测试服务器部署 Stocks 真实运行环境
+**Branch**: `main`
+
+### Summary
+
+在 100.120.14.84:/opt/stocks 用 Compose 部署四服务（postgres/api/worker/web），新建卷 stocks-prod-pgdata，复用 stocks-both-s3 对象存储（bucket stocks-both）。全新库 alembic upgrade head + check 无漂移；四服务 healthy；/health 200、匿名 API 401、SPA fallback 200、安全头齐全、登录 200、认证读取 200；仅 web 发布 8080；Worker --once 正常；容器内 S3 可列原数据；真实 SEC 采集 20 条入库（Document 20/Chunk 60/S3 对象 61，1 条 partial TIMEOUT）。发现并处理：/tmp 为 tmpfs 故部署改 /opt；SeaweedFS 只绑启动时网卡，接入新网络后需以该网络重建容器（保留数据卷）；pip 限速致构建约 22 分钟。模型端点留空，classify/facts/index 按预期报 *_ROUTING_UNAVAILABLE，待 Owner 填 .env。无公网 TLS。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `b176024` | docs(deploy): record the live deployment and its operations runbook |
+
+### Status
+
+[OK] **Completed**
