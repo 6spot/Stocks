@@ -23,7 +23,9 @@ from stocks.changes import current_watermark
 from stocks.collection.config import load_sources, SourceConfig
 from stocks.extraction.service import (
     EXTRACTOR_PROCESSOR_VERSION,
+    ExtractionError,
     FactsStageProcessor,
+    _optional_time,
     classification_verdict,
     extract_document_facts,
     is_structured_response,
@@ -1400,3 +1402,29 @@ def test_fact_api_reads_by_document_and_filter(engine, monkeypatch):
 
     assert client.get(f"/api/documents/{uuid4()}/facts").status_code == 404
     assert client.get("/api/facts", params={"symbol": "MSFT"}).json()["count"] == 0
+
+
+def test_naive_time_is_recorded_as_unknown_instead_of_failing_the_fact():
+    """A stated date without a timezone is unknown, not a reason to drop the Fact.
+
+    A real run failed whole Documents because the model answered ``2026-10-24``;
+    the statement, value and unit were valid, so only the instant is unknown.
+    """
+
+    assert _optional_time("2026-10-24", 0, "available_at") is None
+    assert _optional_time("2026-10-24T09:30:00", 0, "period_start") is None
+
+
+def test_timezone_aware_time_is_preserved_exactly():
+    parsed = _optional_time("2026-10-24T09:30:00Z", 0, "available_at")
+
+    assert parsed == datetime(2026, 10, 24, 9, 30, tzinfo=UTC)
+
+
+def test_malformed_time_is_still_a_hard_error():
+    """Tolerance must not turn a broken response into silently missing data."""
+
+    for value in ("not-a-date", "2026-13-45", 12345):
+        with pytest.raises(ExtractionError) as exc_info:
+            _optional_time(value, 0, "available_at")
+        assert exc_info.value.code == "EXTRACTION_INVALID"

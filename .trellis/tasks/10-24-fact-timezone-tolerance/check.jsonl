@@ -1,0 +1,2 @@
+{"file": "docs/data.md", "reason": "核对 Fact 时间语义未被放宽为伪造时间"}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "核对错误分类仍区分可恢复与硬错误"}

@@ -148,7 +148,9 @@ Read only the supplied Chunks. For each fact:
   leave `unit` empty and do not guess; a numeric value without a stated unit must
   not be given one.
 - use `available_at` only when the text states when the information was made
-  public; otherwise leave it empty.
+  public; otherwise leave it empty. Any time you do report must include a
+  timezone (`Z` or a `+HH:MM` offset), for example `2026-10-01T12:30:00Z`; a bare
+  date or local time is treated as unknown.
 - keep `statement` close to the source wording. Do not compute ratios, growth
   rates, valuations or any derived number, and do not add conclusions, ratings or
   sentiment.
@@ -392,10 +394,13 @@ def _optional_time(value: object, index: int, field: str) -> datetime | None:
             f"Extracted fact {index} has an invalid {field}",
         ) from exc
     if parsed.utcoffset() is None:
-        raise ExtractionError(
-            "EXTRACTION_INVALID",
-            f"Extracted fact {index} {field} must include a timezone",
-        )
+        # A date the source stated without a timezone is still useful as a
+        # period, but the absolute instant is unknown. Rejecting the whole Fact
+        # for that would drop its statement, value and unit over an optional
+        # field; the existing rule is that missing information is recorded as
+        # unknown, never as absent. Malformed values above are still hard errors
+        # so a genuinely broken model response is not silently accepted.
+        return None
     return parsed
 
 
