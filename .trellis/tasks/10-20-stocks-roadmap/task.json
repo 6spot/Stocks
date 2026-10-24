@@ -21,7 +21,8 @@
   "children": [
     "10-20-stocks-v0",
     "10-20-stocks-v1",
-    "10-20-stocks-v2"
+    "10-20-stocks-v2",
+    "10-24-v2-real-source-samples"
   ],
   "parent": null,
   "relatedFiles": [

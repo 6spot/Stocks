@@ -1,0 +1,3 @@
+{"file": "docs/data.md", "reason": "核对采集/版本/来源声明行为是否与数据契约一致"}
+{"file": "docs/research.md", "reason": "核对同源合并与冲突展示语义未被夸大"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "真实来源验收记录精度与不夸大要求"}

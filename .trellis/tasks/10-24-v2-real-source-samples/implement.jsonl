@@ -1,0 +1,3 @@
+{"file": "docs/data.md", "reason": "来源声明、origin_key、Document 版本化与不可变解析批次的归属契约"}
+{"file": "docs/research.md", "reason": "证据组去重、origin_groups 与同指标冲突并列的语义"}
+{"file": ".trellis/spec/backend/testing-guidelines.md", "reason": "远程隔离环境、真实来源验收与证据记录要求"}
