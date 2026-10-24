@@ -319,6 +319,13 @@ provider must serve `/embeddings`. The current vector space is fixed at 1,024 di
 matching the HNSW cosine index in the fresh database schema. Any configured embedding
 fallback must use the same model name and dimensions.
 
+The configured `dimensions` is also sent in the request body, so a provider whose default
+vector is larger (for example Ark's `doubao-embedding-text-240715`, which defaults to 2,048)
+can return the size this deployment stores. `dimensions` is required and fixed at 1,024, so
+it is always sent; it is also what validates the returned vector length. A provider that
+rejects the field is not supported without a code change, and a provider that silently
+ignores it fails the dimension check rather than storing a mismatched vector.
+
 After parsing, index up to 20 actionable Documents or select explicit IDs:
 
 ```bash

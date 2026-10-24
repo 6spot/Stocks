@@ -1193,6 +1193,18 @@ class ModelClient:
 
         last_error: Exception | None = None
         for alias, target in zip(aliases, targets):
+            # ``dimensions`` is an OpenAI-compatible request field. Providers that
+            # support reduced-size vectors (for example Ark's
+            # ``doubao-embedding-text`` models, whose default is larger than this
+            # deployment's vector space) only return the configured size when the
+            # request asks for it, so the validated dimension is always sent.
+            # A provider that rejects the field is not supported: the dimension is
+            # required here to validate the returned vector length.
+            body: dict[str, object] = {
+                "model": target.name,
+                "input": inputs,
+                "dimensions": dimensions,
+            }
             async with httpx.AsyncClient(
                 timeout=target.timeout_seconds,
                 transport=self.transport,
@@ -1201,7 +1213,7 @@ class ModelClient:
                     response = await client.post(
                         f"{target.base_url.rstrip('/')}/embeddings",
                         headers={"Authorization": f"Bearer {target.api_key}"},
-                        json={"model": target.name, "input": inputs},
+                        json=body,
                     )
                     response.raise_for_status()
                 except httpx.HTTPStatusError as exc:

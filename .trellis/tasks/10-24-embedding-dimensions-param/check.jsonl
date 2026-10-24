@@ -1,0 +1,2 @@
+{"file": "docs/data.md", "reason": "核对向量维度与索引语义未被改变"}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "核对 Provider 请求与错误语义保持一致"}

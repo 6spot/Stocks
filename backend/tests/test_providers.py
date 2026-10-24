@@ -372,3 +372,68 @@ def test_embedding_rejects_two_vectors_claiming_the_same_slot():
         )
 
     assert exc_info.value.code == "EMBEDDING_RESPONSE_INVALID"
+
+
+def test_embedding_requests_the_configured_dimensions():
+    """Reduced-size vectors must be asked for, not just validated afterwards.
+
+    Ark's ``doubao-embedding-text`` models default to a larger vector than this
+    deployment's space and only return the configured size when the request
+    carries ``dimensions``.
+    """
+
+    seen: list[dict] = []
+
+    def mock(request):
+        seen.append(json.loads(request.content))
+        return httpx.Response(
+            200,
+            json={
+                "model": "doubao-embedding-text-240715",
+                "data": [{"index": 0, "embedding": [1.0, 0.0, 0.0]}],
+            },
+        )
+
+    target = ModelTarget(
+        "https://ark.example/api/v3", "key", "doubao-embedding-text-240715", 3
+    )
+    asyncio.run(
+        ModelClient({"embedding": target}, httpx.MockTransport(mock)).embed(
+            ["query"], aliases=["embedding"]
+        )
+    )
+
+    assert seen == [
+        {
+            "model": "doubao-embedding-text-240715",
+            "input": ["query"],
+            "dimensions": 3,
+        }
+    ]
+
+
+def test_embedding_rejects_an_unset_dimension_before_any_request():
+    """The dimension is required: it validates the returned vector length.
+
+    There is therefore no request body to send, and no ``null`` field is ever
+    serialized.
+    """
+
+    seen: list[dict] = []
+
+    def mock(request):
+        seen.append(json.loads(request.content))
+        return httpx.Response(
+            200,
+            json={"data": [{"index": 0, "embedding": [1.0, 0.0, 0.0]}]},
+        )
+
+    target = ModelTarget("https://example/v1", "key", "embedding-model", None)
+    with pytest.raises(ValueError, match="dimensions must be configured"):
+        asyncio.run(
+            ModelClient({"embedding": target}, httpx.MockTransport(mock)).embed(
+                ["query"], aliases=["embedding"]
+            )
+        )
+
+    assert seen == []
