@@ -880,3 +880,25 @@ V2 任务列表已全部交付归档后，处理跨任务待验收登记中的 P
 ### Status
 
 [OK] **Completed**
+
+
+## Session 28: 探测真实来源转载与修订样本（未取得，保留 PA-3）
+<!-- trellis-session: v=2 fp=1e05ce4708847aa6 -->
+
+**Date**: 2026-10-24
+**Task**: 探测真实来源转载与修订样本（未取得，保留 PA-3）
+**Branch**: `main`
+
+### Summary
+
+按授权主动采集 PA-3 两类真实样本。结论：均未取得合格样本。修订侧：库内 22 份真实 SEC 文档与线上字节 22/22 不同，但归一化正文 22/22 完全一致，唯一差异为尾部防爬脚本随机串（2026-107 为 680 词对 680 词、63889→63879 字节）；Apple CIK JSON 字节与库内一致；Treasury 逐日数值属不同 record_date 记录。转载侧：Fed/SEC 官方 RSS 无 <source> 声明，Google News 只给自身聚合跳转，benzinga/streetinsider/globenewswire/investing 403、marketwatch/barrons 401、fool/nasdaq/businessinsider/yahoo 404 或超时，区域性 Fed 页面 canonical 均指向自身。未用受控 fixture 或模板噪声冒充真实样本，两项继续留在 PA-3；探测记录见任务 research/probe-2026-10-24.md。未新增容器/依赖，未改产品代码；临时改动的 v2 采集配置已逐字还原。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `21b3367` | docs(trellis): record real-source sample probe results and keep PA-3 open |
+
+### Status
+
+[OK] **Completed**
