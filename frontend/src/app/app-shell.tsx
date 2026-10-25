@@ -6,6 +6,7 @@ import {
   LayoutDashboard,
   LogOut,
   Menu,
+  Rss,
   Search,
   X,
 } from "lucide-react";
@@ -31,6 +32,7 @@ import { useMobileNavigationStore, useNoticeStore } from "@/state/ui-store";
 
 const navigation = [
   { to: "/", label: "概览", icon: LayoutDashboard, end: true },
+  { to: "/sources", label: "采集源", icon: Rss },
   { to: "/intelligence", label: "情报", icon: Search },
   { to: "/tasks", label: "任务", icon: ClipboardList },
   { to: "/research", label: "研究", icon: BookOpenText },

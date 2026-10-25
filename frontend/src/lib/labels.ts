@@ -87,6 +87,18 @@ export function statusTone(
   return "outline";
 }
 
+export function trustTierLabel(tier: string | null | undefined): string {
+  const normalized = (tier ?? "").trim();
+  return (
+    {
+      T1: "T1 · 官方原始",
+      T2: "T2 · 原始发布者",
+      T3: "T3 · 二手媒体",
+      T4: "T4 · 未核实",
+    }[normalized] ?? (normalized || "未记录")
+  );
+}
+
 export function stageLabel(stage: string): string {
   return (
     {

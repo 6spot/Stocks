@@ -24,6 +24,11 @@ const IntelligencePage = lazy(() =>
     default: module.IntelligencePage,
   })),
 );
+const SourcesPage = lazy(() =>
+  import("@/features/sources/sources-page").then((module) => ({
+    default: module.SourcesPage,
+  })),
+);
 const TasksPage = lazy(() =>
   import("@/features/tasks/tasks-page").then((module) => ({
     default: module.TasksPage,
@@ -59,6 +64,7 @@ export function AppRouter() {
           <Route element={<AuthenticatedOnly />}>
             <Route element={<AppShell />}>
               <Route index element={<OverviewPage />} />
+              <Route path="/sources" element={<SourcesPage />} />
               <Route path="/intelligence" element={<IntelligencePage />} />
               <Route path="/tasks" element={<TasksPage />} />
               <Route path="/research" element={<ResearchPage />} />

@@ -946,3 +946,7 @@ V2 任务列表已全部交付归档后，处理跨任务待验收登记中的 P
 ### Status
 
 [OK] **Completed**
+
+## 2026-10-25 采集源查看页面（10-25-sources-page）
+
+新增只读"采集源"页面：/sources 路由 + 侧边导航（Rss 图标），表格展示全部配置源的连接器/发布者/信任级别/启用状态/采集状态/新鲜度/最近尝试/积压，行内展示采集错误，顶层 sources.yaml 配置错误显著告警。复用既有 /api/sources 与 dashboardApi.sources()，未改后端契约；新增 trustTierLabel。测试服务器 100.120.14.84 隔离目录验证：typecheck、新增测试 6 passed、前端全量 11 文件 40 passed、vite build 全部通过；远程目录已清理。未做真实浏览器视口视觉验收。
