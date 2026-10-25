@@ -37,3 +37,20 @@
 ## 限制
 
 真实浏览器视口视觉验收属 PA-3 待办。
+
+## 补充：Owner 报告「未更新」的排查结论（2026-10-25 晚）
+
+Owner 换浏览器后仍报旧版。逐层排查结论：**服务端与 CDN 链路全部是新版**——
+
+- index.html 从 `100.120.14.84:8080` 与 `127.0.0.1` 拉取 md5 一致，引用 `index-aw_uKa5Q.js`
+- 该主包引用 `research-page-PDlxhLfG.js`（含「支撑信息」Tabs 标题）
+- 从 Mac 与服务器双端下载 chunk md5 均与容器内一致
+- 无第二个 web 容器/旧栈抢占 8080；`Cache-Control: no-cache` 正常
+
+期间为排除 Docker layer 缓存做了一次 `build --no-cache`，并在正文与 Tabs 之间补了
+「支撑信息」小节标题（提交 f9a0ec4），使 Tabs 区块在视觉上有明确分区。
+
+**唯一无法服务端排除的剩余变量是 Owner 浏览器本地状态**：请用无痕窗口测试，或在
+开发者工具 Network 勾选 Disable cache 后刷新，并核对 research-page chunk 文件名
+是否为 `research-page-PDlxhLfG.js`。若该文件名已是 PDlxhLfG 而界面仍像旧版，
+请描述具体看到的样子（有没有三个 Tab），那将指向渲染问题而非部署问题。
