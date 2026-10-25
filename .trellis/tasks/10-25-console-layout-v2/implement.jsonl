@@ -1,0 +1,3 @@
+{"file": "docs/interface.md", "reason": "控制台视图契约：列表、详情、恢复操作的语义不能变"}
+{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "ShadCN 使用与验证要求"}
+{"file": ".trellis/spec/frontend/hook-guidelines.md", "reason": "数据读取 hook 边界"}
