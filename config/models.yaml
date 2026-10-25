@@ -4,7 +4,7 @@
 providers:
   chat:
     protocol: openai_compatible
-    base_url: http://host.docker.internal:3425/v1
+    base_url: http://host.docker.internal:13426/v1
     api_key: magpie-tunnel
     capabilities: [chat, text, structured_output]
     timeout_seconds: 60
@@ -17,14 +17,14 @@ models:
   fast:
     provider: chat
     name: workbuddy-ai/deepseek-v4.1-flash
-    fallbacks:
-      - workbuddy/deepseek-v4.1-flash
+    capabilities: [chat, text, structured_output]
+  fast-fallback:
+    provider: chat
+    name: workbuddy/deepseek-v4.1-flash
     capabilities: [chat, text, structured_output]
   research:
     provider: chat
     name: workbuddy-ai/deepseek-v4.1-flash
-    fallbacks:
-      - workbuddy/deepseek-v4.1-flash
     capabilities: [chat, text, structured_output]
   embedding:
     provider: embedder
@@ -36,7 +36,7 @@ agents:
   research:
     routing:
       primary: research
-      fallbacks: []
+      fallbacks: [fast-fallback]
       required_capabilities: [chat, text, structured_output]
       # The research call returns the whole analysis in one structured response:
       # summary, several findings with citations, open questions and gaps. That is
