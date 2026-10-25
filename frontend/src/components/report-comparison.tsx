@@ -1,5 +1,5 @@
-import { ExternalLink } from "lucide-react";
-import { Fragment, useState, type ReactNode } from "react";
+import { ArrowLeft, ExternalLink } from "lucide-react";
+import { Fragment, type ReactNode } from "react";
 import { dashboardApi, originalEndpoint } from "@/api/dashboard";
 import type {
   ComparisonSide,
@@ -8,7 +8,7 @@ import type {
 } from "@/api/schemas";
 import { ErrorPanel, LoadingPanel } from "@/components/async-state";
 import { Badge } from "@/components/ui/badge";
-import { buttonVariants } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { useResource } from "@/hooks/use-resource";
 import { formatDateTime, formatValue } from "@/lib/format";
@@ -16,50 +16,57 @@ import { formatDateTime, formatValue } from "@/lib/format";
 /**
  * Compare two saved reports, earlier side first.
  *
- * Everything shown here comes from the two stored snapshots: each side keeps
- * its own as_of, coverage and cited Document versions, and a difference is
- * presented as new material or as a new source version rather than as
- * something the earlier report already knew.
+ * This view mounts only inside the compare mode of the research page, so the
+ * comparison API is requested solely while it is on screen. The compared
+ * report is owned by the page (URL `compare` param) and changed through
+ * `onChangeOther`; the select carries no "不对比" entry because leaving
+ * compare mode is the explicit back control.
  */
-export function ReportComparisonSection({
+export function ReportComparisonView({
   reportId,
+  otherReportId,
   reports,
   onSelectReport,
+  onChangeOther,
+  onExit,
 }: {
   reportId: string;
+  otherReportId: string;
   reports: ReportListItem[];
   onSelectReport?: (reportId: string) => void;
+  onChangeOther: (otherReportId: string) => void;
+  onExit?: () => void;
 }) {
   const options = reports.filter((item) => item.report_id !== reportId);
-  const current = reports.find((item) => item.report_id === reportId);
-  const preferred = options.find(
-    (item) => item.task_id === current?.task_id,
-  );
-  const [otherId, setOtherId] = useState(preferred?.report_id ?? "");
 
   if (!options.length) {
     return null;
   }
   return (
-    <section>
+    <article className="space-y-5">
       <div className="flex flex-wrap items-center gap-2">
-        <h2 className="text-sm font-semibold">历史报告对照</h2>
+        {onExit ? (
+          <Button type="button" variant="outline" size="sm" onClick={onExit}>
+            <ArrowLeft aria-hidden="true" />
+            返回报告
+          </Button>
+        ) : null}
+        <h2 className="text-base font-semibold">历史报告对照</h2>
         <Badge variant="outline">{options.length} 份可选</Badge>
       </div>
-      <p className="mt-1 text-sm text-muted-foreground">
+      <p className="text-sm text-muted-foreground">
         只比较两份报告各自保存的分析、证据包与引用版本；不重跑研究，也不改写旧报告。
       </p>
-      <Separator className="mt-3" />
-      <div className="mt-4 space-y-4">
+      <Separator />
+      <div className="space-y-4">
         <label className="flex flex-wrap items-center gap-2 text-sm">
           <span className="text-muted-foreground">对比报告：</span>
           <select
             aria-label="对比报告"
-            value={otherId}
-            onChange={(event) => setOtherId(event.target.value)}
+            value={otherReportId}
+            onChange={(event) => onChangeOther(event.currentTarget.value)}
             className="h-9 min-w-64 rounded-lg border border-border bg-background px-2 text-sm"
           >
-            <option value="">不对比</option>
             {options.map((item) => (
               <option key={item.report_id} value={item.report_id}>
                 {item.task_id} · {formatDateTime(item.created_at)} · {item.title}
@@ -67,19 +74,13 @@ export function ReportComparisonSection({
             ))}
           </select>
         </label>
-        {otherId ? (
-          <ComparisonBody
-            reportId={reportId}
-            otherReportId={otherId}
-            onSelectReport={onSelectReport}
-          />
-        ) : (
-          <p className="text-xs text-muted-foreground">
-            选择另一份成功报告后，这里会列出结论、证据版本、指标取值与覆盖差异。
-          </p>
-        )}
+        <ComparisonBody
+          reportId={reportId}
+          otherReportId={otherReportId}
+          onSelectReport={onSelectReport}
+        />
       </div>
-    </section>
+    </article>
   );
 }
 

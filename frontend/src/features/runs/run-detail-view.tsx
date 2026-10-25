@@ -13,9 +13,12 @@ import {
   formatDuration,
   formatNumber,
   formatValue,
+  shortId,
 } from "@/lib/format";
 import { RunActions } from "@/features/runs/run-actions";
+import { Section } from "@/components/section";
 import { UsageSummarySection } from "@/components/usage-summary";
+import { statusLabel } from "@/lib/labels";
 
 /**
  * Step usage is an internal, persisted summary; read only the known numeric
@@ -43,6 +46,65 @@ function stepUsageLine(usage: unknown): string | null {
     parts.push(`${unknownCosts} 次未提供费用`);
   }
   return parts.join(" · ");
+}
+
+/**
+ * Current collection pointers live with the Run, not the report reading view.
+ * The report detail is fetched lazily only when this section mounts, so
+ * opening a Run sheet costs no extra request beyond the run itself.
+ */
+function CollectionStatesSection({ reportId }: { reportId: string }) {
+  const report = useResource(
+    (signal) => dashboardApi.report(reportId, signal),
+    [reportId],
+  );
+
+  if (report.loading) {
+    return (
+      <Section title="当前采集指针" description="正在读取报告保存的采集指针。">
+        <LoadingPanel label="正在读取采集指针" />
+      </Section>
+    );
+  }
+  if (report.error) {
+    return (
+      <Section
+        title="当前采集指针"
+        description="读取报告保存的采集指针失败。"
+      >
+        <ErrorPanel message={report.error.message} onRetry={report.refresh} />
+      </Section>
+    );
+  }
+  const states = report.data?.latest_collection_states ?? [];
+  if (!states.length) {
+    return null;
+  }
+  return (
+    <Section
+      title="当前采集指针"
+      description="这些指向最新采集版本，仅用于说明后续变化；不替换报告实际引用的证据版本。"
+    >
+      <ul className="divide-y divide-border">
+        {states.map((state) => (
+          <li
+            key={`${state.source_id}-${state.dedupe_key}`}
+            className="py-3 text-xs first:pt-0 last:pb-0"
+          >
+            <p className="font-medium">
+              {state.source_id} / {state.dedupe_key}
+            </p>
+            <p className="mt-1 text-muted-foreground">
+              最新 Document{" "}
+              <span className="font-code">{shortId(state.latest_document_id)}</span>{" "}
+              · 完整度 {statusLabel(state.completeness)} · 最近尝试{" "}
+              {formatDateTime(state.last_attempted_at)}
+            </p>
+          </li>
+        ))}
+      </ul>
+    </Section>
+  );
 }
 
 export function RunDetailView({
@@ -286,6 +348,10 @@ export function RunDetailView({
           ) : null
         }
       />
+
+      {data.report ? (
+        <CollectionStatesSection reportId={data.report.report_id} />
+      ) : null}
     </article>
   );
 }

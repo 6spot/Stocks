@@ -1,8 +1,8 @@
-import { FileText } from "lucide-react";
-import { useEffect } from "react";
+import { FileText, GitCompareArrows } from "lucide-react";
+import { useEffect, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { dashboardApi } from "@/api/dashboard";
-import type { ReportEvidence } from "@/api/schemas";
+import type { ReportDetail, ReportEvidence } from "@/api/schemas";
 import { EmptyPanel, ErrorPanel, LoadingPanel } from "@/components/async-state";
 import { FactTable } from "@/components/fact-list";
 import {
@@ -11,7 +11,7 @@ import {
 } from "@/components/source-independence";
 import { OriginalLinks } from "@/components/original-links";
 import { PageHeader } from "@/components/page-header";
-import { ReportComparisonSection } from "@/components/report-comparison";
+import { ReportComparisonView } from "@/components/report-comparison";
 import { Section } from "@/components/section";
 import { StatusBadge } from "@/components/status-badge";
 import { UsageSummarySection } from "@/components/usage-summary";
@@ -19,15 +19,27 @@ import type { OriginGroup, ReportListItem } from "@/api/schemas";
 import { evidenceCoverageSchema } from "@/api/schemas";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useResource } from "@/hooks/use-resource";
 import { formatDateTime, formatValue, shortId } from "@/lib/format";
 import { gapLabel, statusLabel } from "@/lib/labels";
 import { renderMarkdown } from "@/lib/markdown";
 import { cn } from "@/lib/utils";
 
+const SUPPORT_TABS = ["evidence", "sources", "usage"] as const;
+type SupportTab = (typeof SUPPORT_TABS)[number];
+
+function parseSupportTab(value: string): SupportTab {
+  return SUPPORT_TABS.includes(value as SupportTab)
+    ? (value as SupportTab)
+    : "evidence";
+}
+
 export function ResearchPage() {
   const [params, setParams] = useSearchParams();
   const selectedId = params.get("report");
+  const compareId = params.get("compare");
   const reports = useResource(
     (signal) => dashboardApi.reports(100, signal),
     [],
@@ -54,6 +66,50 @@ export function ResearchPage() {
   function selectReport(reportId: string) {
     const next = new URLSearchParams(params);
     next.set("report", reportId);
+    next.delete("compare");
+    setParams(next, { replace: true });
+  }
+
+  function enterCompare(otherReportId: string) {
+    const next = new URLSearchParams(params);
+    next.set("compare", otherReportId);
+    setParams(next, { replace: true });
+  }
+
+  // The list-row entry: comparing the open report picks the most recent other
+  // successful one (same Task first); comparing another row makes that row the
+  // compared report, and with nothing open yet it becomes the opened report.
+  function startCompare(reportId: string) {
+    const succeeded = reports.data?.items.filter(
+      (item) => item.run_status === "succeeded" && item.report_id !== reportId,
+    );
+    const current = reports.data?.items.find(
+      (item) => item.report_id === reportId,
+    );
+    const preferred =
+      succeeded?.find((item) => item.task_id === current?.task_id) ??
+      succeeded?.[0];
+
+    const next = new URLSearchParams(params);
+    if (reportId === selectedId) {
+      if (!preferred) {
+        return;
+      }
+      next.set("compare", preferred.report_id);
+    } else if (selectedId) {
+      next.set("compare", reportId);
+    } else {
+      next.set("report", reportId);
+      if (preferred) {
+        next.set("compare", preferred.report_id);
+      }
+    }
+    setParams(next, { replace: true });
+  }
+
+  function exitCompare() {
+    const next = new URLSearchParams(params);
+    next.delete("compare");
     setParams(next, { replace: true });
   }
 
@@ -82,35 +138,54 @@ export function ResearchPage() {
             <ul className="divide-y divide-border">
               {reports.data.items.map((report) => {
                 const selected = selectedId === report.report_id;
+                const comparing = compareId === report.report_id;
                 return (
                   <li key={report.report_id} className="py-1 first:pt-0 last:pb-0">
-                    <button
-                      type="button"
-                      aria-pressed={selected}
-                      onClick={() => selectReport(report.report_id)}
+                    <div
                       className={cn(
-                        "press block w-full rounded-md px-2 py-2 text-left",
+                        "flex items-stretch gap-1 rounded-md",
                         selected ? "bg-muted" : "hover:bg-muted/60",
                       )}
                     >
-                      <span className="flex min-w-0 items-center gap-2">
-                        <FileText
-                          aria-hidden="true"
-                          className="size-4 shrink-0 text-muted-foreground"
-                        />
-                        <span className="min-w-0 flex-1 truncate text-sm font-medium">
-                          {report.title}
+                      <button
+                        type="button"
+                        aria-pressed={selected}
+                        onClick={() => selectReport(report.report_id)}
+                        className="press min-w-0 flex-1 rounded-md px-2 py-2 text-left"
+                      >
+                        <span className="flex min-w-0 items-center gap-2">
+                          <FileText
+                            aria-hidden="true"
+                            className="size-4 shrink-0 text-muted-foreground"
+                          />
+                          <span className="min-w-0 flex-1 truncate text-sm font-medium">
+                            {report.title}
+                          </span>
+                          <span className="hidden w-28 shrink-0 truncate text-xs text-muted-foreground sm:block">
+                            {report.task_id}
+                          </span>
+                          <StatusBadge status={report.run_status} />
                         </span>
-                        <span className="hidden w-28 shrink-0 truncate text-xs text-muted-foreground sm:block">
-                          {report.task_id}
+                        <span className="mt-0.5 block pl-6 text-xs text-muted-foreground">
+                          生成于 {formatDateTime(report.created_at)} · run{" "}
+                          {shortId(report.run_id)}
                         </span>
-                        <StatusBadge status={report.run_status} />
-                      </span>
-                      <span className="mt-0.5 block pl-6 text-xs text-muted-foreground">
-                        生成于 {formatDateTime(report.created_at)} · run{" "}
-                        {shortId(report.run_id)}
-                      </span>
-                    </button>
+                      </button>
+                      {report.run_status === "succeeded" ? (
+                        <button
+                          type="button"
+                          aria-pressed={comparing}
+                          onClick={() => startCompare(report.report_id)}
+                          className="mr-1 self-center rounded-md px-1.5 py-1 text-xs font-medium text-primary hover:bg-muted focus-visible:border-ring focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
+                        >
+                          <GitCompareArrows
+                            aria-hidden="true"
+                            className="mr-1 inline size-3.5"
+                          />
+                          {comparing ? "对照中" : "对照"}
+                        </button>
+                      ) : null}
+                    </div>
                   </li>
                 );
               })}
@@ -123,12 +198,15 @@ export function ResearchPage() {
             <ReportReader
               key={selectedId}
               reportId={selectedId}
+              compareReportId={compareId ?? undefined}
               reports={
                 reports.data?.items.filter(
                   (report) => report.run_status === "succeeded",
                 ) ?? []
               }
               onSelectReport={selectReport}
+              onEnterCompare={enterCompare}
+              onExitCompare={exitCompare}
             />
           ) : (
             <EmptyPanel
@@ -155,12 +233,18 @@ export function ResearchPage() {
 
 export function ReportReader({
   reportId,
+  compareReportId,
   reports = [],
   onSelectReport,
+  onEnterCompare,
+  onExitCompare,
 }: {
   reportId: string;
+  compareReportId?: string;
   reports?: ReportListItem[];
   onSelectReport?: (reportId: string) => void;
+  onEnterCompare?: (otherReportId: string) => void;
+  onExitCompare?: () => void;
 }) {
   const report = useResource(
     (signal) => dashboardApi.report(reportId, signal),
@@ -178,6 +262,39 @@ export function ReportReader({
   }
 
   const data = report.data;
+  if (compareReportId && compareReportId !== reportId) {
+    return (
+      <ReportComparisonView
+        reportId={reportId}
+        otherReportId={compareReportId}
+        reports={reports}
+        onSelectReport={onSelectReport}
+        onChangeOther={(otherId) => onEnterCompare?.(otherId)}
+        onExit={onExitCompare}
+      />
+    );
+  }
+  return (
+    <ReportBody
+      data={data}
+      reports={reports}
+      onEnterCompare={onEnterCompare}
+    />
+  );
+}
+
+function ReportBody({
+  data,
+  reports,
+  onEnterCompare,
+}: {
+  data: ReportDetail;
+  reports: ReportListItem[];
+  onEnterCompare?: (otherReportId: string) => void;
+}) {
+  // Inactive tab panels render null so only the visible section mounts and
+  // no hidden section can trigger requests.
+  const [supportTab, setSupportTab] = useState<SupportTab>("evidence");
   const cited = new Set(data.cited_chunk_ids);
   const coverage = evidenceCoverageSchema.safeParse(
     data.evidence_package.coverage,
@@ -195,6 +312,12 @@ export function ReportReader({
   const originById = new Map(
     originGroups.map((group) => [group.origin_id, group]),
   );
+  const otherReports = reports.filter(
+    (report) => report.report_id !== data.report.report_id,
+  );
+  const preferredCompareId =
+    otherReports.find((report) => report.task_id === data.report.task_id)
+      ?.report_id ?? otherReports[0]?.report_id;
   return (
     <article className="space-y-6">
       <div>
@@ -236,11 +359,24 @@ export function ReportReader({
             </dd>
           </div>
         </dl>
+        <p className="mt-2 text-xs text-muted-foreground">
+          独立原件 {originGroups.length ? originGroups.length : "未知"} · 引用{" "}
+          {data.evidence.length} 条
+        </p>
         {data.evidence_package.retrieval_truncated ? (
           <Alert variant="warning" className="mt-4">
             <AlertTitle>证据检索已截断</AlertTitle>
             <AlertDescription>
               证据检索达到预算并发生截断；报告未读取所有候选资料。
+            </AlertDescription>
+          </Alert>
+        ) : null}
+        {data.coverage_gaps.length ? (
+          <Alert variant="warning" className="mt-4">
+            <AlertTitle>资料缺口与不确定性</AlertTitle>
+            <AlertDescription>
+              {data.coverage_gaps.map(gapLabel).join("、")}
+              ；缺口来自保存时的覆盖统计和当前读取结果，不代表资料在现实中不存在。
             </AlertDescription>
           </Alert>
         ) : null}
@@ -252,109 +388,99 @@ export function ReportReader({
         />
       </div>
 
-      {data.coverage_gaps.length ? (
-        <section>
-          <h2 className="text-sm font-semibold">资料缺口与不确定性</h2>
-          <p className="mt-1 text-sm text-muted-foreground">
-            缺口来自保存时的覆盖统计和当前读取结果，不代表资料在现实中不存在。
-          </p>
-          <ul className="mt-3 flex flex-wrap gap-2 text-xs">
-            {data.coverage_gaps.map((gap) => (
-              <li key={gap}>
-                <Badge variant="warning">{gapLabel(gap)}</Badge>
-              </li>
-            ))}
-          </ul>
-        </section>
-      ) : null}
-
-      <SourceIndependenceSection
-        groups={originGroups}
-        evidenceGroupCount={evidenceGroupCount}
-        referenceCount={data.evidence.length}
-      />
-
-      <ReportComparisonSection
-        reportId={reportId}
-        reports={reports}
-        onSelectReport={onSelectReport}
-      />
-
-      <MetricComparisonsSection comparisons={comparisons} />
-
-      <UsageSummarySection
-        usage={data.usage}
-        title="本次研究用量"
-        description="来自本 Run 已保存的模型调用；未提供费用的调用保持未知，不按 0 计算。"
-        footer={
-          <Link
-            to={`/runs?run=${data.report.run_id}`}
-            className="text-sm font-medium text-primary underline-offset-4 hover:underline"
-          >
-            查看 Run 步骤与模型调用
-          </Link>
-        }
-      />
-
-      <Section
-        title="证据包"
-        description="先显示报告保存时实际引用的片段或 Fact，再提供 Document 原件入口。"
-        actions={<Badge variant="outline">{data.evidence.length} 个引用</Badge>}
+      <Tabs
+        value={supportTab}
+        onValueChange={(value) => setSupportTab(parseSupportTab(String(value)))}
       >
-        {data.evidence.length ? (
-          <ol className="divide-y divide-border">
-            {data.evidence.map((evidence, index) => (
-              <li
-                key={`${evidence.document_id}-${evidence.chunk_id}`}
-                className="py-4 first:pt-0 last:pb-0"
-              >
-                <EvidenceRow
-                  evidence={evidence}
-                  cited={cited.has(evidence.chunk_id)}
-                  originGroup={
-                    evidence.origin_id
-                      ? originById.get(evidence.origin_id)
-                      : undefined
-                  }
-                  index={index}
+        <TabsList aria-label="报告支撑信息">
+          <TabsTrigger value="evidence">证据包</TabsTrigger>
+          <TabsTrigger value="sources">来源与指标</TabsTrigger>
+          <TabsTrigger value="usage">研究用量</TabsTrigger>
+        </TabsList>
+        <TabsContent value="evidence">
+          {supportTab === "evidence" ? (
+            <Section
+              title="证据包"
+              description="先显示报告保存时实际引用的片段或 Fact，再提供 Document 原件入口。"
+              actions={
+                <Badge variant="outline">{data.evidence.length} 个引用</Badge>
+              }
+            >
+              {data.evidence.length ? (
+                <ol className="divide-y divide-border">
+                  {data.evidence.map((evidence, index) => (
+                    <li
+                      key={`${evidence.document_id}-${evidence.chunk_id}`}
+                      className="py-4 first:pt-0 last:pb-0"
+                    >
+                      <EvidenceRow
+                        evidence={evidence}
+                        cited={cited.has(evidence.chunk_id)}
+                        originGroup={
+                          evidence.origin_id
+                            ? originById.get(evidence.origin_id)
+                            : undefined
+                        }
+                        index={index}
+                      />
+                    </li>
+                  ))}
+                </ol>
+              ) : (
+                <EmptyPanel
+                  title="证据包没有可读取引用"
+                  description="报告仍可阅读，但无法追溯本次结论使用的片段；请结合资料缺口判断。"
                 />
-              </li>
-            ))}
-          </ol>
-        ) : (
-          <EmptyPanel
-            title="证据包没有可读取引用"
-            description="报告仍可阅读，但无法追溯本次结论使用的片段；请结合资料缺口判断。"
-          />
-        )}
-      </Section>
+              )}
+            </Section>
+          ) : null}
+        </TabsContent>
+        <TabsContent value="sources">
+          {supportTab === "sources" ? (
+            <div className="space-y-8">
+              <SourceIndependenceSection
+                groups={originGroups}
+                evidenceGroupCount={evidenceGroupCount}
+                referenceCount={data.evidence.length}
+              />
+              <MetricComparisonsSection comparisons={comparisons} />
+            </div>
+          ) : null}
+        </TabsContent>
+        <TabsContent value="usage">
+          {supportTab === "usage" ? (
+            <UsageSummarySection
+              usage={data.usage}
+              title="本次研究用量"
+              description="来自本 Run 已保存的模型调用；未提供费用的调用保持未知，不按 0 计算。"
+              footer={
+                <Link
+                  to={`/runs?run=${data.report.run_id}`}
+                  className="text-sm font-medium text-primary underline-offset-4 hover:underline"
+                >
+                  查看 Run 步骤与模型调用
+                </Link>
+              }
+            />
+          ) : null}
+        </TabsContent>
+      </Tabs>
 
-      {data.latest_collection_states.length ? (
-        <Section
-          title="当前采集指针"
-          description="这些指向最新采集版本，仅用于说明后续变化；不会替换上方报告实际引用。"
-        >
-          <ul className="divide-y divide-border">
-            {data.latest_collection_states.map((state) => (
-              <li
-                key={`${state.source_id}-${state.dedupe_key}`}
-                className="py-3 text-xs first:pt-0 last:pb-0"
-              >
-                <p className="font-medium">
-                  {state.source_id} / {state.dedupe_key}
-                </p>
-                <p className="mt-1 text-muted-foreground">
-                  最新 Document{" "}
-                  <span className="font-code">
-                    {shortId(state.latest_document_id)}
-                  </span>{" "}
-                  · 完整度 {statusLabel(state.completeness)} · 最近尝试{" "}
-                  {formatDateTime(state.last_attempted_at)}
-                </p>
-              </li>
-            ))}
-          </ul>
-        </Section>
+      {preferredCompareId && onEnterCompare ? (
+        <div className="border-t border-border pt-4">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => onEnterCompare(preferredCompareId)}
+          >
+            <GitCompareArrows aria-hidden="true" />
+            对照其他报告
+          </Button>
+          <p className="mt-2 text-xs text-muted-foreground">
+            与另一份成功报告做前后对照；也可以在左侧列表中点击任一报告旁的「对照」。
+          </p>
+        </div>
       ) : null}
     </article>
   );

@@ -1,6 +1,13 @@
 import { render, screen } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
-import { ReportComparisonSection } from "@/components/report-comparison";
+import userEvent from "@testing-library/user-event";
+import {
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vitest";
+import { ReportComparisonView } from "@/components/report-comparison";
 import type {
   ComparisonSide,
   ReportComparison,
@@ -187,37 +194,43 @@ const comparison: ReportComparison = {
 
 function reports(): ReportListItem[] {
   return [
-    {
-      report_id: "r2",
-      run_id: "run2",
-      analysis_id: "a2",
-      task_id: "research",
-      title: "Later brief",
-      created_at: "2026-10-21T02:00:00Z",
-      run_status: "succeeded",
-    },
-    {
-      report_id: "r1",
-      run_id: "run1",
-      analysis_id: "a1",
-      task_id: "research",
-      title: "Earlier brief",
-      created_at: "2026-10-20T02:00:00Z",
-      run_status: "succeeded",
-    },
+    reportItem({ report_id: "r2", title: "Later brief", created_at: "2026-10-21T02:00:00Z" }),
+    reportItem({ report_id: "r1", title: "Earlier brief", created_at: "2026-10-20T02:00:00Z" }),
   ];
 }
 
-describe("ReportComparisonSection", () => {
+function reportItem(overrides: {
+  report_id: string;
+  title: string;
+  created_at?: string;
+}): ReportListItem {
+  return {
+    run_id: `run-${overrides.report_id}`,
+    analysis_id: `analysis-${overrides.report_id}`,
+    task_id: "research",
+    created_at: overrides.created_at ?? "2026-10-20T05:00:00Z",
+    run_status: "succeeded",
+    ...overrides,
+  };
+}
+
+describe("ReportComparisonView", () => {
   beforeEach(() => {
     comparisonMock.mockReset();
     comparisonMock.mockResolvedValue(comparison);
   });
 
-  it("compares the previous report of the same task by default", async () => {
-    render(<ReportComparisonSection reportId="r2" reports={reports()} />);
+  it("compares the report passed from the page and switches via the select", async () => {
+    render(
+      <ReportComparisonView
+        reportId="r2"
+        otherReportId="r1"
+        reports={reports()}
+        onChangeOther={() => {}}
+      />,
+    );
 
-    // The newest other report is preselected, so the comparison loads itself.
+    // The page owns the compared report, so the view loads it immediately.
     expect(await screen.findByText("Earlier brief")).toBeVisible();
     expect(screen.getByText("Later brief")).toBeVisible();
     expect(comparisonMock).toHaveBeenCalledWith("r2", "r1", expect.anything());
@@ -241,9 +254,42 @@ describe("ReportComparisonSection", () => {
     expect(screen.getByText("partial_source_content")).toBeVisible();
   });
 
+  it("reports the changed selection back to the page through onChangeOther", async () => {
+    const onChangeOther = vi.fn();
+    const user = userEvent.setup();
+    render(
+      <ReportComparisonView
+        reportId="r2"
+        otherReportId="r1"
+        reports={[
+          reports()[1],
+          reportItem({
+            report_id: "r-other",
+            title: "Other brief",
+            created_at: "2026-10-19T02:00:00Z",
+          }),
+          reports()[0],
+        ]}
+        onChangeOther={onChangeOther}
+      />,
+    );
+
+    await screen.findByText("Earlier brief");
+    await user.selectOptions(
+      screen.getByRole("combobox", { name: "对比报告" }),
+      "r-other",
+    );
+    expect(onChangeOther).toHaveBeenCalledWith("r-other");
+  });
+
   it("stays hidden when there is no other report to compare with", () => {
     const { container } = render(
-      <ReportComparisonSection reportId="r1" reports={[reports()[1]]} />,
+      <ReportComparisonView
+        reportId="r1"
+        otherReportId="r2"
+        reports={[reports()[1]]}
+        onChangeOther={() => {}}
+      />,
     );
 
     expect(container).toBeEmptyDOMElement();
