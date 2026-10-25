@@ -4,8 +4,8 @@
 providers:
   chat:
     protocol: openai_compatible
-    base_url: ${MODEL_API_BASE_URL}
-    api_key: ${MODEL_API_KEY}
+    base_url: http://host.docker.internal:3425/v1
+    api_key: magpie-tunnel
     capabilities: [chat, text, structured_output]
     timeout_seconds: 60
   embedder:
@@ -16,11 +16,15 @@ providers:
 models:
   fast:
     provider: chat
-    name: ${MODEL_NAME}
+    name: workbuddy-ai/deepseek-v4.1-flash
+    fallbacks:
+      - workbuddy/deepseek-v4.1-flash
     capabilities: [chat, text, structured_output]
   research:
     provider: chat
-    name: ${MODEL_NAME}
+    name: workbuddy-ai/deepseek-v4.1-flash
+    fallbacks:
+      - workbuddy/deepseek-v4.1-flash
     capabilities: [chat, text, structured_output]
   embedding:
     provider: embedder
@@ -34,7 +38,15 @@ agents:
       primary: research
       fallbacks: []
       required_capabilities: [chat, text, structured_output]
-      timeout_seconds: 60
+      # The research call returns the whole analysis in one structured response:
+      # summary, several findings with citations, open questions and gaps. That is
+      # much larger than one classification or one extraction, and reasoning
+      # models spend part of the budget thinking. Measured on the live deployment,
+      # 60s timed out twice at exactly the limit while classification (30s) and
+      # fact extraction (60s) succeeded on the same model. This is a capacity
+      # value, not a relaxed safety bound: the limit stays hard, and the loader
+      # still rejects anything above 600s.
+      timeout_seconds: 300
       retries: 1
       retry_backoff_seconds: 0
   # Decision Model: a capability category, not a vendor. Point `primary` (and
