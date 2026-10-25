@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
 import sys
 from collections.abc import Sequence
 from uuid import UUID, uuid4
@@ -33,6 +34,20 @@ from stocks.settings import settings
 
 DEFAULT_MODEL_CONFIG = "config/models.yaml"
 DEFAULT_SOURCES_CONFIG = "config/sources.yaml"
+
+
+def _configure_logging() -> None:
+    """One CLI-process logging setup so diagnose-grade records are visible.
+
+    The stage services persist safe errors on the Document, but
+    ``runner``'s ``logger.exception`` traceback only reaches the process
+    log; without this call a container deployment shows neither.
+    """
+
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s %(levelname)s %(name)s %(message)s",
+    )
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -211,6 +226,7 @@ def _fail(payload: dict) -> int:
 
 
 def main(argv: Sequence[str] | None = None) -> int:
+    _configure_logging()
     parser = _parser()
     args = parser.parse_args(argv)
     try:

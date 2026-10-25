@@ -90,6 +90,59 @@ def test_provider_without_a_cost_keeps_it_unknown():
     assert response.attempts[0].cost_usd is None
 
 
+def test_research_request_uses_the_routing_timeout_budget():
+    """The Agent routing timeout is the per-attempt budget for research calls.
+
+    ``agents.research.routing.timeout_seconds`` is configured at 300 in this
+    deployment because one structured research answer is much larger than a
+    classification call; the provider-level default (60s) must not silently
+    cap it. httpx exposes the effective timeout as the request extension,
+    so a handler can read it from the mock transport.
+    """
+
+    seen_timeouts = []
+
+    def mock(request):
+        timeout = request.extensions.get("timeout") or {}
+        seen_timeouts.append(timeout.get("connect"))
+        return httpx.Response(
+            200,
+            json={
+                "model": "one",
+                "choices": [
+                    {"message": {"content": json.dumps({"answer": "ok"})}}
+                ],
+                "usage": {"total_tokens": 3},
+            },
+        )
+
+    target = ModelTarget(
+        "https://primary.example/v1",
+        "key",
+        "one",
+        capabilities=("chat", "text", "structured_output"),
+        timeout_seconds=60,
+    )
+    routing = ChatRouting(
+        primary="a",
+        fallbacks=(),
+        required_capabilities=("chat", "text", "structured_output"),
+        timeout_seconds=300,
+        max_attempts=1,
+        retry_backoff_seconds=0,
+    )
+    asyncio.run(
+        ModelClient({"a": target}, httpx.MockTransport(mock)).research_chat(
+            routing,
+            [{"role": "user", "content": "hi"}],
+            schema_name="answer",
+            schema=ANSWER_SCHEMA,
+        )
+    )
+
+    assert seen_timeouts == [300]
+
+
 def test_provider_rejects_a_non_numeric_cost():
     with pytest.raises(ModelError) as excinfo:
         research_answer({"total_tokens": 15, "cost": "free"})

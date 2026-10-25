@@ -921,8 +921,14 @@ class ModelClient:
         attempts: list[ModelAttempt] = []
         attempt_number = 0
         for alias_index, (alias, target) in enumerate(zip(aliases, targets)):
+            # The routing timeout is the Agent-level budget for one attempt and
+            # the reason `agents.research` declares 300s: one structured research
+            # answer is much larger than a classification call. The per-target
+            # timeout stays authoritative for plain chat, which has no routing
+            # object to carry a different budget.
+            request_timeout = max(target.timeout_seconds, routing.timeout_seconds)
             async with httpx.AsyncClient(
-                timeout=target.timeout_seconds,
+                timeout=request_timeout,
                 transport=self.transport,
             ) as client:
                 for retry_index in range(routing.max_attempts):

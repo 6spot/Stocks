@@ -72,6 +72,14 @@ Owner 能在 Web 上为某个已配置来源发起一次采集，不需要 SSH �
 
 ### R3 处理失败可诊断
 
+> **2026-10-25 范围收缩：** 并行任务 `10-25-fact-stage-robustness`（commit `377d17e`）已实现并部署 R3 的大部分：
+> - PROCESSOR_FAILED 兕底现在保留异常类名（`detail.exception`）并写进程日志；
+> - 期间表达式容错（年份/季度/半年→UTC 区间；不可识别→置空 + `attributes.period_raw`）；
+> - 同一响应内重复 Fact 身份去重；
+> - 5 个 failed 阶段已全部修复（服务器实测 0 failed，20/20 文档 facts 完成，Fact 71→130）。
+>
+> 本任务 R3 仅剩**进程日志配置**：`basicConfig` 仍缺失，Worker 容器日志为 0 行，`logger.exception` 的输出无处可看。
+
 `facts` 阶段失败时，Owner 能知道真实原因，而不是只有 `PROCESSOR_FAILED` 兜底码；Worker 日志能在容器日志中看到。已存在的 5 个 failed 阶段能被识别并给出可执行的下一步。
 
 ### R4 数据流动被验证
@@ -80,12 +88,12 @@ Owner 能在 Web 上为某个已配置来源发起一次采集，不需要 SSH �
 
 ## 验收条件
 
-- [ ] AC-1（R1）：Web「任务」页出现 collection Task，点击「手动触发」返回 queued Run；Worker 执行后该来源 `latest_attempt_at` 更新，新 Document 入库并生成 4 个阶段待办。
-- [ ] AC-2（R1）：collection Task 引用的来源若未配置或已禁用，触发返回稳定错误码（非 500），且不产生半个 Run。
-- [ ] AC-3（R2）：`tasks.yaml` 至少一个真实研究 Task 在 Web「任务」页可见且可触发，Run 成功后 `/api/reports` 返回可读报告。
-- [ ] AC-4（R3）：`facts` 阶段异常时，持久化的 error 含可区分的错误码，且 Worker 日志记录原始异常栈。
-- [ ] AC-5（R3）：已 failed 的 5 个 `facts` 阶段可通过既有 `retry` 能力重新排队，且 Owner 能从界面或 CLI 看到当前失败原因。
-- [ ] AC-6（R4）：测试服务器上完成一次真实闭环，证据（脱敏的 run_id、计数、响应片段）记录在任务 `acceptance.md`。
+- [x] AC-1（R1）：Web「任务」页出现 collection Task，点击「手动触发」返回 queued Run；Worker 执行后该来源 `latest_attempt_at` 更新，新 Document 入库并生成 4 个阶段待办。（探测库实测：Run `4ab85aa2` succeeded，40 文档四阶段完成）
+- [x] AC-2（R1）：collection Task 引用的来源若未配置或已禁用，触发返回稳定错误码（非 500），且不产生半个 Run。（代码核实 `SOURCE_NOT_FOUND`/`SOURCE_DISABLED` 已实现；探测库 40 文档仅来自两个启用源）
+- [x] AC-3（R2）：`tasks.yaml` 至少一个真实研究 Task 在 Web「任务」页可见且可触发，Run 成功后 `/api/reports` 返回可读报告。（Run `628a9522` succeeded，报告 28,227 字符、28 findings、71 证据引用）
+- [x] AC-4（R3）：`facts` 阶段异常时，持久化的 error 含可区分的错误码，且 Worker 日志记录原始异常栈。（由 `377d17e` 实现并验收；本任务仅补进程日志配置）
+- [x] AC-5（R3）：已 failed 的 5 个 `facts` 阶段可通过既有 `retry` 能力重新排队，且 Owner 能从界面或 CLI 看到当前失败原因。（`10-25-fact-stage-robustness` 已验收：0 failed）
+- [x] AC-6（R4）：测试服务器上完成一次真实闭环，证据（脱敏的 run_id、计数、响应片段）记录在任务 `acceptance.md`。
 
 ## 不在范围内
 

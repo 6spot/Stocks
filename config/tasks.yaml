@@ -1,4 +1,49 @@
 tasks:
+  # Owner-facing manual collection: one Run collects every enabled Source in
+  # config/sources.yaml through the existing collect_source service. Trigger it
+  # from the Web Tasks page or `stocks.execution trigger`; no model routes are
+  # resolved for a collection Run.
+  - id: collect_enabled_sources
+    name: 采集已启用来源
+    type: collection
+    trigger: manual
+    enabled: true
+    sources: [sec_press_releases, fed_press_releases]
+    steps:
+      - id: collect
+        collect_sources:
+          kind: collect_sources
+
+  - id: fed_policy_brief
+    name: 美联储政策与宏观简报
+    type: research
+    trigger: manual
+    enabled: true
+    objective: >-
+      Summarize recent US monetary policy, financial regulation and market
+      sentiment from the saved Federal Reserve and SEC materials. State each
+      finding's evidence, keep published values side by side, and name what
+      the saved material does not cover instead of inferring it.
+    strategy: evidence_first
+    scope:
+      regions: [US]
+      topics: [macro, policy, market_sentiment]
+    steps:
+      - id: evidence
+        select_evidence:
+          kind: select_evidence
+          queries:
+            - Federal Reserve monetary policy decisions and statements
+            - Federal Reserve inflation and interest rate outlook
+            - US financial regulation and market structure developments
+          limit_per_query: 8
+          max_tokens: 30000
+      - id: research
+        research_agent:
+          kind: research_agent
+          agent: research_writer
+          input: evidence
+
   - id: saved_evidence_brief
     name: Saved Evidence Brief
     type: research

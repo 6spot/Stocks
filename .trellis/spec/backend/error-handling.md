@@ -8,6 +8,12 @@
 
 在 API 边界把需要返回给调用方的失败转换为明确 HTTP 状态和安全的错误内容。不要用广泛的 `except Exception` 把配置错误、权限错误或程序缺陷伪装成可重试故障；也不要在错误响应或日志中泄露凭据。
 
+## 模型调用超时与路由预算
+
+**路由级超时预算必须落到最终 HTTP 客户端，不能只写在配置里。** `stocks.providers.research_chat()` 曾用 provider 目标自身的 `target.timeout_seconds`（60s）建 `httpx.AsyncClient`，导致 `config/models.yaml` 路由级 300s 预算从未生效：研究 Agent 在 60s 处 MODEL_TIMEOUT，配置看起来正确却永远通不过。修复后的契约：候选目标循环内 `request_timeout = max(target.timeout_seconds, routing.timeout_seconds)`，即路由预算封顶、不小于目标默认；普通 `chat()` 与 embedding 路径仍以各自 `target.timeout_seconds` 为准，不受路由影响。回归测试见 `tests/test_providers.py::test_research_request_uses_the_routing_timeout_budget`。
+
+两个 `httpx` 测试细节：超时以普通 dict 写入 `request.extensions["timeout"]`（值是 int，如 `{"connect": 300, ...}`），断言用 `timeout.get("connect")` 而不是下标或切片；MockTransport handler 内抛出的 `TypeError` 会被 `research_chat` 的 `except (ValueError, KeyError, TypeError)` 捕获并当作 `invalid_response` 重试，因此 mock 内不能让被测断言以异常形式逃逸——需要在 handler 里记录状态、返回合法响应。
+
 ## 外部采集
 
 `stocks.collection.errors.CollectionError` 是采集边界的稳定错误载体，包含 `code`、固定 `message`、可选脱敏 `url` 和结构化 `details`。配置、Feed 和 HTTP 失败使用不同错误码；外部异常可保留为 Python `__cause__` 供诊断，但 CLI/API 输出只调用 `to_dict()`，不得返回异常原文、完整响应或请求头。

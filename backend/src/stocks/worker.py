@@ -54,6 +54,22 @@ from stocks.settings import Settings, settings
 
 logger = logging.getLogger(__name__)
 
+
+def _configure_logging() -> None:
+    """One Worker-process logging setup so diagnose-grade records are visible.
+
+    Failed Runs and Document stages persist safe errors in PostgreSQL, but the
+    ``logger.exception`` tracebacks from the execution and processing paths only
+    reach the process log; without this call a container deployment shows
+    neither.
+    """
+
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s %(levelname)s %(name)s %(message)s",
+    )
+
+
 MAX_POLL_SECONDS = 300.0
 MIN_POLL_SECONDS = 0.1
 DEFAULT_POLL_SECONDS = 5.0
@@ -539,6 +555,7 @@ async def run_forever(
 
 
 def main(argv: Sequence[str] | None = None) -> int:
+    _configure_logging()
     parser = argparse.ArgumentParser(
         description=(
             "Schedule due Tasks and execute queued Task Runs. Use --once for a "
