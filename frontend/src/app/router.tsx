@@ -1,5 +1,10 @@
 import { lazy, Suspense } from "react";
-import { Route, Routes } from "react-router-dom";
+import {
+  Navigate,
+  Route,
+  Routes,
+  useSearchParams,
+} from "react-router-dom";
 import { AppShell } from "@/app/app-shell";
 import {
   AuthenticatedOnly,
@@ -39,6 +44,11 @@ const ResearchPage = lazy(() =>
     default: module.ResearchPage,
   })),
 );
+const ResearchDetailPage = lazy(() =>
+  import("@/features/research/research-page").then((module) => ({
+    default: module.ResearchDetailPage,
+  })),
+);
 const RunsPage = lazy(() =>
   import("@/features/runs/runs-page").then((module) => ({
     default: module.RunsPage,
@@ -51,6 +61,17 @@ function RouteFallback() {
       <LoadingPanel label="正在加载页面" />
     </div>
   );
+}
+
+// 旧深链接 `/research?report=<id>` 语义已迁移到详情页路由；replace 保持
+// 浏览器返回行为不落在旧链接上。
+function ResearchRoute() {
+  const [params] = useSearchParams();
+  const reportId = params.get("report");
+  if (reportId) {
+    return <Navigate to={`/research/${encodeURIComponent(reportId)}`} replace />;
+  }
+  return <ResearchPage />;
 }
 
 export function AppRouter() {
@@ -67,7 +88,11 @@ export function AppRouter() {
               <Route path="/sources" element={<SourcesPage />} />
               <Route path="/intelligence" element={<IntelligencePage />} />
               <Route path="/tasks" element={<TasksPage />} />
-              <Route path="/research" element={<ResearchPage />} />
+              <Route path="/research" element={<ResearchRoute />} />
+              <Route
+                path="/research/:reportId"
+                element={<ResearchDetailPage />}
+              />
               <Route path="/runs" element={<RunsPage />} />
               <Route path="*" element={<NotFoundPage />} />
             </Route>

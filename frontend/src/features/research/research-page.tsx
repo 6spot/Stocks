@@ -1,8 +1,24 @@
-import { FileText, GitCompareArrows } from "lucide-react";
-import { useEffect, useState } from "react";
-import { Link, useSearchParams } from "react-router-dom";
+import {
+  AlertTriangle,
+  ArrowLeft,
+  FileText,
+  GitCompareArrows,
+} from "lucide-react";
+import { useState } from "react";
+import {
+  Link,
+  useNavigate,
+  useParams,
+  useSearchParams,
+} from "react-router-dom";
 import { dashboardApi } from "@/api/dashboard";
-import type { ReportDetail, ReportEvidence } from "@/api/schemas";
+import {
+  evidenceCoverageSchema,
+  type OriginGroup,
+  type ReportDetail,
+  type ReportEvidence,
+  type ReportListItem,
+} from "@/api/schemas";
 import { EmptyPanel, ErrorPanel, LoadingPanel } from "@/components/async-state";
 import { FactTable } from "@/components/fact-list";
 import {
@@ -15,17 +31,21 @@ import { ReportComparisonView } from "@/components/report-comparison";
 import { Section } from "@/components/section";
 import { StatusBadge } from "@/components/status-badge";
 import { UsageSummarySection } from "@/components/usage-summary";
-import type { OriginGroup, ReportListItem } from "@/api/schemas";
-import { evidenceCoverageSchema } from "@/api/schemas";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useResource } from "@/hooks/use-resource";
-import { formatDateTime, formatValue, shortId } from "@/lib/format";
+import { formatDateTime, formatValue } from "@/lib/format";
 import { gapLabel, statusLabel } from "@/lib/labels";
 import { renderMarkdown } from "@/lib/markdown";
-import { cn } from "@/lib/utils";
 
 const SUPPORT_TABS = ["evidence", "sources", "usage"] as const;
 type SupportTab = (typeof SUPPORT_TABS)[number];
@@ -36,82 +56,16 @@ function parseSupportTab(value: string): SupportTab {
     : "evidence";
 }
 
+function reportPath(reportId: string): string {
+  return `/research/${encodeURIComponent(reportId)}`;
+}
+
 export function ResearchPage() {
-  const [params, setParams] = useSearchParams();
-  const selectedId = params.get("report");
-  const compareId = params.get("compare");
+  const navigate = useNavigate();
   const reports = useResource(
     (signal) => dashboardApi.reports(100, signal),
     [],
   );
-  // The list is ordered newest first, so this is the most recent report whose
-  // Run actually succeeded; failed Runs never replace the last readable one.
-  const latestSuccessfulId = reports.data?.items.find(
-    (report) => report.run_status === "succeeded",
-  )?.report_id;
-
-  useEffect(() => {
-    if (
-      selectedId ||
-      !latestSuccessfulId ||
-      !window.matchMedia("(min-width: 80rem)").matches
-    ) {
-      return;
-    }
-    const next = new URLSearchParams(params);
-    next.set("report", latestSuccessfulId);
-    setParams(next, { replace: true });
-  }, [params, selectedId, latestSuccessfulId, setParams]);
-
-  function selectReport(reportId: string) {
-    const next = new URLSearchParams(params);
-    next.set("report", reportId);
-    next.delete("compare");
-    setParams(next, { replace: true });
-  }
-
-  function enterCompare(otherReportId: string) {
-    const next = new URLSearchParams(params);
-    next.set("compare", otherReportId);
-    setParams(next, { replace: true });
-  }
-
-  // The list-row entry: comparing the open report picks the most recent other
-  // successful one (same Task first); comparing another row makes that row the
-  // compared report, and with nothing open yet it becomes the opened report.
-  function startCompare(reportId: string) {
-    const succeeded = reports.data?.items.filter(
-      (item) => item.run_status === "succeeded" && item.report_id !== reportId,
-    );
-    const current = reports.data?.items.find(
-      (item) => item.report_id === reportId,
-    );
-    const preferred =
-      succeeded?.find((item) => item.task_id === current?.task_id) ??
-      succeeded?.[0];
-
-    const next = new URLSearchParams(params);
-    if (reportId === selectedId) {
-      if (!preferred) {
-        return;
-      }
-      next.set("compare", preferred.report_id);
-    } else if (selectedId) {
-      next.set("compare", reportId);
-    } else {
-      next.set("report", reportId);
-      if (preferred) {
-        next.set("compare", preferred.report_id);
-      }
-    }
-    setParams(next, { replace: true });
-  }
-
-  function exitCompare() {
-    const next = new URLSearchParams(params);
-    next.delete("compare");
-    setParams(next, { replace: true });
-  }
 
   return (
     <div className="space-y-6">
@@ -120,118 +74,143 @@ export function ResearchPage() {
         description="统一阅读市场、行业和个股研究；先核对报告实际使用的证据版本，再打开原件。"
       />
 
-      <div className="grid gap-5 xl:grid-cols-[minmax(18rem,0.56fr)_minmax(0,1.44fr)]">
-        <section className="space-y-3" aria-label="报告列表">
-          {reports.loading ? (
-            <LoadingPanel label="正在读取报告列表" />
-          ) : reports.error ? (
-            <ErrorPanel
-              message={reports.error.message}
-              onRetry={reports.refresh}
-            />
-          ) : !reports.data?.items.length ? (
-            <EmptyPanel
-              title="尚无成功报告"
-              description="失败 Run 不会替换最后成功保存的报告。"
-            />
-          ) : (
-            <ul className="divide-y divide-border">
-              {reports.data.items.map((report) => {
-                const selected = selectedId === report.report_id;
-                const comparing = compareId === report.report_id;
-                return (
-                  <li key={report.report_id} className="py-1 first:pt-0 last:pb-0">
-                    <div
-                      className={cn(
-                        "flex items-stretch gap-1 rounded-md",
-                        selected ? "bg-muted" : "hover:bg-muted/60",
-                      )}
-                    >
-                      <button
-                        type="button"
-                        aria-pressed={selected}
-                        onClick={() => selectReport(report.report_id)}
-                        className="press min-w-0 flex-1 rounded-md px-2 py-2 text-left"
-                      >
-                        <span className="flex min-w-0 items-center gap-2">
-                          <FileText
-                            aria-hidden="true"
-                            className="size-4 shrink-0 text-muted-foreground"
-                          />
-                          <span className="min-w-0 flex-1 truncate text-sm font-medium">
-                            {report.title}
-                          </span>
-                          <span className="hidden w-28 shrink-0 truncate text-xs text-muted-foreground sm:block">
-                            {report.task_id}
-                          </span>
-                          <StatusBadge status={report.run_status} />
-                        </span>
-                        <span className="mt-0.5 block pl-6 text-xs text-muted-foreground">
-                          生成于 {formatDateTime(report.created_at)} · run{" "}
-                          {shortId(report.run_id)}
-                        </span>
-                      </button>
-                      {report.run_status === "succeeded" ? (
-                        <button
-                          type="button"
-                          aria-pressed={comparing}
-                          onClick={() => startCompare(report.report_id)}
-                          className="mr-1 self-center rounded-md px-1.5 py-1 text-xs font-medium text-primary hover:bg-muted focus-visible:border-ring focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
-                        >
-                          <GitCompareArrows
-                            aria-hidden="true"
-                            className="mr-1 inline size-3.5"
-                          />
-                          {comparing ? "对照中" : "对照"}
-                        </button>
-                      ) : null}
-                    </div>
-                  </li>
-                );
-              })}
-            </ul>
-          )}
-        </section>
-
-        <section className="min-w-0">
-          {selectedId ? (
-            <ReportReader
-              key={selectedId}
-              reportId={selectedId}
-              compareReportId={compareId ?? undefined}
-              reports={
-                reports.data?.items.filter(
-                  (report) => report.run_status === "succeeded",
-                ) ?? []
-              }
-              onSelectReport={selectReport}
-              onEnterCompare={enterCompare}
-              onExitCompare={exitCompare}
-            />
-          ) : (
-            <EmptyPanel
-              title="选择一份报告"
-              description="正文、覆盖缺口和引用证据会一起显示。"
-              action={
-                latestSuccessfulId ? (
+      {reports.loading ? (
+        <LoadingPanel label="正在读取报告列表" />
+      ) : reports.error ? (
+        <ErrorPanel
+          message={reports.error.message}
+          onRetry={reports.refresh}
+        />
+      ) : !reports.data?.items.length ? (
+        <EmptyPanel
+          title="尚无成功报告"
+          description="失败 Run 不会替换最后成功保存的报告。"
+        />
+      ) : (
+        <Table aria-label="报告列表">
+          <TableHeader>
+            <TableRow>
+              <TableHead>报告标题</TableHead>
+              <TableHead>任务</TableHead>
+              <TableHead>状态</TableHead>
+              <TableHead className="text-right">生成时间</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {reports.data.items.map((report) => (
+              <TableRow
+                key={report.report_id}
+                className="cursor-pointer hover:bg-muted/60"
+                onClick={() => navigate(reportPath(report.report_id))}
+              >
+                <TableCell className="max-w-72">
                   <button
                     type="button"
-                    className="text-sm font-medium text-primary underline-offset-4 hover:underline"
-                    onClick={() => selectReport(latestSuccessfulId)}
+                    aria-label={`打开报告 ${report.title}`}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      navigate(reportPath(report.report_id));
+                    }}
+                    className="press flex w-full min-w-0 cursor-pointer items-center gap-2 rounded-sm text-left focus-visible:border-ring focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
                   >
-                    打开最新报告
+                    <FileText
+                      aria-hidden="true"
+                      className="size-4 shrink-0 text-muted-foreground"
+                    />
+                    <span className="min-w-0 flex-1 truncate text-sm font-medium">
+                      {report.title}
+                    </span>
                   </button>
-                ) : undefined
-              }
-            />
-          )}
-        </section>
-      </div>
+                </TableCell>
+                <TableCell className="font-code text-xs text-muted-foreground">
+                  {report.task_id}
+                </TableCell>
+                <TableCell>
+                  <StatusBadge status={report.run_status} />
+                </TableCell>
+                <TableCell className="whitespace-nowrap text-right text-xs text-muted-foreground">
+                  {formatDateTime(report.created_at)}
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      )}
     </div>
   );
 }
 
-export function ReportReader({
+export function ResearchDetailPage() {
+  const { reportId = "" } = useParams();
+  const [params] = useSearchParams();
+  const navigate = useNavigate();
+  const reports = useResource(
+    (signal) => dashboardApi.reports(100, signal),
+    [],
+  );
+  // 对照对象只能来自成功保存的报告，失败 Run 不进入对照下拉。
+  const succeededReports =
+    reports.data?.items.filter((item) => item.run_status === "succeeded") ??
+    [];
+
+  function backToList() {
+    if (window.history.state && window.history.state.idx > 0) {
+      navigate(-1);
+    } else {
+      navigate("/research");
+    }
+  }
+
+  function selectReport(nextReportId: string) {
+    navigate(reportPath(nextReportId));
+  }
+
+  function enterCompare(otherReportId: string) {
+    navigate(
+      `${reportPath(reportId)}?compare=${encodeURIComponent(otherReportId)}`,
+      { replace: true },
+    );
+  }
+
+  function exitCompare() {
+    navigate(reportPath(reportId), { replace: true });
+  }
+
+  if (!reportId) {
+    return (
+      <ErrorPanel
+        title="报告地址无效"
+        message="地址缺少 report_id；请从研究报告列表选择一份报告。"
+      />
+    );
+  }
+
+  return (
+    <div className="space-y-5">
+      <Button
+        type="button"
+        variant="ghost"
+        size="sm"
+        className="-ml-2 text-muted-foreground"
+        onClick={backToList}
+      >
+        <ArrowLeft aria-hidden="true" />
+        返回列表
+      </Button>
+      <ReportReader
+        key={reportId}
+        reportId={reportId}
+        compareReportId={params.get("compare") ?? undefined}
+        reports={succeededReports}
+        onSelectReport={selectReport}
+        onEnterCompare={enterCompare}
+        onExitCompare={exitCompare}
+      />
+    </div>
+  );
+}
+
+function ReportReader({
   reportId,
   compareReportId,
   reports = [],
@@ -318,75 +297,50 @@ function ReportBody({
   const preferredCompareId =
     otherReports.find((report) => report.task_id === data.report.task_id)
       ?.report_id ?? otherReports[0]?.report_id;
+  // 截断与资料缺口合并成一句内联提醒，避免在正文前堆叠大块警告。
+  const warnings: string[] = [];
+  if (data.evidence_package.retrieval_truncated) {
+    warnings.push("证据检索已截断，报告未读取所有候选资料");
+  }
+  if (data.coverage_gaps.length) {
+    warnings.push(
+      `资料缺口：${data.coverage_gaps.map(gapLabel).join("、")}，不代表资料在现实中不存在`,
+    );
+  }
   return (
     <article className="space-y-6">
-      <div>
-        <div className="flex flex-wrap items-center gap-2">
-          <h2 className="text-2xl font-semibold leading-tight">
+      <header>
+        <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+          <h1 className="text-xl font-semibold leading-tight tracking-tight">
             {data.report.title}
-          </h2>
+          </h1>
           {data.run && typeof data.run === "object" && "status" in data.run ? (
             <StatusBadge status={String(data.run.status)} />
           ) : null}
+          <span className="text-xs text-muted-foreground">
+            生成于 {formatDateTime(data.report.created_at)}
+          </span>
         </div>
-        <p className="mt-1 text-xs text-muted-foreground">
-          {data.report.task_id} · 生成于{" "}
-          {formatDateTime(data.report.created_at)}
-        </p>
-        <dl className="mt-4 flex flex-wrap gap-x-8 gap-y-2 text-xs">
-          <div>
-            <dt className="text-muted-foreground">研究 as_of</dt>
-            <dd className="mt-0.5">
-              {formatDateTime(data.evidence_package.as_of)}
-            </dd>
-          </div>
-          <div>
-            <dt className="text-muted-foreground">证据包创建</dt>
-            <dd className="mt-0.5">
-              {formatDateTime(data.evidence_package.created_at)}
-            </dd>
-          </div>
-          <div>
-            <dt className="text-muted-foreground">选定证据</dt>
-            <dd className="mt-0.5 tabular-nums">
-              {data.evidence_package.selected_count} 组
-            </dd>
-          </div>
-          <div>
-            <dt className="text-muted-foreground">独立原件</dt>
-            <dd className="mt-0.5 tabular-nums">
-              {originGroups.length ? `${originGroups.length} 个` : "未知"}
-            </dd>
-          </div>
-        </dl>
-        <p className="mt-2 text-xs text-muted-foreground">
+        <p className="mt-1 text-xs text-muted-foreground tabular-nums">
           独立原件 {originGroups.length ? originGroups.length : "未知"} · 引用{" "}
           {data.evidence.length} 条
         </p>
-        {data.evidence_package.retrieval_truncated ? (
-          <Alert variant="warning" className="mt-4">
-            <AlertTitle>证据检索已截断</AlertTitle>
-            <AlertDescription>
-              证据检索达到预算并发生截断；报告未读取所有候选资料。
-            </AlertDescription>
-          </Alert>
-        ) : null}
-        {data.coverage_gaps.length ? (
-          <Alert variant="warning" className="mt-4">
-            <AlertTitle>资料缺口与不确定性</AlertTitle>
-            <AlertDescription>
-              {data.coverage_gaps.map(gapLabel).join("、")}
-              ；缺口来自保存时的覆盖统计和当前读取结果，不代表资料在现实中不存在。
-            </AlertDescription>
-          </Alert>
+        {warnings.length ? (
+          <p className="mt-2 flex items-start gap-1.5 text-xs text-muted-foreground">
+            <AlertTriangle
+              aria-hidden="true"
+              className="mt-0.5 size-3.5 shrink-0"
+            />
+            <span>{warnings.join("；")}。</span>
+          </p>
         ) : null}
         <div
-          className="report-prose mt-5 max-w-[75ch]"
+          className="report-prose mt-4 max-w-[75ch]"
           dangerouslySetInnerHTML={{
             __html: renderMarkdown(data.report.content),
           }}
         />
-      </div>
+      </header>
 
       <div className="mt-8">
         <h2 className="text-sm font-semibold text-foreground">支撑信息</h2>
@@ -484,7 +438,7 @@ function ReportBody({
             对照其他报告
           </Button>
           <p className="mt-2 text-xs text-muted-foreground">
-            与另一份成功报告做前后对照；也可以在左侧列表中点击任一报告旁的「对照」。
+            与另一份成功报告做前后对照。
           </p>
         </div>
       ) : null}
