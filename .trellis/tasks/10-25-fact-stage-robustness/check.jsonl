@@ -1,0 +1,3 @@
+{"file": "docs/data.md", "reason": "Fact 时间字段与期间语义"}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "错误保留与不泄露要求"}
+{"file": ".trellis/spec/backend/testing-guidelines.md", "reason": "远程验证规范"}
