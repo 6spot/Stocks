@@ -1,0 +1,1 @@
+补充记录：超时调整后真实研究 Run `d4342081-930d-4d02-bd2e-9a8037db2bd4` 成功，报告 16,760 字符；research 调用实际耗时 54.4 秒、74,310 token，证明 60 秒确实不足、300 秒必要。中途尝试 Magpie `workbuddy-ai/deepseek-v4.1-flash`（限流）与 `workbuddy/deepseek-v4.1-flash`（实测忽略 strict json_schema，返回不合规结构），最终保留 TokenHub 作为唯一实测合规的 chat 路径。
