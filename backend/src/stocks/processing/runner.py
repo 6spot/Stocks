@@ -9,6 +9,7 @@ skipped or completed.
 """
 from __future__ import annotations
 
+import logging
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -44,6 +45,8 @@ from stocks.processing.stages import (
     view_stage,
 )
 from stocks.settings import Settings
+
+logger = logging.getLogger(__name__)
 
 
 class StageProcessor(Protocol):
@@ -263,8 +266,20 @@ def execute_claimed_stage(
             ),
             instant,
         )
-    except Exception:  # noqa: BLE001 - a processor defect is one stage failure
+    except Exception as exc:  # noqa: BLE001 - a processor defect is one stage failure
+        # The stored error must stay safe to serve and to read back later, so it
+        # carries only the exception class name: a message or traceback may quote
+        # external document content. The full traceback goes to the process log
+        # once, which is what makes an intermittent failure diagnosable at all.
         session.rollback()
+        logger.exception(
+            "Document stage processor raised an unexpected exception",
+            extra={
+                "document_id": str(claim.document_id),
+                "stage": claim.stage,
+                "exception": type(exc).__name__,
+            },
+        )
         return _persist(
             session,
             StageOutcome(
@@ -275,6 +290,7 @@ def execute_claimed_stage(
                 error={
                     "code": "PROCESSOR_FAILED",
                     "message": "Document stage processor did not complete",
+                    "detail": {"exception": type(exc).__name__},
                 },
             ),
             instant,

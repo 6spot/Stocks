@@ -14,8 +14,10 @@ is rejected, so an invented reference can never become retrievable evidence.
 from __future__ import annotations
 
 import asyncio
+import calendar
 import hashlib
 import json
+import re
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -343,6 +345,18 @@ def _normalize_fact(index: int, raw: object, known: dict, response) -> FactInput
         raise ExtractionError(
             "EXTRACTION_INVALID", f"Extracted fact {index} statement is too long"
         )
+    period_start, period_end, period_raw = _normalize_period(
+        index, raw.get("period_start"), raw.get("period_end")
+    )
+    attributes = {
+        "model_alias": response.model_alias,
+        "model_ref": EXTRACTION_AGENT,
+    }
+    if period_raw:
+        # The text the model answered is kept next to the Fact it could not be
+        # turned into a boundary for, so a reader can see what was stated instead
+        # of silently inheriting an empty period.
+        attributes["period_raw"] = period_raw
 
     return FactInput(
         fact_type=fact_type.strip()[:80],
@@ -359,14 +373,26 @@ def _normalize_fact(index: int, raw: object, known: dict, response) -> FactInput
         statement=statement.strip() if statement else None,
         value=float(value) if value is not None else None,
         unit=unit.strip() if unit is not None else None,
-        period_start=_optional_time(raw.get("period_start"), index, "period_start"),
-        period_end=_optional_time(raw.get("period_end"), index, "period_end"),
+        period_start=period_start,
+        period_end=period_end,
         available_at=_optional_time(raw.get("available_at"), index, "available_at"),
-        attributes={
-            "model_alias": response.model_alias,
-            "model_ref": EXTRACTION_AGENT,
-        },
+        attributes=attributes,
     )
+
+
+@dataclass(frozen=True)
+class _PeriodField:
+    """What one period field resolved to, plus what to keep when it did not.
+
+    ``is_range`` marks a coarse expression (a year, quarter or half) that names
+    both ends of a period, which is what lets the missing side of a Fact be
+    filled from the side the model did answer.
+    """
+
+    start: datetime | None
+    end: datetime | None
+    is_range: bool = False
+    raw: str | None = None
 
 
 def _optional_text(value: object, limit: int) -> str | None:
@@ -378,7 +404,84 @@ def _optional_text(value: object, limit: int) -> str | None:
     return text[:limit]
 
 
-def _optional_time(value: object, index: int, field: str) -> datetime | None:
+_YEAR = r"(?P<year>(?:19|20)\d{2})"
+# Coarse period expressions a filing or article actually writes. Each pattern
+# captures the year and, for quarters and halves, which part of the year it is.
+_QUARTER_EXPRESSIONS = (
+    re.compile(rf"^{_YEAR}\s*[-_/]?\s*[Qq](?P<part>[1-4])$"),
+    re.compile(rf"^[Qq](?P<part>[1-4])\s*[-_/]?\s*{_YEAR}$"),
+)
+_HALF_EXPRESSIONS = (
+    re.compile(rf"^{_YEAR}\s*[-_/]?\s*[Hh](?P<part>[12])$"),
+    re.compile(rf"^{_YEAR}\s*[-_/]?\s*(?P<part>[12])\s*[Hh]$"),
+    re.compile(rf"^[Hh](?P<part>[12])\s*[-_/]?\s*{_YEAR}$"),
+    re.compile(rf"^(?P<part>[12])\s*[Hh]\s*[-_/]?\s*{_YEAR}$"),
+)
+_YEAR_EXPRESSIONS = (
+    re.compile(rf"^(?:[Ff][Yy])?\s*[-_/]?\s*{_YEAR}\s*(?:年度|年)?$"),
+)
+
+
+def _period_range(value: str) -> tuple[datetime, datetime] | None:
+    """Map one coarse period expression onto its inclusive UTC day range.
+
+    A model or a filing names a reporting period far more often than an
+    instant, so the accepted forms are normalised here rather than rejected:
+
+    ==========================  ==========================================
+    expression                  range (UTC, both ends inclusive)
+    ==========================  ==========================================
+    ``2026``, ``FY2026``,       ``2026-01-01T00:00:00Z`` –
+    ``FY 2026``, ``2026年``     ``2026-12-31T23:59:59Z``
+    ``2026 Q1``, ``Q1 2026``,   ``2026-01-01`` – ``2026-03-31`` (Q2 starts
+    ``2026Q1``, ``Q1-2026``     in April, Q3 in July, Q4 in October)
+    ``H1 2026``, ``2026 H1``,   ``2026-01-01`` – ``2026-06-30``
+    ``1H 2026``
+    ``H2 2026``, ``2026 H2``,   ``2026-07-01`` – ``2026-12-31``
+    ``2H 2026``
+    ==========================  ==========================================
+
+    Returns ``None`` for anything else, including a full ISO datetime: this
+    helper only knows periods, and the caller decides what an instant means.
+    """
+
+    for pattern in _QUARTER_EXPRESSIONS:
+        match = pattern.match(value)
+        if match is not None:
+            quarter = int(match.group("part"))
+            return _month_range(int(match.group("year")), 3 * quarter - 2, 3 * quarter)
+    for pattern in _HALF_EXPRESSIONS:
+        match = pattern.match(value)
+        if match is not None:
+            half = int(match.group("part"))
+            return _month_range(int(match.group("year")), 6 * half - 5, 6 * half)
+    for pattern in _YEAR_EXPRESSIONS:
+        match = pattern.match(value)
+        if match is not None:
+            return _month_range(int(match.group("year")), 1, 12)
+    return None
+
+
+def _month_range(year: int, first_month: int, last_month: int) -> tuple[datetime, datetime]:
+    """First instant of the first month through the last instant of the last."""
+
+    last_day = calendar.monthrange(year, last_month)[1]
+    return (
+        datetime(year, first_month, 1, tzinfo=UTC),
+        datetime(year, last_month, last_day, 23, 59, 59, tzinfo=UTC),
+    )
+
+
+def _optional_period(value: object, index: int, field: str) -> _PeriodField | None:
+    """Read one period field: a UTC range, an instant, or an unusable value.
+
+    A structurally broken value (non-string, empty) is still a hard error, so a
+    corrupt model response cannot pass as missing information. Text that is
+    merely unrecognised becomes an unknown field whose original wording is kept
+    for the caller to record; a bare date without a timezone is the existing
+    tolerated case and stays unknown with no preserved text.
+    """
+
     if value is None:
         return None
     if not isinstance(value, str):
@@ -386,8 +489,76 @@ def _optional_time(value: object, index: int, field: str) -> datetime | None:
             "EXTRACTION_INVALID",
             f"Extracted fact {index} has an invalid {field}",
         )
+    text = value.strip()
+    if not text:
+        raise ExtractionError(
+            "EXTRACTION_INVALID",
+            f"Extracted fact {index} has an invalid {field}",
+        )
+    period = _period_range(text)
+    if period is not None:
+        return _PeriodField(start=period[0], end=period[1], is_range=True)
     try:
-        parsed = datetime.fromisoformat(value.strip())
+        parsed = datetime.fromisoformat(text)
+    except ValueError:
+        return _PeriodField(start=None, end=None, raw=text)
+    if parsed.utcoffset() is None:
+        return _PeriodField(start=None, end=None)
+    return _PeriodField(start=parsed, end=parsed)
+
+
+def _normalize_period(
+    index: int, start_value: object, end_value: object
+) -> tuple[datetime | None, datetime | None, dict[str, str]]:
+    """Resolve both period fields, filling a missing side from the other one.
+
+    A single coarse expression describes both ends, so an omitted side is filled
+    from it instead of leaving a half-open range. A side the model did answer is
+    never overridden, including one that could not be understood: that period is
+    unknown, and pretending the other side's period applies would invent data.
+    """
+
+    start_field = _optional_period(start_value, index, "period_start")
+    end_field = _optional_period(end_value, index, "period_end")
+    raw = {
+        field: value
+        for field, value in (
+            ("period_start", start_field.raw if start_field else None),
+            ("period_end", end_field.raw if end_field else None),
+        )
+        if value is not None
+    }
+    start = start_field.start if start_field is not None else None
+    end = end_field.end if end_field is not None else None
+    if start_value is None and end_field is not None and end_field.is_range:
+        start = end_field.start
+    if end_value is None and start_field is not None and start_field.is_range:
+        end = start_field.end
+    return start, end, raw
+
+
+def _optional_time(value: object, index: int, field: str) -> datetime | None:
+    """Read an absolute instant, which a period expression can never be.
+
+    Only a timezone-aware ISO datetime is an instant here. A period expression
+    such as ``2026 Q3`` and a bare date such as ``2026-10-24`` both describe a
+    span, so they are recorded as unknown instead of being collapsed onto one
+    arbitrary point in time. Text that is not a datetime at all stays a hard
+    error: it signals a broken response rather than a coarser one.
+    """
+
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        raise ExtractionError(
+            "EXTRACTION_INVALID",
+            f"Extracted fact {index} has an invalid {field}",
+        )
+    text = value.strip()
+    if _period_range(text) is not None:
+        return None
+    try:
+        parsed = datetime.fromisoformat(text)
     except ValueError as exc:
         raise ExtractionError(
             "EXTRACTION_INVALID",

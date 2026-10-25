@@ -12,6 +12,7 @@ import json
 import os
 from copy import deepcopy
 from datetime import UTC, datetime
+from types import SimpleNamespace
 from uuid import uuid4
 
 import httpx
@@ -25,6 +26,7 @@ from stocks.extraction.service import (
     EXTRACTOR_PROCESSOR_VERSION,
     ExtractionError,
     FactsStageProcessor,
+    _normalize_fact,
     _optional_time,
     classification_verdict,
     extract_document_facts,
@@ -1428,3 +1430,167 @@ def test_malformed_time_is_still_a_hard_error():
         with pytest.raises(ExtractionError) as exc_info:
             _optional_time(value, 0, "available_at")
         assert exc_info.value.code == "EXTRACTION_INVALID"
+
+
+# --------------------------------------------------------------------------- #
+# Period expressions
+# --------------------------------------------------------------------------- #
+
+
+def _normalized_period(start, end=None):
+    """Normalise one Fact payload with a single Chunk, without a model call."""
+
+    chunk = SimpleNamespace(
+        id=uuid4(),
+        parse_batch_id=uuid4(),
+        position=0,
+    )
+    response = SimpleNamespace(model_alias="generation-model")
+    payload = {
+        "fact_type": "financial_metric",
+        "chunk_id": str(chunk.id),
+        "statement": "Revenue was reported for the period.",
+        "period_start": start,
+    }
+    if end is not None:
+        payload["period_end"] = end
+    return _normalize_fact(0, payload, {str(chunk.id): chunk}, response)
+
+
+def test_period_expression_year_becomes_the_whole_year():
+    """A filing that states only a fiscal year still dates its Fact.
+
+    ``FY2026``/``2026年`` are the same period written differently, so they must
+    all normalise to the inclusive UTC year instead of failing the Document.
+    """
+
+    for value in ("2026", "FY2026", "FY 2026", "2026年"):
+        fact = _normalized_period(value)
+        assert fact.period_start == datetime(2026, 1, 1, tzinfo=UTC), value
+        assert fact.period_end == datetime(2026, 12, 31, 23, 59, 59, tzinfo=UTC), value
+        assert "period_raw" not in fact.attributes, value
+
+
+def test_period_expression_quarter_covers_its_three_months():
+    first = _normalized_period("2026 Q1")
+    assert first.period_start == datetime(2026, 1, 1, tzinfo=UTC)
+    assert first.period_end == datetime(2026, 3, 31, 23, 59, 59, tzinfo=UTC)
+
+    third = _normalized_period("2026 Q3")
+    assert third.period_start == datetime(2026, 7, 1, tzinfo=UTC)
+    assert third.period_end == datetime(2026, 9, 30, 23, 59, 59, tzinfo=UTC)
+
+    for value in ("Q3 2026", "2026Q3", "Q3-2026"):
+        fact = _normalized_period(value)
+        assert fact.period_start == datetime(2026, 7, 1, tzinfo=UTC), value
+        assert fact.period_end == datetime(2026, 9, 30, 23, 59, 59, tzinfo=UTC), value
+
+
+def test_period_expression_half_covers_six_months():
+    for value in ("H1 2026", "2026 H1", "1H 2026"):
+        fact = _normalized_period(value)
+        assert fact.period_start == datetime(2026, 1, 1, tzinfo=UTC), value
+        assert fact.period_end == datetime(2026, 6, 30, 23, 59, 59, tzinfo=UTC), value
+
+    for value in ("H2 2026", "2026 H2", "2H 2026"):
+        fact = _normalized_period(value)
+        assert fact.period_start == datetime(2026, 7, 1, tzinfo=UTC), value
+        assert fact.period_end == datetime(2026, 12, 31, 23, 59, 59, tzinfo=UTC), value
+
+
+def test_one_sided_period_expression_fills_the_other_end():
+    """A range named on one side is not left half open."""
+
+    only_start = _normalized_period("2026 Q3")
+    assert only_start.period_start == datetime(2026, 7, 1, tzinfo=UTC)
+    assert only_start.period_end == datetime(2026, 9, 30, 23, 59, 59, tzinfo=UTC)
+
+    only_end = _normalized_period(None, "FY2026")
+    assert only_end.period_start == datetime(2026, 1, 1, tzinfo=UTC)
+    assert only_end.period_end == datetime(2026, 12, 31, 23, 59, 59, tzinfo=UTC)
+
+    # Two supplied sides are each applied independently, never widened.
+    both = _normalized_period("2026-07-01T00:00:00Z", "2026-09-30T23:59:59Z")
+    assert both.period_start == datetime(2026, 7, 1, tzinfo=UTC)
+    assert both.period_end == datetime(2026, 9, 30, 23, 59, 59, tzinfo=UTC)
+
+
+def test_unrecognised_period_keeps_the_raw_text_instead_of_failing():
+    """An unknown expression costs the period, not the whole Fact."""
+
+    fact = _normalized_period("the second quarter of the fiscal year", "FY2026")
+    assert fact.period_start is None
+    # The one side that did normalise is still applied.
+    assert fact.period_end == datetime(2026, 12, 31, 23, 59, 59, tzinfo=UTC)
+    assert fact.attributes["period_raw"] == {
+        "period_start": "the second quarter of the fiscal year"
+    }
+
+
+def test_bare_date_period_stays_unknown_without_being_recorded_as_raw():
+    """``2026-10-24`` is a date the source stated, not an unparseable string."""
+
+    fact = _normalized_period("2026-10-24")
+    assert fact.period_start is None
+    assert fact.period_end is None
+    assert "period_raw" not in fact.attributes
+
+
+def test_period_expression_does_not_become_an_available_at_instant():
+    """``available_at`` is an instant: a period expression has no single one."""
+
+    assert _optional_time("2026 Q3", 0, "available_at") is None
+    assert _optional_time("FY2026", 0, "available_at") is None
+
+
+def test_structurally_invalid_period_is_still_a_hard_error():
+    for value in (12345, "", "   "):
+        with pytest.raises(ExtractionError) as exc_info:
+            _normalized_period(value)
+        assert exc_info.value.code == "EXTRACTION_INVALID"
+
+
+def test_duplicate_identity_in_one_response_keeps_the_first(engine):
+    """A model may repeat one identity; that must not fail the Document.
+
+    Identity is the source position, so the repeat is the same Fact. The first
+    occurrence is written, the rest are dropped and counted, and the stage still
+    completes.
+    """
+
+    config = make_config()
+    document = parsed(engine, config)
+    classified(engine, document, should_extract=True)
+    now = datetime(2026, 10, 25, 6, tzinfo=UTC)
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        chunks = json.loads(
+            json.loads(request.content)["messages"][1]["content"]
+        )["chunks"]
+        chunk_id = chunks[0]["chunk_id"]
+        fact = {
+            "fact_type": "regulatory_announcement",
+            "chunk_id": chunk_id,
+            "statement": "The SEC adopted the amendment.",
+            "subject_name": "U.S. Securities and Exchange Commission",
+            "metric_id": "adopted_rule",
+        }
+        return chat_response({"facts": [fact, dict(fact)]})
+
+    route = make_route()
+    processor = FactsStageProcessor(
+        route=route,
+        client=ModelClient(route.targets, httpx.MockTransport(handler)),
+    )
+    with Session(engine) as session:
+        claim = claim_stage(session, STAGE_FACTS, owner_token="facts", now=now)
+        assert claim is not None
+        execution = execute_claimed_stage(
+            session, config, StageRegistry(facts=processor), claim, clock=lambda: now
+        )
+
+    assert execution.status == "completed"
+    with Session(engine) as session:
+        rows = list_document_facts(session, document.id)
+    assert len(rows) == 1
+    assert rows[0].statement == "The SEC adopted the amendment."

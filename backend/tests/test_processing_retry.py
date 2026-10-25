@@ -313,6 +313,52 @@ def test_missing_processor_waits_without_consuming_an_attempt(engine):
     assert rows[STAGE_PARSE].skip_reason is None
 
 
+class _StubExplodingProcessor:
+    version = "stub-exploding-v1"
+
+    def __call__(self, session, config, document, claim) -> StageOutcome:
+        raise RuntimeError("processor internals are not a safe error payload")
+
+
+def test_unexpected_processor_exception_keeps_its_type_and_hides_its_message(
+    engine, caplog
+):
+    """A processor defect must stay diagnosable without leaking its text.
+
+    Real Documents failed with ``PROCESSOR_FAILED`` and nothing else, so an
+    intermittent defect could not be told apart from a deterministic one. The
+    stored error keeps the exception class only; the traceback goes to the log.
+    """
+
+    config = make_config()
+    document = ingest(engine, config)
+    now = datetime(2026, 10, 21, 2, 30, tzinfo=UTC)
+
+    with caplog.at_level("ERROR", logger="stocks.processing.runner"):
+        with Session(engine) as session:
+            claim = claim_stage(session, STAGE_PARSE, owner_token="owner-1", now=now)
+            assert claim is not None
+            execution = execute_claimed_stage(
+                session,
+                config,
+                StageRegistry(parse=_StubExplodingProcessor()),
+                claim,
+                clock=lambda: now,
+            )
+
+    assert execution.status == "failed"
+    state = stage_rows(engine, document.id)[STAGE_PARSE]
+    assert state.status == "failed"
+    assert state.error == {
+        "code": "PROCESSOR_FAILED",
+        "message": "Document stage processor did not complete",
+        "detail": {"exception": "RuntimeError"},
+    }
+    # The message and traceback are process-log material, never a stored error.
+    assert "processor internals are not a safe error payload" not in str(state.error)
+    assert any(record.exc_info for record in caplog.records)
+
+
 def test_failed_stage_is_retried_with_backoff_and_stops_when_exhausted(engine):
     config = make_config()
     document = ingest(engine, config)

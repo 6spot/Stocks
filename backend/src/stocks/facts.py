@@ -56,6 +56,9 @@ class PersistFactsResult:
     reused: int
     total: int
     created_ids: tuple[UUID, ...] = ()
+    # Identities the model repeated inside one response; the first occurrence is
+    # kept, the rest are dropped rather than failing the Document.
+    duplicates_dropped: int = 0
 
     def to_dict(self) -> dict:
         return {
@@ -64,6 +67,7 @@ class PersistFactsResult:
             "reused": self.reused,
             "total": self.total,
             "created_ids": [str(value) for value in self.created_ids],
+            "duplicates_dropped": self.duplicates_dropped,
         }
 
 
@@ -145,8 +149,19 @@ def persist_facts(
         raise ValueError("Fact provenance must not be empty")
 
     keys = [fact_key(fact) for fact in facts]
-    if len(set(keys)) != len(keys):
-        raise ValueError("duplicate fact identity within one extraction result")
+    # A model may repeat the same identity inside one response (same chunk
+    # position, metric and subject). Identity is the source position, so a
+    # repeat is the same Fact: keep the first occurrence and drop the rest
+    # instead of failing the whole Document over a duplicated row.
+    deduplicated: list[tuple[FactInput, str]] = []
+    seen: set[str] = set()
+    dropped = 0
+    for fact, key in zip(facts, keys, strict=True):
+        if key in seen:
+            dropped += 1
+            continue
+        seen.add(key)
+        deduplicated.append((fact, key))
 
     existing = set(
         session.scalars(
@@ -156,7 +171,7 @@ def persist_facts(
     created = 0
     reused = 0
     created_ids: list[UUID] = []
-    for fact, key in zip(facts, keys, strict=True):
+    for fact, key in deduplicated:
         if key in existing:
             reused += 1
             continue
@@ -190,8 +205,9 @@ def persist_facts(
         document_id=document_id,
         created=created,
         reused=reused,
-        total=len(facts),
+        total=len(deduplicated),
         created_ids=tuple(created_ids),
+        duplicates_dropped=dropped,
     )
 
 
