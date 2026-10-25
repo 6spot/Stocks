@@ -950,3 +950,25 @@ V2 任务列表已全部交付归档后，处理跨任务待验收登记中的 P
 ## 2026-10-25 采集源查看页面（10-25-sources-page）
 
 新增只读"采集源"页面：/sources 路由 + 侧边导航（Rss 图标），表格展示全部配置源的连接器/发布者/信任级别/启用状态/采集状态/新鲜度/最近尝试/积压，行内展示采集错误，顶层 sources.yaml 配置错误显著告警。复用既有 /api/sources 与 dashboardApi.sources()，未改后端契约；新增 trustTierLabel。测试服务器 100.120.14.84 隔离目录验证：typecheck、新增测试 6 passed、前端全量 11 文件 40 passed、vite build 全部通过；远程目录已清理。未做真实浏览器视口视觉验收。
+
+
+## Session 31: 日常闭环可用性补齐：采集触发、研究超时修复与生产部署
+<!-- trellis-session: v=2 fp=2e9290335a8e38d3 -->
+
+**Date**: 2026-10-26
+**Task**: 日常闭环可用性补齐：采集触发、研究超时修复与生产部署
+**Branch**: `main`
+
+### Summary
+
+完成任务 10-25-daily-loop-usability：worker/processing 入口配置根日志（容器日志可见）；修复 research_chat 用 provider 60s 默认超时封顶路由 300s 预算的缺陷（max(target, routing)，附回归测试）；新增 collect_enabled_sources 采集任务与 fed_policy_brief 研究任务；同步 docs/execution.md 超时语义与 spec（error-handling 路由预算落到 HTTP 客端、logging 入口 basicConfig）。远程 pytest 54 passed；探测库与生产 /opt/stocks 均端到端验证（生产采集 Run d02f2860 41 文档积压清零、研究 Run 614b6c3e 报告 14,909 字符且 model_calls 正常）。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `300a223` | feat(daily-loop): make collection triggerable, research usable and failures diagnosable |
+
+### Status
+
+[OK] **Completed**

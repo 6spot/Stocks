@@ -8,8 +8,8 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 30
-- **Last Active**: 2026-10-24
+- **Total Sessions**: 31
+- **Last Active**: 2026-10-26
 <!-- @@@/auto:current-status -->
 
 ---
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~948 | Active |
+| `journal-1.md` | ~974 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 31 | 2026-10-26 | 日常闭环可用性补齐：采集触发、研究超时修复与生产部署 | `300a223` | `main` |
 | 30 | 2026-10-24 | Embedding 请求携带 dimensions 参数 | `e10322c` | `main` |
 | 29 | 2026-10-24 | 在测试服务器部署 Stocks 真实运行环境 | `b176024` | `main` |
 | 28 | 2026-10-24 | 探测真实来源转载与修订样本（未取得，保留 PA-3） | `21b3367` | `main` |
