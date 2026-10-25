@@ -10,6 +10,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useResource } from "@/hooks/use-resource";
 import { formatDateTime, shortId } from "@/lib/format";
 import { statusLabel } from "@/lib/labels";
+import { cn } from "@/lib/utils";
 import { ProcessingPanel } from "@/features/runs/processing-panel";
 import { RunDetailView } from "@/features/runs/run-detail-view";
 
@@ -50,12 +51,11 @@ export function RunsPage() {
   return (
     <div className="space-y-6">
       <PageHeader
-        eyebrow="Runs"
         title="运行与恢复"
         description="定位失败步骤、模型调用和处理积压；恢复动作以服务端能力字段为准。"
       />
 
-      <div className="grid gap-3 rounded-xl border border-border bg-card/80 p-3 sm:grid-cols-[minmax(0,1fr)_12rem_auto]">
+      <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_12rem_auto]">
         <label className="grid gap-1 text-xs font-medium">
           任务 ID
           <Input
@@ -112,8 +112,8 @@ export function RunsPage() {
           </TabsTrigger>
         </TabsList>
         <TabsContent value="runs">
-          <div className="grid gap-5 xl:grid-cols-[minmax(20rem,0.72fr)_minmax(0,1.28fr)]">
-            <section className="space-y-3" aria-label="Run 列表">
+          <div className="grid gap-6 xl:grid-cols-[minmax(20rem,0.72fr)_minmax(0,1.28fr)]">
+            <section className="min-w-0 space-y-3" aria-label="Run 列表">
               {runs.loading ? (
                 <LoadingPanel label="正在读取 Run" />
               ) : runs.error ? (
@@ -127,36 +127,42 @@ export function RunsPage() {
                   description="任务触发后，Worker 会在此记录执行。"
                 />
               ) : (
-                runs.data.items.map((run) => (
-                  <button
-                    key={run.run_id}
-                    type="button"
-                    aria-pressed={selectedRun === run.run_id}
-                    onClick={() => selectRun(run.run_id)}
-                    className={
-                      selectedRun === run.run_id
-                        ? "press w-full rounded-xl border border-primary/40 bg-card p-3 text-left ring-2 ring-primary/20"
-                        : "press w-full rounded-xl border border-border bg-card p-3 text-left hover:bg-muted/40"
-                    }
-                  >
-                    <div className="flex flex-wrap items-center gap-2">
-                      <p className="min-w-0 flex-1 truncate font-medium">
-                        {run.task_id}
-                      </p>
-                      <StatusBadge status={run.status} />
-                    </div>
-                    <p className="mt-2 text-xs text-muted-foreground">
-                      {formatDateTime(run.created_at)} ·{" "}
-                      {run.step_count ?? 0} 个步骤 ·{" "}
-                      {shortId(run.run_id)}
-                    </p>
-                    {run.error?.message ? (
-                      <p className="mt-1 line-clamp-2 text-xs text-destructive">
-                        {run.error.message}
-                      </p>
-                    ) : null}
-                  </button>
-                ))
+                <div className="divide-y divide-border">
+                  {runs.data.items.map((run) => {
+                    const selected = selectedRun === run.run_id;
+                    return (
+                      <button
+                        key={run.run_id}
+                        type="button"
+                        aria-pressed={selected}
+                        onClick={() => selectRun(run.run_id)}
+                        className={cn(
+                          "press -ml-3 w-[calc(100%+1.5rem)] border-l-2 py-3 pl-3 text-left first:pt-0 last:pb-0",
+                          selected
+                            ? "border-l-primary bg-muted/40"
+                            : "border-l-transparent hover:bg-muted/40",
+                        )}
+                      >
+                        <div className="flex flex-wrap items-center gap-2">
+                          <p className="min-w-0 flex-1 truncate font-medium">
+                            {run.task_id}
+                          </p>
+                          <StatusBadge status={run.status} />
+                        </div>
+                        <p className="mt-2 text-xs text-muted-foreground">
+                          {formatDateTime(run.created_at)} ·{" "}
+                          {run.step_count ?? 0} 个步骤 ·{" "}
+                          {shortId(run.run_id)}
+                        </p>
+                        {run.error?.message ? (
+                          <p className="mt-1 line-clamp-2 text-xs text-destructive">
+                            {run.error.message}
+                          </p>
+                        ) : null}
+                      </button>
+                    );
+                  })}
+                </div>
               )}
             </section>
             <section className="min-w-0">

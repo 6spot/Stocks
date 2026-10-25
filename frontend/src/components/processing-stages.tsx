@@ -1,4 +1,12 @@
 import type { ProcessingStage } from "@/api/schemas";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import { StatusBadge } from "@/components/status-badge";
 import { stageLabel } from "@/lib/labels";
 
@@ -8,34 +16,42 @@ export function ProcessingStages({
   stages: ProcessingStage[];
 }) {
   return (
-    <div className="grid gap-2 sm:grid-cols-2">
-      {stages.map((stage) => (
-        <div
-          key={stage.stage}
-          className="rounded-lg border border-border bg-background/70 p-3"
-        >
-          <div className="flex items-center justify-between gap-2">
-            <p className="font-medium">{stageLabel(stage.stage)}</p>
-            <StatusBadge status={stage.status} />
-          </div>
-          <p className="mt-2 text-xs text-muted-foreground">
-            尝试 {stage.attempts} 次
-            {stage.wait_reason
-              ? ` · 等待：${stage.wait_reason.replaceAll("_", " ")}`
-              : ""}
-          </p>
-          {stage.skip_reason ? (
-            <p className="mt-1 text-xs text-muted-foreground">
-              跳过原因：{stage.skip_reason.replaceAll("_", " ")}
-            </p>
-          ) : null}
-          {stage.error?.message || stage.error?.code ? (
-            <p className="mt-2 text-xs leading-relaxed text-destructive">
-              {stage.error.message ?? stage.error.code}
-            </p>
-          ) : null}
-        </div>
-      ))}
-    </div>
+    <Table>
+      <TableHeader>
+        <TableRow>
+          <TableHead>阶段</TableHead>
+          <TableHead>状态</TableHead>
+          <TableHead>详情</TableHead>
+        </TableRow>
+      </TableHeader>
+      <TableBody>
+        {stages.map((stage) => (
+          <TableRow key={stage.stage}>
+            <TableCell className="text-xs font-medium">
+              {stageLabel(stage.stage)}
+            </TableCell>
+            <TableCell>
+              <StatusBadge status={stage.status} />
+            </TableCell>
+            <TableCell className="text-xs text-muted-foreground">
+              尝试 {stage.attempts} 次
+              {stage.wait_reason
+                ? ` · 等待：${stage.wait_reason.replaceAll("_", " ")}`
+                : ""}
+              {stage.skip_reason ? (
+                <span className="block">
+                  跳过原因：{stage.skip_reason.replaceAll("_", " ")}
+                </span>
+              ) : null}
+              {stage.error?.message || stage.error?.code ? (
+                <span className="mt-1 block leading-relaxed text-destructive">
+                  {stage.error.message ?? stage.error.code}
+                </span>
+              ) : null}
+            </TableCell>
+          </TableRow>
+        ))}
+      </TableBody>
+    </Table>
   );
 }

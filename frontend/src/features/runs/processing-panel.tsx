@@ -8,7 +8,14 @@ import { ConfirmStopDialog } from "@/components/confirm-stop-dialog";
 import { StatusBadge } from "@/components/status-badge";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import { useResource } from "@/hooks/use-resource";
 import { formatDateTime, shortId } from "@/lib/format";
 import { stageLabel } from "@/lib/labels";
@@ -91,133 +98,140 @@ export function ProcessingPanel() {
 
   return (
     <div className="space-y-4">
-      <Card>
-        <CardHeader>
-          <CardTitle>处理积压</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="grid gap-3 sm:grid-cols-2">
-            <label className="grid gap-1 text-xs font-medium">
-              阶段
-              <select
-                className="h-9 rounded-lg border border-input bg-background px-2 text-sm"
-                value={stage}
-                onChange={(event) => setStage(event.target.value)}
-              >
-                <option value="">全部可用阶段</option>
-                {stageOptions.map((item) => (
-                  <option key={item} value={item}>
-                    {stageLabel(item)}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="grid gap-1 text-xs font-medium">
-              状态
-              <select
-                className="h-9 rounded-lg border border-input bg-background px-2 text-sm"
-                value={status}
-                onChange={(event) => setStatus(event.target.value)}
-              >
-                <option value="">全部状态</option>
-                {statusOptions.map((item) => (
-                  <option key={item} value={item}>
-                    {item}
-                  </option>
-                ))}
-              </select>
-            </label>
-          </div>
+      <div className="grid gap-3 sm:grid-cols-2">
+        <label className="grid gap-1 text-xs font-medium">
+          阶段
+          <select
+            className="h-9 rounded-lg border border-input bg-background px-2 text-sm"
+            value={stage}
+            onChange={(event) => setStage(event.target.value)}
+          >
+            <option value="">全部可用阶段</option>
+            {stageOptions.map((item) => (
+              <option key={item} value={item}>
+                {stageLabel(item)}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="grid gap-1 text-xs font-medium">
+          状态
+          <select
+            className="h-9 rounded-lg border border-input bg-background px-2 text-sm"
+            value={status}
+            onChange={(event) => setStatus(event.target.value)}
+          >
+            <option value="">全部状态</option>
+            {statusOptions.map((item) => (
+              <option key={item} value={item}>
+                {item}
+              </option>
+            ))}
+          </select>
+        </label>
+      </div>
 
-          {processing.loading ? (
-            <LoadingPanel label="正在读取处理积压" />
-          ) : processing.error ? (
-            <ErrorPanel
-              message={processing.error.message}
-              onRetry={processing.refresh}
-            />
-          ) : !processing.data?.items.length ? (
-            <EmptyPanel
-              title="当前筛选没有积压"
-              description="这不代表所有 Document 都可搜索；请切换阶段或状态检查。"
-            />
-          ) : (
-            <div className="space-y-3">
-              {processing.data.items.map((item) => {
-                const isPending =
-                  pendingDocument === item.document_id &&
-                  pendingStage === item.stage;
-                return (
-                  <div
-                    key={`${item.document_id}-${item.stage}`}
-                    className="rounded-xl border border-border p-3"
-                  >
-                    <div className="flex flex-wrap items-center gap-2">
-                      <p className="min-w-0 flex-1 truncate font-medium">
-                        {item.document?.title ?? item.document_id}
-                      </p>
-                      <Badge variant="outline">{stageLabel(item.stage)}</Badge>
-                      <StatusBadge status={item.status} />
-                    </div>
-                    <p className="mt-2 text-xs text-muted-foreground">
-                      Document{" "}
-                      <span className="font-code">
-                        {shortId(item.document_id)}
-                      </span>{" "}
-                      · 尝试 {item.attempts}/{item.max_attempts} · 最近开始{" "}
-                      {formatDateTime(item.started_at)}
+      {processing.loading ? (
+        <LoadingPanel label="正在读取处理积压" />
+      ) : processing.error ? (
+        <ErrorPanel
+          message={processing.error.message}
+          onRetry={processing.refresh}
+        />
+      ) : !processing.data?.items.length ? (
+        <EmptyPanel
+          title="当前筛选没有积压"
+          description="这不代表所有 Document 都可搜索；请切换阶段或状态检查。"
+        />
+      ) : (
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Document</TableHead>
+              <TableHead>阶段</TableHead>
+              <TableHead>状态</TableHead>
+              <TableHead>尝试</TableHead>
+              <TableHead>最近开始</TableHead>
+              <TableHead className="text-right">操作</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {processing.data.items.map((item) => {
+              const isPending =
+                pendingDocument === item.document_id &&
+                pendingStage === item.stage;
+              return (
+                <TableRow key={`${item.document_id}-${item.stage}`}>
+                  <TableCell className="max-w-64 text-xs">
+                    <p className="truncate font-medium" title={item.document?.title ?? item.document_id}>
+                      {item.document?.title ?? item.document_id}
                     </p>
-                    {item.next_attempt_at ? (
-                      <p className="mt-1 text-xs text-muted-foreground">
-                        下次尝试 {formatDateTime(item.next_attempt_at)}
-                      </p>
-                    ) : null}
+                    <p className="font-code text-muted-foreground">
+                      {shortId(item.document_id)}
+                    </p>
                     {item.wait_reason ? (
-                      <p className="mt-1 text-xs text-amber-800">
+                      <p className="mt-1 text-amber-800">
                         等待：{item.wait_reason.replaceAll("_", " ")}
                       </p>
                     ) : null}
                     {item.skip_reason ? (
-                      <p className="mt-1 text-xs text-muted-foreground">
+                      <p className="mt-1 text-muted-foreground">
                         跳过：{item.skip_reason.replaceAll("_", " ")}
                       </p>
                     ) : null}
                     {item.error?.message || item.error?.code ? (
-                      <p className="mt-2 text-xs text-destructive">
+                      <p className="mt-1 text-destructive">
                         {item.error.message ?? item.error.code}
                       </p>
                     ) : null}
-                    <div className="mt-3 flex flex-wrap gap-2">
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        disabled={
-                          pendingDocument !== null ||
-                          item.status === "completed" ||
-                          item.status === "skipped" ||
-                          item.processor_available === false
-                        }
-                        onClick={() =>
-                          void requestRetry(item.document_id, [item.stage])
-                        }
-                      >
-                        <RefreshCw aria-hidden="true" />
-                        {isPending ? "排队中…" : "重试此阶段"}
-                      </Button>
-                      {item.status === "running" ? (
-                        <span className="text-xs text-amber-800">
-                          running 阶段需要先确认旧进程停止
-                        </span>
-                      ) : null}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </CardContent>
-      </Card>
+                  </TableCell>
+                  <TableCell>
+                    <Badge variant="outline">{stageLabel(item.stage)}</Badge>
+                  </TableCell>
+                  <TableCell>
+                    <StatusBadge status={item.status} />
+                    {item.status === "running" ? (
+                      <p className="mt-1 text-xs text-amber-800">
+                        需要先确认旧进程停止
+                      </p>
+                    ) : null}
+                  </TableCell>
+                  <TableCell className="text-xs tabular-nums">
+                    {item.attempts}/{item.max_attempts}
+                    {item.next_attempt_at ? (
+                      <p className="mt-0.5 text-muted-foreground">
+                        下次 {formatDateTime(item.next_attempt_at)}
+                      </p>
+                    ) : null}
+                  </TableCell>
+                  <TableCell className="text-xs whitespace-nowrap text-muted-foreground">
+                    {formatDateTime(item.started_at)}
+                  </TableCell>
+                  <TableCell className="text-right">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      disabled={
+                        pendingDocument !== null ||
+                        item.status === "completed" ||
+                        item.status === "skipped" ||
+                        item.processor_available === false
+                      }
+                      onClick={() =>
+                        void requestRetry(item.document_id, [item.stage])
+                      }
+                    >
+                      <RefreshCw aria-hidden="true" />
+                      {isPending ? "排队中…" : "重试此阶段"}
+                    </Button>
+                  </TableCell>
+                </TableRow>
+              );
+            })}
+          </TableBody>
+        </Table>
+      )}
 
       <ConfirmStopDialog
         open={stopRequest !== null}

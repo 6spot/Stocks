@@ -59,20 +59,16 @@ export function LoginPage() {
     <main className="grid min-h-dvh place-items-center px-4 py-10">
       <div className="motion-rise w-full max-w-md">
         <div className="mb-7 text-center">
-          <div className="mb-4 inline-flex size-12 items-center justify-center rounded-2xl bg-primary text-primary-foreground shadow-lg shadow-primary/15">
-            <ShieldCheck aria-hidden="true" className="size-6" />
-          </div>
-          <p className="text-xs font-medium tracking-[0.18em] text-primary uppercase">
-            Stocks Intelligence
-          </p>
-          <h1 className="font-editorial mt-2 text-4xl font-semibold tracking-tight">
-            研究控制台
-          </h1>
+          <ShieldCheck
+            aria-hidden="true"
+            className="mx-auto mb-3 size-7 text-primary"
+          />
+          <h1 className="text-2xl font-semibold tracking-tight">研究控制台</h1>
           <p className="mt-2 text-sm text-muted-foreground">
             受保护的单 Owner 工作台
           </p>
         </div>
-        <Card className="shadow-xl shadow-foreground/5">
+        <Card>
           <CardHeader>
             <CardTitle className="text-lg">登录</CardTitle>
             <CardDescription>

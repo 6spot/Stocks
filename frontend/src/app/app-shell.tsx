@@ -69,10 +69,8 @@ function Brand() {
         <Database aria-hidden="true" className="size-4" />
       </div>
       <div>
-        <p className="font-editorial text-lg leading-none font-semibold">
-          Stocks
-        </p>
-        <p className="mt-1 text-[0.68rem] tracking-[0.12em] text-sidebar-foreground/50 uppercase">
+        <p className="text-lg leading-none font-semibold">Stocks</p>
+        <p className="mt-1 text-[0.68rem] text-sidebar-foreground/50">
           Research desk
         </p>
       </div>
@@ -107,7 +105,7 @@ export function AppShell() {
       <aside className="hidden min-h-dvh flex-col bg-sidebar p-4 text-sidebar-foreground lg:sticky lg:top-0 lg:flex lg:h-dvh">
         <Brand />
         <div className="mt-8 flex-1">
-          <p className="mb-2 px-3 text-[0.66rem] font-medium tracking-[0.15em] text-sidebar-foreground/40 uppercase">
+          <p className="mb-2 px-3 text-[0.66rem] font-medium text-sidebar-foreground/40">
             Workspace
           </p>
           <NavigationLinks />

@@ -1,5 +1,4 @@
 @import "@fontsource-variable/geist";
-@import "@fontsource-variable/newsreader";
 @import "tailwindcss";
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
@@ -8,7 +7,7 @@
 
 @theme inline {
   --font-sans: "Geist Variable", "PingFang SC", "Noto Sans CJK SC", sans-serif;
-  --font-serif: "Newsreader Variable", "Songti SC", serif;
+  --font-serif: "Songti SC", "Noto Serif CJK SC", "Times New Roman", serif;
   --font-mono: "SFMono-Regular", "Cascadia Code", "Liberation Mono", monospace;
   --color-background: var(--background);
   --color-foreground: var(--foreground);
@@ -97,9 +96,7 @@
   body {
     min-height: 100dvh;
     margin: 0;
-    background:
-      radial-gradient(circle at 76% -10%, oklch(0.92 0.035 84 / 40%), transparent 31rem),
-      linear-gradient(180deg, oklch(0.993 0.003 95), var(--background));
+    background: var(--background);
     font-family: var(--font-sans);
   }
 
@@ -122,21 +119,9 @@
   }
 }
 
-@utility font-editorial {
-  font-family: var(--font-serif);
-  font-variation-settings: "opsz" 36;
-}
-
 @utility font-code {
   font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
-}
-
-@utility surface-grid {
-  background-image:
-    linear-gradient(to right, oklch(0.86 0.01 95 / 45%) 1px, transparent 1px),
-    linear-gradient(to bottom, oklch(0.86 0.01 95 / 45%) 1px, transparent 1px);
-  background-size: 28px 28px;
 }
 
 @utility text-balance {

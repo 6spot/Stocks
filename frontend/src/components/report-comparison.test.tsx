@@ -1,6 +1,6 @@
 import { render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { ReportComparisonCard } from "@/components/report-comparison";
+import { ReportComparisonSection } from "@/components/report-comparison";
 import type {
   ComparisonSide,
   ReportComparison,
@@ -208,14 +208,14 @@ function reports(): ReportListItem[] {
   ];
 }
 
-describe("ReportComparisonCard", () => {
+describe("ReportComparisonSection", () => {
   beforeEach(() => {
     comparisonMock.mockReset();
     comparisonMock.mockResolvedValue(comparison);
   });
 
   it("compares the previous report of the same task by default", async () => {
-    render(<ReportComparisonCard reportId="r2" reports={reports()} />);
+    render(<ReportComparisonSection reportId="r2" reports={reports()} />);
 
     // The newest other report is preselected, so the comparison loads itself.
     expect(await screen.findByText("Earlier brief")).toBeVisible();
@@ -243,7 +243,7 @@ describe("ReportComparisonCard", () => {
 
   it("stays hidden when there is no other report to compare with", () => {
     const { container } = render(
-      <ReportComparisonCard reportId="r1" reports={[reports()[1]]} />,
+      <ReportComparisonSection reportId="r1" reports={[reports()[1]]} />,
     );
 
     expect(container).toBeEmptyDOMElement();

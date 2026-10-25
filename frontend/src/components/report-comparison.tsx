@@ -1,4 +1,4 @@
-import { ExternalLink, GitCompareArrows } from "lucide-react";
+import { ExternalLink } from "lucide-react";
 import { Fragment, useState, type ReactNode } from "react";
 import { dashboardApi, originalEndpoint } from "@/api/dashboard";
 import type {
@@ -9,13 +9,7 @@ import type {
 import { ErrorPanel, LoadingPanel } from "@/components/async-state";
 import { Badge } from "@/components/ui/badge";
 import { buttonVariants } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Separator } from "@/components/ui/separator";
 import { useResource } from "@/hooks/use-resource";
 import { formatDateTime, formatValue } from "@/lib/format";
 
@@ -27,7 +21,7 @@ import { formatDateTime, formatValue } from "@/lib/format";
  * presented as new material or as a new source version rather than as
  * something the earlier report already knew.
  */
-export function ReportComparisonCard({
+export function ReportComparisonSection({
   reportId,
   reports,
   onSelectReport,
@@ -47,18 +41,16 @@ export function ReportComparisonCard({
     return null;
   }
   return (
-    <Card>
-      <CardHeader>
-        <div className="flex flex-wrap items-center gap-2">
-          <GitCompareArrows aria-hidden="true" className="size-4 text-primary" />
-          <CardTitle>历史报告对照</CardTitle>
-          <Badge variant="outline">{options.length} 份可选</Badge>
-        </div>
-        <CardDescription>
-          只比较两份报告各自保存的分析、证据包与引用版本；不重跑研究，也不改写旧报告。
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-4">
+    <section>
+      <div className="flex flex-wrap items-center gap-2">
+        <h2 className="text-sm font-semibold">历史报告对照</h2>
+        <Badge variant="outline">{options.length} 份可选</Badge>
+      </div>
+      <p className="mt-1 text-sm text-muted-foreground">
+        只比较两份报告各自保存的分析、证据包与引用版本；不重跑研究，也不改写旧报告。
+      </p>
+      <Separator className="mt-3" />
+      <div className="mt-4 space-y-4">
         <label className="flex flex-wrap items-center gap-2 text-sm">
           <span className="text-muted-foreground">对比报告：</span>
           <select
@@ -86,8 +78,8 @@ export function ReportComparisonCard({
             选择另一份成功报告后，这里会列出结论、证据版本、指标取值与覆盖差异。
           </p>
         )}
-      </CardContent>
-    </Card>
+      </div>
+    </section>
   );
 }
 
@@ -140,14 +132,14 @@ function ComparisonResult({
     data.documents.disappeared.count +
     data.documents.persisting.count;
   return (
-    <div className="space-y-4 text-sm">
-      <div className="grid gap-3 sm:grid-cols-2">
+    <div className="space-y-5 text-sm">
+      <div className="grid gap-4 sm:grid-cols-2">
         <SidePanel label="较早报告" side={data.earlier} onSelectReport={onSelectReport} />
         <SidePanel label="较新报告" side={data.later} onSelectReport={onSelectReport} />
       </div>
 
       {data.warnings.length ? (
-        <ul className="space-y-1 rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-950">
+        <ul className="space-y-1 rounded-lg bg-amber-50 p-3 text-xs text-amber-950">
           {data.warnings.map((warning) => (
             <li key={warning.code}>{warning.message}</li>
           ))}
@@ -179,7 +171,7 @@ function ComparisonResult({
               evidence_changed?: boolean;
             };
             return (
-              <li className="rounded-lg border border-border p-2 text-xs">
+              <li className="text-xs">
                 <p className="font-medium">{finding.statement}</p>
                 <p className="mt-1 text-muted-foreground">
                   {finding.kind} · 不确定性：
@@ -229,7 +221,7 @@ function ComparisonResult({
               content_changed?: boolean;
             };
             return (
-              <li className="rounded-lg border border-border p-2 text-xs">
+              <li className="text-xs">
                 <p className="font-medium">{entry.title}</p>
                 <p className="mt-1 text-muted-foreground">
                   v{entry.earlier?.version ?? "未知"} → v
@@ -254,11 +246,11 @@ function ComparisonResult({
           </span>
         </h3>
         {data.facts.metric_changes.items.length ? (
-          <ul className="space-y-2">
+          <ul className="space-y-3">
             {data.facts.metric_changes.items.map((change, index) => (
               <li
                 key={`${change.metric_id}-${index}`}
-                className="rounded-lg border border-border p-2 text-xs"
+                className="space-y-2 text-xs"
               >
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="font-medium">{change.metric_id}</span>
@@ -275,7 +267,7 @@ function ComparisonResult({
                     <Badge variant="outline">观测期不同</Badge>
                   ) : null}
                 </div>
-                <div className="mt-1 grid gap-1 sm:grid-cols-2">
+                <div className="grid gap-2 sm:grid-cols-2">
                   <ValueList label="较早" values={change.earlier} />
                   <ValueList label="较新" values={change.later} />
                 </div>
@@ -300,11 +292,11 @@ function ComparisonResult({
           </span>
         </h3>
         {data.late_material.documents.items.length ? (
-          <ul className="space-y-1">
+          <ul className="space-y-2">
             {data.late_material.documents.items.map((document) => (
               <li
                 key={`${document.document_id}-${document.collected_at}`}
-                className="rounded-lg border border-border p-2 text-xs"
+                className="text-xs"
               >
                 <p className="font-medium">{document.title}</p>
                 <p className="mt-0.5 text-muted-foreground">
@@ -325,7 +317,7 @@ function ComparisonResult({
 
       <section className="space-y-2">
         <h3 className="text-sm font-medium">覆盖差异</h3>
-        <div className="grid gap-2 text-xs sm:grid-cols-2">
+        <div className="grid gap-3 text-xs sm:grid-cols-2">
           <CoverageList label="新增缺口" items={data.coverage.gaps_added} />
           <CoverageList label="已消失缺口" items={data.coverage.gaps_removed} />
         </div>
@@ -365,20 +357,20 @@ function SidePanel({
   onSelectReport?: (reportId: string) => void;
 }) {
   return (
-    <div className="rounded-lg border border-border p-3">
+    <div className="space-y-2 border-l-2 border-l-border pl-3">
       <div className="flex flex-wrap items-center gap-2">
         <Badge variant="outline">{label}</Badge>
         <span className="text-xs text-muted-foreground">
           {formatDateTime(side.created_at)}
         </span>
       </div>
-      <p className="mt-2 font-medium">{side.title}</p>
-      <p className="mt-1 text-xs text-muted-foreground">
+      <p className="font-medium">{side.title}</p>
+      <p className="text-xs text-muted-foreground">
         as_of {formatDateTime(side.as_of)} · Task {side.task_id} · Run{" "}
         {side.run_status ?? "未知"}
       </p>
-      <p className="mt-2 line-clamp-4 text-xs">{side.summary}</p>
-      <dl className="mt-2 grid grid-cols-2 gap-1 text-xs">
+      <p className="line-clamp-4 text-xs">{side.summary}</p>
+      <dl className="grid grid-cols-2 gap-1 text-xs">
         <Stat label="选入片段" value={side.coverage.selected_count} />
         <Stat label="证据组" value={side.coverage.evidence_group_count} />
         <Stat label="独立原件" value={side.coverage.origin_group_count} />
@@ -392,7 +384,7 @@ function SidePanel({
       {onSelectReport ? (
         <button
           type="button"
-          className={`${buttonVariants({ variant: "outline", size: "sm" })} mt-2`}
+          className={`${buttonVariants({ variant: "outline", size: "sm" })}`}
           onClick={() => onSelectReport(side.report_id)}
         >
           打开这份报告
@@ -406,7 +398,7 @@ function Stat({ label, value }: { label: string; value: unknown }) {
   return (
     <div>
       <dt className="text-muted-foreground">{label}</dt>
-      <dd>{value === null || value === undefined ? "未知" : String(value)}</dd>
+      <dd className="tabular-nums">{value === null || value === undefined ? "未知" : String(value)}</dd>
     </div>
   );
 }
@@ -429,7 +421,7 @@ function FindingGroup<T>({
         {title}（{items.count}）
         {items.truncated ? " · 仅显示前若干条" : ""}
       </p>
-      <ul className="space-y-1">
+      <ul className="space-y-2">
         {items.items.map((item, index) => (
           <Fragment key={index}>{render(item)}</Fragment>
         ))}
@@ -445,7 +437,7 @@ function FindingLine({ finding }: { finding: unknown }) {
     uncertainty?: string | null;
   };
   return (
-    <li className="rounded-lg border border-border p-2 text-xs">
+    <li className="text-xs">
       <p className="font-medium">{item.statement}</p>
       <p className="mt-1 text-muted-foreground">
         {item.kind} · 不确定性：{item.uncertainty ?? "未记录"}
@@ -464,7 +456,7 @@ function DocumentLine({ document }: { document: unknown }) {
     source_id?: string | null;
   };
   return (
-    <li className="rounded-lg border border-border p-2 text-xs">
+    <li className="text-xs">
       <p className="font-medium">{item.title ?? item.document_id}</p>
       <p className="mt-1 text-muted-foreground">
         来源 {item.source_id ?? "未知"} · v{item.version ?? "未知"} · 发布{" "}
@@ -517,7 +509,7 @@ function ValueList({
       {values.length ? (
         values.map((item, index) => (
           <p key={`${item.document_id}-${index}`}>
-            <span className="font-code">
+            <span className="font-code tabular-nums">
               {formatValue(item.value)}
               {item.unit ? ` ${item.unit}` : ""}
               {item.currency ? ` ${item.currency}` : ""}
@@ -543,7 +535,7 @@ function CoverageList({
   items: { count: number; items: string[]; truncated: boolean };
 }) {
   return (
-    <div className="rounded-lg border border-border p-2">
+    <div>
       <p className="text-muted-foreground">
         {label}（{items.count}）
       </p>

@@ -1,77 +1,37 @@
-import { Landmark } from "lucide-react";
 import type { Fact } from "@/api/schemas";
 import { EmptyPanel } from "@/components/async-state";
 import { Badge } from "@/components/ui/badge";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import { formatDateTime, formatValue, shortId } from "@/lib/format";
 
-function FactCard({ fact }: { fact: Fact }) {
+function conflictBadges(fact: Fact) {
   return (
-    <Card size="sm" className="bg-background/70">
-      <CardHeader>
-        <div className="flex flex-wrap items-center gap-2">
-          <Landmark aria-hidden="true" className="size-4 text-primary" />
-          <CardTitle>{fact.statement}</CardTitle>
-          <Badge variant="outline">{fact.fact_type}</Badge>
-          {fact.symbol ? <Badge>{fact.symbol}</Badge> : null}
-          {fact.value_conflict ? (
-            <Badge variant="destructive">与其他来源数值冲突</Badge>
-          ) : null}
-          {fact.basis_mismatch ? (
-            <Badge variant="outline">口径与其他来源不同</Badge>
-          ) : null}
-          {!fact.value_conflict && !fact.basis_mismatch && fact.conflict ? (
-            <Badge variant="destructive">同指标取值不一致</Badge>
-          ) : null}
-        </div>
-      </CardHeader>
-      <CardContent className="space-y-3">
-        <div className="grid gap-2 text-xs sm:grid-cols-2">
-          <p>
-            <span className="text-muted-foreground">数值：</span>
-            <span className="font-code">
-              {formatValue(fact.value)}
-              {fact.unit ? ` ${fact.unit}` : ""}
-            </span>
-          </p>
-          <p>
-            <span className="text-muted-foreground">指标：</span>
-            {fact.metric_id ?? "未标注"}
-          </p>
-          <p>
-            <span className="text-muted-foreground">观测期：</span>
-            {formatDateTime(fact.period_start)} –{" "}
-            {formatDateTime(fact.period_end)}
-          </p>
-          <p>
-            <span className="text-muted-foreground">可用时间：</span>
-            {formatDateTime(fact.available_at)}
-          </p>
-          <p>
-            <span className="text-muted-foreground">提取方式：</span>
-            {fact.origin_method}
-          </p>
-          <p>
-            <span className="text-muted-foreground">Fact ID：</span>
-            <span className="font-code">{shortId(fact.id)}</span>
-          </p>
-        </div>
-        {fact.evidence_ref !== null && fact.evidence_ref !== undefined ? (
-          <details className="text-xs text-muted-foreground">
-            <summary className="cursor-pointer font-medium text-foreground">
-              证据定位
-            </summary>
-            <pre className="mt-2 overflow-x-auto rounded-lg bg-muted p-3 whitespace-pre-wrap">
-              {formatValue(fact.evidence_ref)}
-            </pre>
-          </details>
-        ) : null}
-      </CardContent>
-    </Card>
+    <>
+      {fact.value_conflict ? (
+        <Badge variant="destructive">与其他来源数值冲突</Badge>
+      ) : null}
+      {fact.basis_mismatch ? (
+        <Badge variant="outline">口径与其他来源不同</Badge>
+      ) : null}
+      {!fact.value_conflict && !fact.basis_mismatch && fact.conflict ? (
+        <Badge variant="destructive">同指标取值不一致</Badge>
+      ) : null}
+    </>
   );
 }
 
-export function FactList({ facts }: { facts: Fact[] }) {
+/**
+ * Structured facts as one row per fact: metric, value, unit, observation
+ * window, locator and extraction method. Conflicts stay inline on the row.
+ */
+export function FactTable({ facts }: { facts: Fact[] }) {
   if (!facts.length) {
     return (
       <EmptyPanel
@@ -81,10 +41,71 @@ export function FactList({ facts }: { facts: Fact[] }) {
     );
   }
   return (
-    <div className="grid gap-3">
-      {facts.map((fact) => (
-        <FactCard key={fact.id} fact={fact} />
-      ))}
-    </div>
+    <Table>
+      <TableHeader>
+        <TableRow>
+          <TableHead>指标</TableHead>
+          <TableHead>数值</TableHead>
+          <TableHead>单位</TableHead>
+          <TableHead>观测期</TableHead>
+          <TableHead>定位</TableHead>
+          <TableHead>提取方式</TableHead>
+        </TableRow>
+      </TableHeader>
+      <TableBody>
+        {facts.map((fact) => (
+          <TableRow key={fact.id}>
+            <TableCell className="max-w-64 text-xs">
+              <p className="font-medium break-words">
+                {fact.metric_id ?? "未标注"}
+              </p>
+              {fact.statement ? (
+                <p className="mt-1 break-words text-muted-foreground">
+                  {fact.statement}
+                </p>
+              ) : null}
+              <p className="mt-1 text-muted-foreground">
+                {fact.fact_type}
+                {fact.symbol ? ` · ${fact.symbol}` : ""}
+              </p>
+              {conflictBadges(fact)}
+            </TableCell>
+            <TableCell className="font-code text-xs tabular-nums">
+              {formatValue(fact.value)}
+            </TableCell>
+            <TableCell className="text-xs">
+              {fact.unit ?? ""}
+              {fact.currency ? ` ${fact.currency}` : ""}
+            </TableCell>
+            <TableCell className="text-xs whitespace-nowrap text-muted-foreground">
+              {formatDateTime(fact.period_start)} –{" "}
+              {formatDateTime(fact.period_end)}
+              <span className="mt-0.5 block">
+                可用 {formatDateTime(fact.available_at)}
+              </span>
+            </TableCell>
+            <TableCell className="text-xs">
+              {fact.evidence_ref !== null && fact.evidence_ref !== undefined ? (
+                <details className="text-muted-foreground">
+                  <summary className="cursor-pointer font-medium text-foreground">
+                    {shortId(fact.id)}
+                  </summary>
+                  <pre className="mt-2 max-h-48 overflow-auto rounded-lg bg-muted p-2 whitespace-pre-wrap">
+                    {formatValue(fact.evidence_ref)}
+                  </pre>
+                </details>
+              ) : (
+                <span className="font-code text-muted-foreground">
+                  {shortId(fact.id)}
+                </span>
+              )}
+            </TableCell>
+            <TableCell className="text-xs text-muted-foreground">
+              {fact.origin_method}
+            </TableCell>
+          </TableRow>
+        ))}
+      </TableBody>
+    </Table>
   );
 }

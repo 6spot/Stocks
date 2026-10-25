@@ -7,14 +7,15 @@ import { EmptyPanel, ErrorPanel, LoadingPanel } from "@/components/async-state";
 import { PageHeader } from "@/components/page-header";
 import { StatusBadge } from "@/components/status-badge";
 import { Badge } from "@/components/ui/badge";
-import { Button, buttonVariants } from "@/components/ui/button";
+import { Button } from "@/components/ui/button";
 import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import { useResource } from "@/hooks/use-resource";
 import { formatDateTime, formatValue } from "@/lib/format";
 import { useNoticeStore } from "@/state/ui-store";
@@ -50,7 +51,6 @@ export function TasksPage() {
   return (
     <div className="space-y-6">
       <PageHeader
-        eyebrow="Tasks"
         title="任务"
         description="任务定义保持在文件中；这里只读取当前配置、显示已有 Run 并执行手动触发。"
       />
@@ -72,111 +72,100 @@ export function TasksPage() {
           description="在 config/tasks.yaml 中添加任务后，这里会显示定义和最近运行。"
         />
       ) : (
-        <div className="grid gap-4 xl:grid-cols-2">
-          {tasks.data.items.map((task) => {
-            const active = task.active_run;
-            return (
-              <Card key={task.task_id}>
-                <CardHeader>
-                  <div className="flex flex-wrap items-start gap-2">
-                    <div className="min-w-0 flex-1">
-                      <CardTitle className="text-lg">{task.name}</CardTitle>
-                      <CardDescription className="mt-1 font-code">
-                        {task.task_id}
-                      </CardDescription>
-                    </div>
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>任务</TableHead>
+              <TableHead>类型</TableHead>
+              <TableHead>启用</TableHead>
+              <TableHead>策略</TableHead>
+              <TableHead>最近 Run</TableHead>
+              <TableHead className="text-right">操作</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {tasks.data.items.map((task) => {
+              const active = task.active_run;
+              return (
+                <TableRow key={task.task_id}>
+                  <TableCell className="max-w-56">
+                    <p className="truncate font-medium">{task.name}</p>
+                    <p className="font-code text-xs text-muted-foreground">
+                      {task.task_id}
+                    </p>
+                    <details className="mt-1 text-xs text-muted-foreground">
+                      <summary className="cursor-pointer font-medium text-foreground">
+                        研究范围
+                      </summary>
+                      <pre className="mt-2 max-h-40 overflow-auto rounded-lg bg-muted p-2 whitespace-pre-wrap">
+                        {formatValue(task.scope)}
+                      </pre>
+                      <p className="mt-1 flex items-center gap-1">
+                        <TimerReset aria-hidden="true" className="size-3.5" />
+                        {task.updated_at
+                          ? `配置更新于 ${formatDateTime(task.updated_at)}`
+                          : "没有持久更新时间"}
+                      </p>
+                    </details>
+                  </TableCell>
+                  <TableCell>
                     <Badge variant="outline">{task.type}</Badge>
                     {task.configured ? (
-                      <Badge variant="success">已配置</Badge>
+                      <Badge variant="success" className="ml-1.5">
+                        已配置
+                      </Badge>
                     ) : (
-                      <Badge variant="warning">仅历史定义</Badge>
+                      <Badge variant="warning" className="ml-1.5">
+                        仅历史定义
+                      </Badge>
                     )}
-                  </div>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <dl className="grid gap-2 text-xs sm:grid-cols-2">
-                    <div>
-                      <dt className="text-muted-foreground">启用</dt>
-                      <dd>{task.enabled ? "是" : "否"}</dd>
-                    </div>
-                    <div>
-                      <dt className="text-muted-foreground">策略</dt>
-                      <dd>{task.strategy ?? "未设置"}</dd>
-                    </div>
-                    <div className="sm:col-span-2">
-                      <dt className="text-muted-foreground">研究范围</dt>
-                      <dd>
-                        <pre className="mt-1 max-h-32 overflow-auto rounded-lg bg-muted p-2 whitespace-pre-wrap">
-                          {formatValue(task.scope)}
-                        </pre>
-                      </dd>
-                    </div>
-                  </dl>
-
-                  {active ? (
-                    <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950">
-                      <div className="flex flex-wrap items-center justify-between gap-2">
-                        <span className="font-medium">已有活跃 Run</span>
-                        <StatusBadge status={active.status} />
-                      </div>
-                      <p className="mt-2 font-code text-xs">{active.run_id}</p>
-                      <p className="mt-1 text-xs">
-                        创建于 {formatDateTime(active.created_at)}。服务端会复用此
-                        Run，不会重复发起。
-                      </p>
-                      <Link
-                        to={`/runs?run=${active.run_id}`}
-                        className={buttonVariants({
-                          variant: "outline",
-                          size: "sm",
-                          className: "mt-3",
-                        })}
-                      >
-                        查看运行
-                      </Link>
-                    </div>
-                  ) : (
-                    <div className="rounded-xl border border-border p-3 text-sm">
-                      <div className="flex flex-wrap items-center justify-between gap-2">
-                        <span className="text-muted-foreground">最近 Run</span>
-                        {task.last_run ? (
-                          <StatusBadge status={task.last_run.status} />
-                        ) : (
-                          <Badge variant="outline">从未运行</Badge>
-                        )}
-                      </div>
-                      {task.last_run ? (
-                        <>
-                          <p className="mt-2 text-xs">
-                            {formatDateTime(task.last_run.created_at)} ·{" "}
-                            {task.last_run.step_count ?? 0} 个步骤
-                          </p>
-                          <Link
-                            to={`/runs?run=${task.last_run.run_id}`}
-                            className={buttonVariants({
-                              variant: "ghost",
-                              size: "sm",
-                              className: "mt-2",
-                            })}
-                          >
-                            查看详情
-                          </Link>
-                        </>
-                      ) : (
-                        <p className="mt-2 text-xs text-muted-foreground">
-                          还没有执行记录。
+                  </TableCell>
+                  <TableCell className="text-sm">
+                    {task.enabled ? "是" : "否"}
+                  </TableCell>
+                  <TableCell className="text-xs text-muted-foreground">
+                    {task.strategy ?? "未设置"}
+                  </TableCell>
+                  <TableCell className="text-xs">
+                    {active ? (
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-2">
+                          <StatusBadge status={active.status} />
+                          <span className="text-amber-800">活跃 Run</span>
+                        </div>
+                        <p className="font-code text-muted-foreground">
+                          {active.run_id}
                         </p>
-                      )}
-                    </div>
-                  )}
-
-                  <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border pt-4">
-                    <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                      <TimerReset aria-hidden="true" className="size-3.5" />
-                      {task.updated_at
-                        ? `配置更新于 ${formatDateTime(task.updated_at)}`
-                        : "没有持久更新时间"}
-                    </p>
+                        <p className="text-muted-foreground">
+                          创建于 {formatDateTime(active.created_at)}。服务端会复用此
+                          Run，不会重复发起。
+                        </p>
+                        <Link
+                          to={`/runs?run=${active.run_id}`}
+                          className="font-medium text-primary underline-offset-4 hover:underline"
+                        >
+                          查看运行
+                        </Link>
+                      </div>
+                    ) : task.last_run ? (
+                      <div className="space-y-1">
+                        <StatusBadge status={task.last_run.status} />
+                        <p className="text-muted-foreground">
+                          {formatDateTime(task.last_run.created_at)} ·{" "}
+                          {task.last_run.step_count ?? 0} 个步骤
+                        </p>
+                        <Link
+                          to={`/runs?run=${task.last_run.run_id}`}
+                          className="font-medium text-primary underline-offset-4 hover:underline"
+                        >
+                          查看详情
+                        </Link>
+                      </div>
+                    ) : (
+                      <span className="text-muted-foreground">从未运行</span>
+                    )}
+                  </TableCell>
+                  <TableCell className="text-right">
                     <Button
                       type="button"
                       size="sm"
@@ -195,12 +184,12 @@ export function TasksPage() {
                           ? "触发中…"
                           : "手动触发"}
                     </Button>
-                  </div>
-                </CardContent>
-              </Card>
-            );
-          })}
-        </div>
+                  </TableCell>
+                </TableRow>
+              );
+            })}
+          </TableBody>
+        </Table>
       )}
     </div>
   );
