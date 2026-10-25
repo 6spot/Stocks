@@ -45,6 +45,24 @@ URL 参数、选中/最新报告逻辑、aria-pressed/键盘处理、处理重�
 | `npm run typecheck` / `npm run build` | 退出码 0 |
 | 生产 web 镜像重建并强制重建容器 | healthy，/health 200 |
 
+## 补充：一次部署事故的纠正（2026-10-25）
+
+Owner 反馈「你确定你更新了吗」——核实后发现**生产部署目录 `/opt/stocks/frontend/src`
+仍是旧源码**：重构代码只同步到了测试目录 `/tmp/stocks-review-fixes-20261023`，
+web 镜像从旧源码构建，导致线上界面未变。属部署同步遗漏，验收时只核对了测试目录
+构建结果，未核对生产镜像内容。
+
+纠正措施：
+1. 从 `main` 重新打包 `frontend/src` 同步到 `/opt/stocks`（md5 比对 runs-page 一致）。
+2. 重建 web 镜像并 `--force-recreate` 容器（created=2026-10-25T03:58Z）。
+3. 在**生产容器内**逐包核对产物：runs/intelligence/research 分包含 `border-l-2`+
+   `divide-y`，overview/tasks 分包引用 Table 组件族与「近期运行」等区块文案，
+   `section-*.js`（新 Section 组件）与 `border-l-2` CSS 工具类均存在，eyebrow 特征
+   `tracking-[0.16em]` 已无残留；index.html 引用指纹与容器内文件一致（Cache-Control:
+   no-cache，无缓存问题）。
+
+教训：跨目录部署时必须核对目标容器内的实际构建产物，不能以测试目录结果代替。
+
 ## 限制
 
 真机/浏览器视觉验收仍未执行（PA-3 既有待办）；密度与对齐的最终观感以 Owner
