@@ -1,0 +1,5 @@
+{"file": ".trellis/spec/frontend/index.md", "reason": "前端规范总索引，实现前必读"}
+{"file": ".trellis/spec/frontend/component-guidelines.md", "reason": "新增页面组件需遵循的组件编写规范"}
+{"file": ".trellis/spec/frontend/directory-structure.md", "reason": "新增 feature 目录与路由文件的归属位置"}
+{"file": ".trellis/spec/frontend/state-management.md", "reason": "页面数据获取复用 useResource/dashboardApi 的约定"}
+{"file": ".trellis/spec/frontend/type-safety.md", "reason": "zod schema 与类型使用规范"}

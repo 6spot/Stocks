@@ -281,12 +281,13 @@ describe("ReportReader", () => {
     expect(screen.getByText("3.1 percent")).toBeVisible();
   });
 
-  it("renders report HTML-looking content as plain text", async () => {
+  it("renders report content as markdown and strips script tags", async () => {
     reportMock.mockResolvedValue({
       ...report,
       report: {
         ...report.report,
-        content: "<script>window.alert('unsafe')</script>",
+        content:
+          "## 结论\n\n- 要点一\n\n<script>window.alert('unsafe')</script>",
       },
     });
     render(
@@ -296,8 +297,9 @@ describe("ReportReader", () => {
     );
 
     expect(
-      await screen.findByText("<script>window.alert('unsafe')</script>"),
+      await screen.findByRole("heading", { name: "结论" }),
     ).toBeVisible();
+    expect(screen.getByText("要点一")).toBeVisible();
     expect(document.querySelector("script")).not.toBeInTheDocument();
   });
 });

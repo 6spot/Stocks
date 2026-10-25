@@ -132,6 +132,66 @@
   font-variant-numeric: tabular-nums;
 }
 
+/* Rendered Markdown report body. The HTML comes from renderMarkdown and is
+   sanitized upstream, so these selectors only shape known-safe elements. */
+.report-prose h2 {
+  margin-top: 1.5rem;
+  font-size: 1.125rem;
+  line-height: 1.75rem;
+  font-weight: 600;
+}
+
+.report-prose h3 {
+  margin-top: 1rem;
+  font-weight: 500;
+}
+
+.report-prose p {
+  margin-block: 0.75rem;
+  line-height: 2rem;
+}
+
+.report-prose ul {
+  margin-block: 0.75rem;
+  padding-left: 1.25rem;
+  list-style: disc;
+}
+
+.report-prose ol {
+  margin-block: 0.75rem;
+  padding-left: 1.25rem;
+  list-style: decimal;
+}
+
+.report-prose li {
+  margin-block: 0.25rem;
+}
+
+.report-prose strong {
+  font-weight: 600;
+}
+
+.report-prose pre {
+  overflow-x: auto;
+}
+
+.report-prose code {
+  font-family: var(--font-mono);
+  background: var(--muted);
+  border-radius: 0.25rem;
+  padding-inline: 0.25rem;
+}
+
+.report-prose blockquote {
+  border-left: 2px solid var(--border);
+  padding-left: 0.75rem;
+  color: var(--muted-foreground);
+}
+
+.report-prose > :first-child {
+  margin-top: 0;
+}
+
 @utility text-balance {
   text-wrap: balance;
 }
