@@ -6,6 +6,7 @@ import { EmptyPanel, ErrorPanel, LoadingPanel } from "@/components/async-state";
 import { PageHeader } from "@/components/page-header";
 import { Section } from "@/components/section";
 import { StatusBadge } from "@/components/status-badge";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { buttonVariants } from "@/components/ui/button";
 import {
@@ -19,6 +20,7 @@ import {
 import { useResource } from "@/hooks/use-resource";
 import { formatDateTime, formatNumber, shortId } from "@/lib/format";
 import { gapLabel, statusLabel } from "@/lib/labels";
+import { cn } from "@/lib/utils";
 import { UsageModels, UsageStats } from "@/components/usage-summary";
 
 export function OverviewPage() {
@@ -125,7 +127,11 @@ export function OverviewPage() {
             </p>
             <p className="mt-1 text-xs text-muted-foreground">
               {label} ·{" "}
-              <span className={warning ? "text-amber-700" : undefined}>
+              <span
+                className={cn(
+                  warning && "text-warning-text",
+                )}
+              >
                 {detail}
               </span>
             </p>
@@ -181,9 +187,12 @@ export function OverviewPage() {
               </div>
             </dl>
             {data.research.latest.retrieval_truncated ? (
-              <p className="rounded-lg bg-amber-50 p-3 text-xs text-amber-950">
-                本次检索达到预算并截断；未扫描候选数量未知时仍显示未知。
-              </p>
+              <Alert variant="warning" className="mt-3">
+                <AlertTitle>本次检索达到预算并截断</AlertTitle>
+                <AlertDescription>
+                  未扫描候选数量未知时仍显示未知。
+                </AlertDescription>
+              </Alert>
             ) : null}
             {data.research.latest.gaps.length ? (
               <ul className="flex flex-wrap gap-2 text-xs">

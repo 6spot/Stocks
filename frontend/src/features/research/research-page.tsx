@@ -78,40 +78,55 @@ export function ResearchPage() {
               description="失败 Run 不会替换最后成功保存的报告。"
             />
           ) : (
-            reports.data.items.map((report) => {
-              const selected = selectedId === report.report_id;
-              return (
-                <button
-                  key={report.report_id}
-                  type="button"
-                  aria-pressed={selected}
-                  onClick={() => selectReport(report.report_id)}
-                  className={cn(
-                    "press -ml-3 w-[calc(100%+1.5rem)] border-l-2 py-3 pl-3 text-left first:pt-0 last:pb-0",
-                    selected
-                      ? "border-l-primary bg-muted/40"
-                      : "border-l-transparent hover:bg-muted/40",
-                  )}
-                >
-                  <div className="flex items-start gap-2">
-                    <FileText
-                      aria-hidden="true"
-                      className="mt-0.5 size-4 shrink-0 text-muted-foreground"
-                    />
-                    <div className="min-w-0 flex-1">
-                      <p className="line-clamp-2 font-medium">{report.title}</p>
-                      <p className="mt-1 text-xs text-muted-foreground">
-                        {formatDateTime(report.created_at)}
-                      </p>
-                      <div className="mt-2 flex flex-wrap items-center gap-2">
-                        <Badge variant="outline">{report.task_id}</Badge>
+            <div
+              role="table"
+              aria-label="报告列表"
+              className="grid grid-cols-[minmax(0,1fr)_7rem_5rem] gap-x-2 sm:grid-cols-[minmax(0,1fr)_8rem_5rem_9rem]"
+            >
+              <div role="row" className="col-span-full flex items-center gap-2 border-b px-1 pb-1.5 text-xs text-muted-foreground">
+                <span role="columnheader" className="min-w-0 flex-1 px-1 text-left">标题</span>
+                <span role="columnheader" className="hidden px-1 text-left sm:block">任务</span>
+                <span role="columnheader" className="px-1 text-left">状态</span>
+                <span role="columnheader" className="hidden px-1 text-left md:block">生成时间</span>
+              </div>
+              {reports.data.items.map((report) => {
+                const selected = selectedId === report.report_id;
+                return (
+                  <div
+                    key={report.report_id}
+                    role="row"
+                    className="col-span-full flex items-center gap-2 border-b border-border/60 px-1"
+                  >
+                    <button
+                      type="button"
+                      aria-pressed={selected}
+                      onClick={() => selectReport(report.report_id)}
+                      className={cn(
+                        "press flex min-w-0 flex-1 items-center gap-2 px-1 py-2 text-left",
+                        selected ? "bg-muted" : "hover:bg-muted/60",
+                      )}
+                    >
+                      <span className="flex min-w-0 flex-1 items-center gap-2">
+                        <FileText
+                          aria-hidden="true"
+                          className="size-4 shrink-0 text-muted-foreground"
+                        />
+                        <span className="line-clamp-2 text-sm font-medium">{report.title}</span>
+                      </span>
+                      <span className="hidden w-28 shrink-0 truncate px-1 text-xs text-muted-foreground sm:block">
+                        {report.task_id}
+                      </span>
+                      <span className="w-20 shrink-0 px-1">
                         <StatusBadge status={report.run_status} />
-                      </div>
-                    </div>
+                      </span>
+                      <span className="hidden w-36 shrink-0 px-1 text-xs whitespace-nowrap text-muted-foreground md:block">
+                        {formatDateTime(report.created_at)}
+                      </span>
+                    </button>
                   </div>
-                </button>
-              );
-            })
+                );
+              })}
+            </div>
           )}
         </section>
 
@@ -241,7 +256,7 @@ export function ReportReader({
             </AlertDescription>
           </Alert>
         ) : null}
-        <div className="font-serif mt-5 text-[1.02rem] leading-8 whitespace-pre-wrap">
+        <div className="font-sans mt-5 text-[1.02rem] leading-8 whitespace-pre-wrap">
           {data.report.content}
         </div>
       </div>

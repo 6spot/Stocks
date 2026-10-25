@@ -1,6 +1,6 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { MemoryRouter } from "react-router-dom";
+import { BrowserRouter } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
 import {
   documentDetailSchema,
@@ -32,6 +32,17 @@ vi.mock("@/api/dashboard", () => ({
   downloadEndpoint: (id: string) =>
     `/api/documents/${id}/original?download=true`,
 }));
+
+function renderPage(initialUrl: string) {
+  // BrowserRouter reads window.history, so URL param assertions can read
+  // window.location after interactions.
+  window.history.replaceState({}, "", initialUrl);
+  render(
+    <BrowserRouter>
+      <IntelligencePage />
+    </BrowserRouter>,
+  );
+}
 
 // Fixtures below mirror the production payloads field-for field, captured from
 // the live deployment: search hits carry a float `similarity` and a locator
@@ -314,65 +325,68 @@ describe("IntelligencePage against real API response shapes", () => {
     expect(documentDetailPayload.current_chunks).not.toHaveProperty("has_more");
   });
 
-  it("renders semantic hits with similarity and locator without an incompatibility error", async () => {
+  it("renders semantic hits in a full-width table with a similarity column", async () => {
     mockResolved();
-    render(
-      <MemoryRouter initialEntries={["/intelligence?q=capex"]}>
-        <IntelligencePage />
-      </MemoryRouter>,
-    );
+    renderPage("/intelligence?q=capex");
 
     expect(await screen.findByText("Hyperscaler raises data-center capex outlook")).toBeVisible();
-    expect(screen.getByText("相似度 0.408")).toBeVisible();
-    expect(screen.getByText("sec_press_releases · v1 · 片段 1")).toBeVisible();
+    expect(screen.getByText("0.408")).toBeVisible();
     expect(
       screen.queryByText("API 响应与当前控制台版本不兼容。"),
     ).not.toBeInTheDocument();
-    // The hit without a similarity value renders no similarity badge.
-    expect(screen.getAllByText(/相似度/)).toHaveLength(1);
+    // 相似度 is a table column; the hit without a similarity value keeps an
+    // empty cell instead of a badge.
+    expect(screen.getByRole("columnheader", { name: "相似度" })).toBeVisible();
+    expect(screen.getByText("0.408")).toBeVisible();
   });
 
-  it("opens a document detail from a hit and shows chunks and facts", async () => {
+  it("opens the document sheet from a hit row, shows chunks and facts, and removes the param on close", async () => {
     mockResolved();
-    render(
-      <MemoryRouter initialEntries={["/intelligence?q=capex"]}>
-        <IntelligencePage />
-      </MemoryRouter>,
-    );
+    renderPage("/intelligence?q=capex");
 
-    const hit = await screen.findByRole("button", {
+    const row = await screen.findByRole("button", {
       name: "查看 Hyperscaler raises data-center capex outlook 的 Document 详情",
     });
-    await userEvent.click(hit);
+    await userEvent.click(row);
 
     expect(documentMock).toHaveBeenCalledWith(documentId, expect.anything());
-    expect(await screen.findByText("当前可读片段")).toBeVisible();
-    // The chunk text is rendered both in the hit card and in the detail chunk.
+    expect(await screen.findByText("当前片段")).toBeVisible();
     expect(
-      (await screen.findAllByText(
+      screen.getByRole("dialog", { name: "Document 详情" }),
+    ).toBeVisible();
+    // Hit text previews moved into the sheet; the result table stays single-line.
+    expect(
+      await screen.findAllByText(
         "Operators raised data-center capital expenditure guidance for the coming fiscal year.",
-      )).length,
-    ).toBeGreaterThanOrEqual(2);
+      ),
+    ).toHaveLength(1);
     expect(screen.getByText("Data-center capital expenditure guidance was raised.")).toBeVisible();
     expect(
       screen.queryByText("API 响应与当前控制台版本不兼容。"),
     ).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: "关闭" }));
+    await waitFor(() => {
+      expect(
+        screen.queryByRole("dialog", { name: "Document 详情" }),
+      ).not.toBeInTheDocument();
+    });
+    expect(window.location.search).toBe("?q=capex");
   });
 
   it("renders the recent-documents list and opens the detail from it", async () => {
     mockResolved();
-    render(
-      <MemoryRouter initialEntries={["/intelligence"]}>
-        <IntelligencePage />
-      </MemoryRouter>,
-    );
+    renderPage("/intelligence");
+
+    expect(window.location.search).toBe("");
 
     const row = await screen.findByRole("button", {
       name: /Hyperscaler raises data-center capex outlook/,
     });
     await userEvent.click(row);
 
-    expect(await screen.findByText("当前可读片段")).toBeVisible();
+    expect(await screen.findByText("当前片段")).toBeVisible();
+    expect(window.location.search).toBe(`?document=${documentId}`);
     expect(documentFactsMock).toHaveBeenCalledWith(documentId, expect.anything());
     expect(
       screen.queryByText("API 响应与当前控制台版本不兼容。"),

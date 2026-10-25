@@ -18,11 +18,25 @@ import { StatusBadge } from "@/components/status-badge";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useResource } from "@/hooks/use-resource";
-import { formatDateTime, formatValue, shortId } from "@/lib/format";
+import { formatDateTime, shortId } from "@/lib/format";
 import { gapLabel, statusLabel } from "@/lib/labels";
-import { cn } from "@/lib/utils";
 
 type SearchMode = "semantic" | "exact";
 
@@ -145,6 +159,13 @@ export function IntelligencePage() {
 
   const hasSearch = Boolean(contextChunk || query || exact);
   const results = hasSearch ? searchResults : recentDocuments;
+
+  function closeDocument() {
+    updateParams({ document: null });
+  }
+
+  const searchActive = hasSearch && !searchResults.loading && !searchResults.error;
+  const documentSheetOpen = Boolean(selectedId);
 
   return (
     <div className="space-y-6">
@@ -270,7 +291,7 @@ export function IntelligencePage() {
       </div>
 
       {contextChunk ? (
-        <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-sky-50 p-3 text-sm text-sky-950">
+        <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-muted p-3 text-sm">
           <span>当前显示片段 {shortId(contextChunk)} 的相邻上下文。</span>
           <Button type="button" variant="outline" size="sm" onClick={exitContext}>
             <ArrowLeft aria-hidden="true" />
@@ -279,51 +300,59 @@ export function IntelligencePage() {
         </div>
       ) : null}
 
-      <div className="grid gap-6 xl:grid-cols-[minmax(20rem,0.78fr)_minmax(0,1.22fr)]">
-        <section className="min-w-0 space-y-3" aria-label="检索结果">
-          {results.loading ? (
-            <LoadingPanel label="正在读取检索结果" />
-          ) : results.error ? (
-            <ErrorPanel
-              message={results.error.message}
-              onRetry={results.refresh}
-            />
-          ) : !results.data ? (
-            <EmptyPanel title="输入条件开始检索" />
-          ) : hasSearch && searchResults.data ? (
-            <SearchHits
-              data={searchResults.data}
-              selectedDocumentId={selectedId}
-              onSelectDocument={(documentId) =>
-                updateParams({ document: documentId })
-              }
-            />
-          ) : (
-            <Documents
-              items={recentDocuments.data?.items ?? []}
-              selectedId={selectedId}
-              onSelect={(documentId) =>
-                updateParams({ document: documentId })
-              }
-            />
-          )}
-        </section>
+      <section aria-label="检索结果" className="min-w-0">
+        {results.loading ? (
+          <LoadingPanel label="正在读取检索结果" />
+        ) : results.error ? (
+          <ErrorPanel
+            message={results.error.message}
+            onRetry={results.refresh}
+          />
+        ) : !results.data ? (
+          <EmptyPanel title="输入条件开始检索" />
+        ) : searchActive && searchResults.data ? (
+          <SearchHits
+            data={searchResults.data}
+            selectedDocumentId={selectedId}
+            onSelectDocument={(documentId) =>
+              updateParams({ document: documentId })
+            }
+          />
+        ) : (
+          <Documents
+            items={recentDocuments.data?.items ?? []}
+            selectedId={selectedId}
+            onSelect={(documentId) => updateParams({ document: documentId })}
+          />
+        )}
+      </section>
 
-        <section className="min-w-0 xl:sticky xl:top-5 xl:self-start">
-          {selectedId ? (
-            <DocumentDetails
-              key={selectedId}
-              documentId={selectedId}
-              onReadContext={showContext}
-            />
-          ) : (
-            <EmptyPanel
-              title="选择一个结果查看完整证据"
-              description="详情会分开显示采集版本、解析批次、当前片段、Fact、索引状态和原件。"
-            />
-          )}
-        </section>
-      </div>
+      <Sheet
+        open={documentSheetOpen}
+        onOpenChange={(open) => {
+          if (!open) {
+            closeDocument();
+          }
+        }}
+      >
+        <SheetContent>
+          <SheetHeader>
+            <SheetTitle>Document 详情</SheetTitle>
+            <SheetDescription>
+              采集版本、解析批次、当前片段、Fact、索引状态和原件分开显示。
+            </SheetDescription>
+          </SheetHeader>
+          <div className="min-h-0 flex-1">
+            {selectedId ? (
+              <DocumentDetails
+                key={selectedId}
+                documentId={selectedId}
+                onReadContext={showContext}
+              />
+            ) : null}
+          </div>
+        </SheetContent>
+      </Sheet>
     </div>
   );
 }
@@ -338,7 +367,7 @@ function SearchHits({
   onSelectDocument: (documentId: string) => void;
 }) {
   return (
-    <>
+    <div className="space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="text-sm font-medium">
           {data.mode === "context"
@@ -361,74 +390,81 @@ function SearchHits({
         </p>
       ) : null}
       {data.hits.length ? (
-        <div className="divide-y divide-border">
-          {data.hits.map((hit) => {
-            const selected = hit.document_id === selectedDocumentId;
-            return (
-              <div
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>标题</TableHead>
+              <TableHead>来源</TableHead>
+              <TableHead className="text-right">版本</TableHead>
+              <TableHead>完整度</TableHead>
+              <TableHead>发布时间</TableHead>
+              <TableHead className="text-right">相似度</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {data.hits.map((hit) => (
+              <HitRow
                 key={hit.chunk_id}
-                className={cn(
-                  "press -ml-3 cursor-pointer border-l-2 py-3 pl-3 first:pt-0 last:pb-0",
-                  selected
-                    ? "border-l-primary bg-muted/40"
-                    : "border-l-transparent hover:bg-muted/40",
-                )}
-              >
-                <div
-                  role="button"
-                  tabIndex={0}
-                  aria-label={`查看 ${hit.title} 的 Document 详情`}
-                  aria-pressed={selected}
-                  className="cursor-pointer"
-                  onClick={() => onSelectDocument(hit.document_id)}
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter" || event.key === " ") {
-                      event.preventDefault();
-                      onSelectDocument(hit.document_id);
-                    }
-                  }}
-                >
-                  <div className="flex flex-wrap items-center gap-2">
-                    <h3 className="line-clamp-2 min-w-0 flex-1 text-sm font-medium">
-                      {hit.title}
-                    </h3>
-                    {hit.similarity !== null ? (
-                      <Badge variant="secondary">
-                        相似度 {hit.similarity.toFixed(3)}
-                      </Badge>
-                    ) : null}
-                  </div>
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    {hit.source_id} · v{hit.version} · 片段 {hit.position + 1}
-                  </p>
-                  <p className="mt-2 line-clamp-5 text-sm leading-6 whitespace-pre-wrap">
-                    {hit.text}
-                  </p>
-                  <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-                    <StatusBadge status={hit.completeness} />
-                    <span>发布 {formatDateTime(hit.published_at)}</span>
-                    <span>采集 {formatDateTime(hit.collected_at)}</span>
-                  </div>
-                </div>
-                <details className="mt-2 text-xs text-muted-foreground">
-                  <summary className="cursor-pointer font-medium text-foreground">
-                    命中定位
-                  </summary>
-                  <pre className="mt-2 max-h-44 overflow-auto rounded-lg bg-muted p-3 whitespace-pre-wrap">
-                    {formatValue(hit.locator)}
-                  </pre>
-                </details>
-              </div>
-            );
-          })}
-        </div>
+                hit={hit}
+                selected={hit.document_id === selectedDocumentId}
+                onSelect={() => onSelectDocument(hit.document_id)}
+              />
+            ))}
+          </TableBody>
+        </Table>
       ) : (
         <EmptyPanel
           title="没有命中已保存片段"
           description="这表示当前查询没有返回结果；请同时检查上方索引覆盖，不能据此推断资料不存在。"
         />
       )}
-    </>
+    </div>
+  );
+}
+
+function HitRow({
+  hit,
+  selected,
+  onSelect,
+}: {
+  hit: Awaited<ReturnType<typeof dashboardApi.search>>["hits"][number];
+  selected: boolean;
+  onSelect: () => void;
+}) {
+  return (
+    <TableRow data-state={selected ? "selected" : undefined}>
+      <TableCell className="max-w-80">
+        <button
+          type="button"
+          aria-pressed={selected}
+          aria-label={`查看 ${hit.title} 的 Document 详情`}
+          onClick={onSelect}
+          className="block w-full min-w-0 cursor-pointer text-left"
+        >
+          <span className="line-clamp-2 block text-sm font-medium">
+            {hit.title}
+          </span>
+          <span className="mt-0.5 block text-xs text-muted-foreground">
+            片段 {hit.position + 1}
+          </span>
+        </button>
+      </TableCell>
+      <TableCell className="text-xs text-muted-foreground">
+        {hit.source_id}
+      </TableCell>
+      <TableCell className="text-right text-xs tabular-nums">
+        v{hit.version}
+      </TableCell>
+      <TableCell>
+        <StatusBadge status={hit.completeness} />
+      </TableCell>
+      <TableCell className="text-xs whitespace-nowrap text-muted-foreground">
+        {formatDateTime(hit.published_at)}
+      </TableCell>
+      <TableCell className="text-right text-xs tabular-nums">
+        {hit.similarity !== null ? hit.similarity.toFixed(3) : ""}
+      </TableCell>
+    </TableRow>
   );
 }
 
@@ -450,52 +486,76 @@ function Documents({
     );
   }
   return (
-    <div className="divide-y divide-border">
-      <div className="flex items-center gap-2 pb-3">
+    <div className="space-y-3">
+      <div className="flex items-center gap-2">
         <p className="text-sm font-medium">最近采集</p>
         <Badge variant="outline">{items.length}</Badge>
       </div>
-      {items.map((document) => {
-        const selected = selectedId === document.id;
-        return (
-          <button
-            key={document.id}
-            type="button"
-            aria-pressed={selected}
-            onClick={() => onSelect(document.id)}
-            className={cn(
-              "press -ml-3 w-[calc(100%+1.5rem)] border-l-2 py-3 pl-3 text-left first:pt-0 last:pb-0",
-              selected
-                ? "border-l-primary bg-muted/40"
-                : "border-l-transparent hover:bg-muted/40",
-            )}
-          >
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="min-w-0 flex-1 truncate text-sm font-medium">
-                {document.title}
-              </span>
-              <Badge variant="outline">v{document.version}</Badge>
-              <StatusBadge status={document.completeness} />
-            </div>
-            <p className="mt-2 text-xs text-muted-foreground">
-              {document.source_id} · 采集 {formatDateTime(document.collected_at)}
-            </p>
-            <p className="mt-1 text-xs text-muted-foreground">
-              解析 {statusLabel(document.parse_state?.status ?? "missing")} ·
-              索引 {statusLabel(document.embedding_state?.status ?? "pending")}
-              {document.embedding_state?.current
-                ? " · 当前批次"
-                : " · 非当前批次"}
-            </p>
-            {document.fetch_error?.message ? (
-              <p className="mt-2 text-xs text-destructive">
-                {gapLabel(document.fetch_error.code ?? "获取失败")}：{" "}
-                {document.fetch_error.message}
-              </p>
-            ) : null}
-          </button>
-        );
-      })}
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead>标题</TableHead>
+            <TableHead>来源</TableHead>
+            <TableHead className="text-right">版本</TableHead>
+            <TableHead>完整度</TableHead>
+            <TableHead>发布时间</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {items.map((document) => {
+            const selected = selectedId === document.id;
+            return (
+              <TableRow
+                key={document.id}
+                data-state={selected ? "selected" : undefined}
+              >
+                <TableCell className="max-w-80">
+                  <button
+                    type="button"
+                    aria-pressed={selected}
+                    aria-label={`查看 ${document.title} 的 Document 详情`}
+                    onClick={() => onSelect(document.id)}
+                    className="block w-full min-w-0 cursor-pointer text-left"
+                  >
+                    <span className="line-clamp-2 block text-sm font-medium">
+                      {document.title}
+                    </span>
+                    <span className="mt-0.5 block text-xs text-muted-foreground">
+                      解析 {" "}
+                      {statusLabel(document.parse_state?.status ?? "missing")}
+                      {" · 索引 "}{" "}
+                      {statusLabel(
+                        document.embedding_state?.status ?? "pending",
+                      )}
+                      {document.embedding_state?.current
+                        ? " · 当前批次"
+                        : " · 非当前批次"}
+                    </span>
+                    {document.fetch_error?.message ? (
+                      <span className="mt-0.5 block text-xs text-destructive">
+                        {gapLabel(document.fetch_error.code ?? "获取失败")}
+                        ：{document.fetch_error.message}
+                      </span>
+                    ) : null}
+                  </button>
+                </TableCell>
+                <TableCell className="text-xs text-muted-foreground">
+                  {document.source_id}
+                </TableCell>
+                <TableCell className="text-right text-xs tabular-nums">
+                  v{document.version}
+                </TableCell>
+                <TableCell>
+                  <StatusBadge status={document.completeness} />
+                </TableCell>
+                <TableCell className="text-xs whitespace-nowrap text-muted-foreground">
+                  {formatDateTime(document.published_at)}
+                </TableCell>
+              </TableRow>
+            );
+          })}
+        </TableBody>
+      </Table>
     </div>
   );
 }

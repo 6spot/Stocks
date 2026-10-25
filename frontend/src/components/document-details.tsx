@@ -4,7 +4,6 @@ import { EmptyPanel, ErrorPanel, LoadingPanel } from "@/components/async-state";
 import { FactTable } from "@/components/fact-list";
 import { OriginalLinks } from "@/components/original-links";
 import { ProcessingStages } from "@/components/processing-stages";
-import { Section } from "@/components/section";
 import { StatusBadge } from "@/components/status-badge";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
@@ -16,7 +15,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { formatBytes, formatDateTime, formatValue, shortId } from "@/lib/format";
+import { formatDateTime, formatValue, shortId } from "@/lib/format";
 
 function LocatorDetails({ locator }: { locator: unknown }) {
   if (locator === null || locator === undefined) {
@@ -73,11 +72,11 @@ export function DocumentDetails({
 
   return (
     <article className="space-y-5" aria-label="Document 详情">
-      <div className="space-y-3">
+      <section className="space-y-3">
         <div className="flex flex-wrap items-center gap-2">
-          <h2 className="text-lg font-semibold leading-tight">
+          <h3 className="text-base font-semibold leading-tight">
             {document.title}
-          </h2>
+          </h3>
           <Badge variant="outline">v{document.version}</Badge>
           <StatusBadge status={document.completeness} />
           {data.is_current_collection_pointer ? (
@@ -86,10 +85,6 @@ export function DocumentDetails({
             <Badge variant="warning">历史版本</Badge>
           )}
         </div>
-        <p className="text-xs text-muted-foreground">
-          {document.source_id} · {document.content_type ?? "内容类型未知"} ·{" "}
-          {formatBytes(document.content_size)}
-        </p>
         <dl className="grid gap-3 text-xs sm:grid-cols-2">
           <div>
             <dt className="text-muted-foreground">发布时间</dt>
@@ -125,11 +120,11 @@ export function DocumentDetails({
           </p>
         ) : null}
         <OriginalLinks original={data.original} />
-      </div>
+      </section>
 
       <Separator />
 
-      <div className="space-y-4">
+      <section className="space-y-3">
         <div>
           <h3 className="text-sm font-semibold">处理状态</h3>
           <p className="mt-1 text-sm text-muted-foreground">
@@ -196,13 +191,18 @@ export function DocumentDetails({
             </TableRow>
           </TableBody>
         </Table>
-      </div>
+      </section>
 
-      <Section
-        title="当前可读片段"
-        description="仅展示当前成功解析批次；更早的历史片段仍可由旧报告引用。"
-        actions={<Badge variant="secondary">{data.current_chunks.count} 个</Badge>}
-      >
+      <Separator />
+
+      <section className="space-y-3">
+        <div className="flex flex-wrap items-center gap-2">
+          <h3 className="text-sm font-semibold">当前片段</h3>
+          <Badge variant="secondary">{data.current_chunks.count} 个</Badge>
+        </div>
+        <p className="text-sm text-muted-foreground">
+          仅展示当前成功解析批次；更早的历史片段仍可由旧报告引用。
+        </p>
         {data.current_chunks.items.length ? (
           <ol className="divide-y divide-border">
             {data.current_chunks.items.map((chunk) => (
@@ -240,12 +240,17 @@ export function DocumentDetails({
             description="这表示当前版本尚无成功解析批次，或解析出的正文为空；请结合上方解析状态判断。"
           />
         )}
-      </Section>
+      </section>
 
-      <Section
-        title="结构化 Fact"
-        description="Fact 是已保存的抽取结果，保留数值、单位、观测期和证据定位。"
-      >
+      <Separator />
+
+      <section className="space-y-3">
+        <div>
+          <h3 className="text-sm font-semibold">结构化 Fact</h3>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Fact 是已保存的抽取结果，保留数值、单位、观测期和证据定位。
+          </p>
+        </div>
         {facts.loading ? (
           <LoadingPanel label="正在读取 Fact" />
         ) : facts.error ? (
@@ -253,7 +258,7 @@ export function DocumentDetails({
         ) : (
           <FactTable facts={facts.data?.items ?? []} />
         )}
-      </Section>
+      </section>
     </article>
   );
 }

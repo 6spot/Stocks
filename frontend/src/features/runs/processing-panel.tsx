@@ -170,7 +170,7 @@ export function ProcessingPanel() {
                       {shortId(item.document_id)}
                     </p>
                     {item.wait_reason ? (
-                      <p className="mt-1 text-amber-800">
+                      <p className="mt-1 text-warning-text">
                         等待：{item.wait_reason.replaceAll("_", " ")}
                       </p>
                     ) : null}
@@ -191,7 +191,7 @@ export function ProcessingPanel() {
                   <TableCell>
                     <StatusBadge status={item.status} />
                     {item.status === "running" ? (
-                      <p className="mt-1 text-xs text-amber-800">
+                      <p className="mt-1 text-xs text-warning-text">
                         需要先确认旧进程停止
                       </p>
                     ) : null}

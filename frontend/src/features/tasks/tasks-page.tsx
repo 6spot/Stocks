@@ -131,7 +131,7 @@ export function TasksPage() {
                       <div className="space-y-1">
                         <div className="flex items-center gap-2">
                           <StatusBadge status={active.status} />
-                          <span className="text-amber-800">活跃 Run</span>
+                          <span className="text-warning-text">活跃 Run</span>
                         </div>
                         <p className="font-code text-muted-foreground">
                           {active.run_id}

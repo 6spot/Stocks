@@ -139,7 +139,7 @@ function ComparisonResult({
       </div>
 
       {data.warnings.length ? (
-        <ul className="space-y-1 rounded-lg bg-amber-50 p-3 text-xs text-amber-950">
+        <ul className="space-y-1 rounded-lg bg-muted p-3 text-xs">
           {data.warnings.map((warning) => (
             <li key={warning.code}>{warning.message}</li>
           ))}

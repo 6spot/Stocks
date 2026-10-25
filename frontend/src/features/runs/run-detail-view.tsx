@@ -2,7 +2,6 @@ import { Link } from "react-router-dom";
 import { CircleAlert } from "lucide-react";
 import { dashboardApi } from "@/api/dashboard";
 import { EmptyPanel, ErrorPanel, LoadingPanel } from "@/components/async-state";
-import { Section } from "@/components/section";
 import { StatusBadge } from "@/components/status-badge";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
@@ -70,9 +69,9 @@ export function RunDetailView({
   const data = run.data;
   return (
     <article className="space-y-5">
-      <div className="space-y-3">
+      <section className="space-y-3">
         <div className="flex flex-wrap items-center gap-2">
-          <h2 className="text-lg font-semibold">{data.task_id}</h2>
+          <h3 className="text-base font-semibold">{data.task_id}</h3>
           <StatusBadge status={data.status} />
           {data.retry_of_run_id ? (
             <Badge variant="outline">重试 Run</Badge>
@@ -81,7 +80,7 @@ export function RunDetailView({
         <p className="font-code text-xs break-all text-muted-foreground">
           {data.run_id}
         </p>
-        <dl className="grid gap-3 text-xs sm:grid-cols-2 lg:grid-cols-4">
+        <dl className="grid gap-3 text-xs sm:grid-cols-2">
           <div>
             <dt className="text-muted-foreground">创建</dt>
             <dd className="tabular-nums">{formatDateTime(data.created_at)}</dd>
@@ -124,90 +123,89 @@ export function RunDetailView({
             </p>
           </div>
         ) : null}
-        <RunActions
-          run={data}
-          onChanged={() => {
-            run.refresh();
-            onChanged?.();
-          }}
-        />
-        {data.report ? (
-          <Link
-            to={`/research?report=${data.report.report_id}`}
-            className="block text-sm font-medium text-primary underline-offset-4 hover:underline"
-          >
-            打开此 Run 生成的报告
-          </Link>
-        ) : null}
-      </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <RunActions
+            run={data}
+            onChanged={() => {
+              run.refresh();
+              onChanged?.();
+            }}
+          />
+          {data.report ? (
+            <Link
+              to={`/research?report=${data.report.report_id}`}
+              className="text-sm font-medium text-primary underline-offset-4 hover:underline"
+            >
+              打开此 Run 生成的报告
+            </Link>
+          ) : null}
+        </div>
+      </section>
 
       <Separator />
 
-      <Section
-        title="步骤"
-        description="只显示服务端去敏后的定位、状态和安全错误。"
-        contentClassName="space-y-0"
-      >
+      <section className="space-y-3">
+        <div>
+          <h3 className="text-sm font-semibold">步骤</h3>
+          <p className="mt-1 text-sm text-muted-foreground">
+            只显示服务端去敏后的定位、状态和安全错误。
+          </p>
+        </div>
         {data.steps.length ? (
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead className="w-10">#</TableHead>
-                <TableHead>类型</TableHead>
-                <TableHead>状态</TableHead>
-                <TableHead>耗时 / 用量</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {data.steps.map((step) => (
-                <TableRow key={step.step_id}>
-                  <TableCell className="font-code text-xs text-muted-foreground">
-                    {step.position}
-                  </TableCell>
-                  <TableCell className="text-xs">
-                    <p className="font-medium">{step.type}</p>
-                    <p className="mt-0.5 font-code text-muted-foreground">
-                      {step.step_id} · {formatDateTime(step.created_at)}
-                    </p>
-                    {step.error?.message || step.error?.code ? (
-                      <p className="mt-1 text-destructive">
-                        {step.error.message ?? step.error.code}
-                      </p>
-                    ) : null}
-                    {step.output !== null && step.output !== undefined ? (
-                      <details className="mt-1 text-muted-foreground">
-                        <summary className="cursor-pointer font-medium text-foreground">
-                          安全输出
-                        </summary>
-                        <pre className="mt-2 max-h-56 overflow-auto rounded-lg bg-muted p-3 whitespace-pre-wrap">
-                          {formatValue(step.output)}
-                        </pre>
-                      </details>
-                    ) : null}
-                  </TableCell>
-                  <TableCell>
-                    <StatusBadge status={step.status} />
-                  </TableCell>
-                  <TableCell className="text-xs text-muted-foreground">
-                    {stepUsageLine(step.usage) ?? "未记录"}
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+          <div className="space-y-2">
+            {data.steps.map((step) => (
+              <div
+                key={step.step_id}
+                className="rounded-lg border border-border px-3 py-2"
+              >
+                <div className="flex flex-wrap items-center gap-2 text-xs">
+                  <span className="font-code text-muted-foreground">
+                    #{step.position}
+                  </span>
+                  <span className="font-medium">{step.type}</span>
+                  <StatusBadge status={step.status} />
+                  <span className="ml-auto text-muted-foreground">
+                    {stepUsageLine(step.usage) ?? "用量未记录"}
+                  </span>
+                </div>
+                <p className="mt-1 font-code text-xs text-muted-foreground">
+                  {step.step_id} · {formatDateTime(step.created_at)}
+                </p>
+                {step.error?.message || step.error?.code ? (
+                  <p className="mt-1 text-xs text-destructive">
+                    {step.error.message ?? step.error.code}
+                  </p>
+                ) : null}
+                {step.output !== null && step.output !== undefined ? (
+                  <details className="mt-1 text-xs text-muted-foreground">
+                    <summary className="cursor-pointer font-medium text-foreground">
+                      安全输出
+                    </summary>
+                    <pre className="mt-2 max-h-56 overflow-auto rounded-lg bg-muted p-3 whitespace-pre-wrap">
+                      {formatValue(step.output)}
+                    </pre>
+                  </details>
+                ) : null}
+              </div>
+            ))}
+          </div>
         ) : (
           <EmptyPanel
             title="尚未记录步骤"
             description="Run 可能仍在等待 Worker 领取。"
           />
         )}
-      </Section>
+      </section>
 
-      <Section
-        title="模型调用"
-        description="显示实际 Provider、模型、耗时、用量、供应商提供的费用与回退原因。"
-        contentClassName="space-y-0"
-      >
+      <Separator />
+
+      <section className="space-y-3">
+        <div>
+          <h3 className="text-sm font-semibold">模型调用</h3>
+          <p className="mt-1 text-sm text-muted-foreground">
+            显示实际 Provider、模型、耗时、用量、供应商提供的费用与回退原因。
+          </p>
+        </div>
         {data.model_calls.length ? (
           <Table>
             <TableHeader>
@@ -242,7 +240,7 @@ export function RunDetailView({
                       Provider {call.provider ?? "未记录"}
                     </span>
                     {call.fallback_reason ? (
-                      <span className="mt-1 block text-amber-700">
+                      <span className="mt-1 block text-warning-text">
                         回退：{call.fallback_reason}
                       </span>
                     ) : null}
@@ -270,7 +268,9 @@ export function RunDetailView({
         ) : (
           <EmptyPanel title="没有模型调用记录" />
         )}
-      </Section>
+      </section>
+
+      <Separator />
 
       <UsageSummarySection
         usage={data.usage}
