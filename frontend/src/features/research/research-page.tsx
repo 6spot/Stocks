@@ -388,6 +388,12 @@ function ReportBody({
         />
       </div>
 
+      <div className="mt-8">
+        <h2 className="text-sm font-semibold text-foreground">支撑信息</h2>
+        <p className="mt-1 text-sm text-muted-foreground">
+          报告引用的证据、来源质量与本次研究用量；按需展开。
+        </p>
+      </div>
       <Tabs
         value={supportTab}
         onValueChange={(value) => setSupportTab(parseSupportTab(String(value)))}
