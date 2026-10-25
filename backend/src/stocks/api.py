@@ -5,7 +5,7 @@ import logging
 import secrets
 from collections import defaultdict
 from copy import deepcopy
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from functools import lru_cache
 from heapq import merge
@@ -17,7 +17,17 @@ from uuid import UUID
 from fastapi import FastAPI, HTTPException, Query, Request, Response
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field
-from sqlalchemy import String, and_, column, func, literal, or_, select, values
+from sqlalchemy import (
+    String,
+    and_,
+    column,
+    func,
+    literal,
+    literal_column,
+    or_,
+    select,
+    values,
+)
 from sqlalchemy.dialects.postgresql import JSONPATH, distinct_on
 from sqlalchemy.orm import Session
 
@@ -386,6 +396,17 @@ def overview() -> dict:
             or 0
         )
         backlog = _backlog_counts(session)
+        now = datetime.now(UTC)
+        library = _overview_library(session, source_summaries, now=now)
+        attention = _overview_attention(
+            session,
+            source_summaries,
+            failed_sources=failed_sources,
+            backlog=backlog,
+            source_error=source_error,
+            task_error=task_error,
+            now=now,
+        )
         recent_calls = (
             session.scalars(
                 select(ModelCall)
@@ -397,6 +418,8 @@ def overview() -> dict:
             else []
         )
         return {
+            "library": library,
+            "attention": attention,
             "collection": {
                 "configured_sources": len(configured_sources),
                 "partial_sources": failed_sources,
@@ -441,6 +464,279 @@ def overview() -> dict:
                 "tasks": task_error,
             },
         }
+
+
+def _utc_day(column: object) -> object:
+    """Calendar day of a timestamptz column, free of DB session TZ."""
+
+    return func.date(func.timezone(literal_column("'UTC'"), column))
+
+
+def _overview_library(
+    session: Session,
+    source_summaries: list[dict],
+    *,
+    now: datetime,
+) -> dict:
+    """Deterministic stored-library aggregates for the Overview.
+
+    Chunks count the current parse batch of each Document version, so a failed
+    reprocess never inflates what the library claims to hold.
+    """
+
+    week_start = now - timedelta(days=7)
+    first_day = now.date() - timedelta(days=13)
+    documents = int(session.scalar(select(func.count(Document.id))) or 0)
+    chunks = int(
+        session.scalar(
+            select(func.count(DocumentChunk.id))
+            .join(
+                DocumentParseState,
+                DocumentParseState.document_id == DocumentChunk.document_id,
+            )
+            .where(
+                DocumentParseState.current_batch_id
+                == DocumentChunk.parse_batch_id
+            )
+        )
+        or 0
+    )
+    facts = int(session.scalar(select(func.count(Fact.id))) or 0)
+    reports = int(session.scalar(select(func.count(Report.id))) or 0)
+    earliest, latest = session.execute(
+        select(
+            func.min(Document.collected_at),
+            func.max(Document.collected_at),
+        )
+    ).one()
+    documents_this_week = int(
+        session.scalar(
+            select(func.count(Document.id)).where(
+                Document.collected_at >= week_start
+            )
+        )
+        or 0
+    )
+    facts_this_week = int(
+        session.scalar(
+            select(func.count(Fact.id)).where(Fact.created_at >= week_start)
+        )
+        or 0
+    )
+    documents_by_source = {
+        source_id: int(count)
+        for source_id, count in session.execute(
+            select(Document.source_id, func.count(Document.id)).group_by(
+                Document.source_id
+            )
+        ).all()
+    }
+    facts_by_source = {
+        source_id: int(count)
+        for source_id, count in session.execute(
+            select(Document.source_id, func.count(Fact.id))
+            .join(Document, Document.id == Fact.document_id)
+            .group_by(Document.source_id)
+        ).all()
+    }
+    # The latest attempt that stored complete content is the last successful
+    # collection this repository can evidence per Source.
+    last_success = {
+        source_id: collected_at
+        for source_id, collected_at in session.execute(
+            select(Document.source_id, func.max(Document.collected_at))
+            .where(Document.completeness == "complete")
+            .group_by(Document.source_id)
+        ).all()
+    }
+    document_days = {
+        _day_key(day): int(count)
+        for day, count in session.execute(
+            select(_utc_day(Document.collected_at), func.count(Document.id))
+            .where(_utc_day(Document.collected_at) >= first_day)
+            .group_by(_utc_day(Document.collected_at))
+        ).all()
+    }
+    fact_days = {
+        _day_key(day): int(count)
+        for day, count in session.execute(
+            select(_utc_day(Fact.created_at), func.count(Fact.id))
+            .where(_utc_day(Fact.created_at) >= first_day)
+            .group_by(_utc_day(Fact.created_at))
+        ).all()
+    }
+    by_source: list[dict] = []
+    for item in source_summaries:
+        source_id = item["source_id"]
+        source_documents = documents_by_source.get(source_id, 0)
+        source_facts = facts_by_source.get(source_id, 0)
+        if not source_documents and not source_facts:
+            continue
+        by_source.append(
+            {
+                "source_id": source_id,
+                "name": item["name"],
+                "documents": source_documents,
+                "facts": source_facts,
+                "last_success_at": _iso(last_success.get(source_id)),
+                "freshness": item["freshness"]["status"],
+                "expected_freshness": item["freshness"][
+                    "expected_freshness"
+                ],
+            }
+        )
+    daily = [
+        {
+            "date": day.isoformat(),
+            "documents": document_days.get(day.isoformat(), 0),
+            "facts": fact_days.get(day.isoformat(), 0),
+        }
+        for day in (
+            first_day + timedelta(days=offset) for offset in range(14)
+        )
+    ]
+    return {
+        "documents": documents,
+        "chunks": chunks,
+        "facts": facts,
+        "reports": reports,
+        "sources": len(by_source),
+        "earliest_collected_at": _iso(earliest),
+        "latest_collected_at": _iso(latest),
+        "documents_this_week": documents_this_week,
+        "facts_this_week": facts_this_week,
+        "by_source": by_source,
+        "daily": daily,
+    }
+
+
+def _day_key(value: object) -> str:
+    """Normalize a DB date/day value into ``YYYY-MM-DD``."""
+
+    isoformat = getattr(value, "isoformat", None)
+    return str(isoformat())[:10] if callable(isoformat) else str(value)
+
+
+def _overview_attention(
+    session: Session,
+    source_summaries: list[dict],
+    *,
+    failed_sources: list[dict],
+    backlog: dict,
+    source_error: dict | None,
+    task_error: dict | None,
+    now: datetime,
+) -> list[dict]:
+    """Deterministic Owner-facing exceptions; no model judgement involved."""
+
+    items: list[dict] = []
+    for error, link, label in (
+        (source_error, "/sources", "来源配置读取失败"),
+        (task_error, "/tasks", "任务配置读取失败"),
+    ):
+        if not error:
+            continue
+        code = error.get("code") if isinstance(error, dict) else None
+        items.append(
+            {
+                "kind": "config_error",
+                "severity": "error",
+                "message": f"{label}（{code}）" if code else label,
+                "link": link,
+            }
+        )
+    for source in failed_sources:
+        items.append(
+            {
+                "kind": "source_failure",
+                "severity": "warning",
+                "message": f"{source['name']} 最近一次采集未完成",
+                "link": "/sources",
+                "source_id": source["source_id"],
+            }
+        )
+    for source in source_summaries:
+        freshness = source["freshness"]
+        expected = freshness["expected_freshness"]
+        # An unconfigured cadence is not a defect: only report a Source that
+        # declared how fresh it should be and now misses it.
+        if expected is None or freshness["status"] != "stale":
+            continue
+        items.append(
+            {
+                "kind": "source_stale",
+                "severity": "warning",
+                "message": f"{source['name']} 超过预期新鲜度 {expected}",
+                "link": "/sources",
+                "source_id": source["source_id"],
+            }
+        )
+    latest_runs = session.scalars(
+        select(TaskRun)
+        .ext(distinct_on(TaskRun.task_id))
+        .order_by(
+            TaskRun.task_id,
+            TaskRun.created_at.desc(),
+            TaskRun.id.desc(),
+        )
+    ).all()
+    for run in latest_runs:
+        if run.status != "failed":
+            continue
+        items.append(
+            {
+                "kind": "task_failed",
+                "severity": "error",
+                "message": f"任务 {run.task_id} 最近一次运行失败",
+                "link": f"/runs?task={run.task_id}&status=failed",
+                "task_id": run.task_id,
+            }
+        )
+    # Only failures that will not retry themselves need the Owner. A failed row
+    # with an automatic retry still scheduled, and a pending row parked on a
+    # capability gap (no processor, unsupported content, waiting for a verdict),
+    # are states the system already explains: counting them would make
+    # ``attention`` never empty in a deployment that has those gaps.
+    failed_stages = int(
+        session.scalar(
+            select(func.count(DocumentProcessingState.document_id)).where(
+                DocumentProcessingState.status == "failed",
+                or_(
+                    DocumentProcessingState.auto_retry.is_(False),
+                    DocumentProcessingState.attempts
+                    >= DocumentProcessingState.max_attempts,
+                    DocumentProcessingState.next_attempt_at.is_(None),
+                ),
+            )
+        )
+        or 0
+    )
+    stale_pending = int(
+        session.scalar(
+            select(func.count(DocumentProcessingState.document_id)).where(
+                DocumentProcessingState.status == "pending",
+                DocumentProcessingState.wait_reason.is_(None),
+                DocumentProcessingState.updated_at
+                < now - timedelta(hours=1),
+            )
+        )
+        or 0
+    )
+    if failed_stages or stale_pending:
+        parts = []
+        if failed_stages:
+            parts.append(f"{failed_stages} 个处理阶段失败")
+        if stale_pending:
+            parts.append(f"{stale_pending} 个阶段待处理超过 1 小时")
+        items.append(
+            {
+                "kind": "processing_backlog",
+                "severity": "error" if failed_stages else "warning",
+                "message": "处理积压：" + "，".join(parts),
+                "link": "/runs?tab=processing",
+            }
+        )
+    return items
 
 
 def _processing_overview(backlog: dict) -> dict:
@@ -3454,16 +3750,47 @@ def _recent_reports(session: Session, limit: int = 5) -> list[dict]:
         .order_by(Report.created_at.desc(), Report.id.desc())
         .limit(limit)
     ).all()
-    return [
-        {
-            "report_id": str(report.id),
-            "run_id": str(report.run_id),
-            "task_id": report.task_id,
-            "title": report.title,
-            "created_at": _iso(report.created_at),
-        }
-        for report in rows
-    ]
+    packages = {
+        package.run_id: package
+        for package in (
+            session.scalars(
+                select(EvidencePackage).where(
+                    EvidencePackage.run_id.in_(
+                        [report.run_id for report in rows]
+                    )
+                )
+            ).all()
+            if rows
+            else []
+        )
+    }
+    items: list[dict] = []
+    for report in rows:
+        package = packages.get(report.run_id)
+        coverage = (
+            package.coverage
+            if package is not None and isinstance(package.coverage, dict)
+            else {}
+        )
+        gaps = coverage.get("gaps")
+        items.append(
+            {
+                "report_id": str(report.id),
+                "run_id": str(report.run_id),
+                "task_id": report.task_id,
+                "title": report.title,
+                "created_at": _iso(report.created_at),
+                # Independent originals behind the report and how many recorded
+                # gaps it carries; both stay null when no package is stored.
+                "origin_group_count": (
+                    coverage.get("origin_group_count")
+                    if package is not None
+                    else None
+                ),
+                "gap_count": len(gaps) if isinstance(gaps, list) else None,
+            }
+        )
+    return items
 
 
 def _latest_research_coverage(session: Session) -> dict | None:

@@ -39,6 +39,10 @@
   --color-warning: var(--warning);
   --color-info: var(--info);
   --color-warning-text: var(--warning-text);
+  /* Chart series colors. Two muted, distinguishable hues that keep the same
+     meaning across the Overview's data-inflow chart and its legend. */
+  --color-chart-documents: var(--chart-documents);
+  --color-chart-facts: var(--chart-facts);
   --radius-sm: calc(var(--radius) * 0.6);
   --radius-md: calc(var(--radius) * 0.8);
   --radius-lg: var(--radius);
@@ -75,6 +79,8 @@
   --warning: oklch(0.75 0.16 85);
   --warning-text: oklch(0.55 0.13 75);
   --info: oklch(0.55 0.18 250);
+  --chart-documents: oklch(0.55 0.09 250);
+  --chart-facts: oklch(0.68 0.12 85);
   --border: oklch(0.92 0 0);
   --input: oklch(0.92 0 0);
   --ring: oklch(0.705 0.015 286);

@@ -10,7 +10,7 @@ from uuid import UUID, uuid4
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session, sessionmaker
 
 import stocks.api as api_module
@@ -19,6 +19,9 @@ from stocks.models import (
     Analysis,
     Base,
     Document,
+    DocumentChunk,
+    DocumentParseBatch,
+    DocumentParseState,
     DocumentProcessingState,
     EvidencePackage,
     Fact,
@@ -330,6 +333,75 @@ def add_task_definition(
             updated_at=NOW,
         )
     )
+
+
+def add_parse_batch(
+    engine,
+    document_id: UUID,
+    *,
+    chunk_texts: tuple[str, ...] = ("Chunk one", "Chunk two"),
+) -> None:
+    with Session(engine) as session:
+        document = session.get(Document, document_id)
+        assert document is not None
+        batch = DocumentParseBatch(
+            document_id=document_id,
+            processor_version="test",
+            config_fingerprint="f" * 64,
+            content_hash=document.content_hash,
+            attempt_number=1,
+            status="completed",
+            chunk_count=len(chunk_texts),
+            created_at=NOW,
+        )
+        session.add(batch)
+        session.flush()
+        session.add_all(
+            DocumentChunk(
+                document_id=document_id,
+                parse_batch_id=batch.id,
+                position=index,
+                text=text,
+                locator={"segments": []},
+            )
+            for index, text in enumerate(chunk_texts)
+        )
+        session.add(
+            DocumentParseState(
+                document_id=document_id,
+                status="completed",
+                processor_version="test",
+                config_fingerprint="f" * 64,
+                latest_batch_id=batch.id,
+                current_batch_id=batch.id,
+                chunk_count=len(chunk_texts),
+                attempted_at=NOW,
+            )
+        )
+        session.commit()
+
+
+def add_fact(
+    engine,
+    document_id: UUID,
+    *,
+    key: str = "fact-1",
+    created_at: datetime = NOW,
+) -> None:
+    with Session(engine) as session:
+        session.add(
+            Fact(
+                document_id=document_id,
+                fact_key=f"{key}-{document_id}",
+                fact_type="note",
+                origin_method="source_mapping",
+                evidence_ref={"pointer": f"/{key}"},
+                statement=f"Stored {key}",
+                attributes={},
+                created_at=created_at,
+            )
+        )
+        session.commit()
 
 
 def test_public_login_cookie_and_private_routes_fail_closed(
@@ -712,6 +784,259 @@ def test_overview_sources_distinguish_failure_no_update_freshness_and_backlog(
     )
     assert tasks_page_two.status_code == 200
     assert tasks_page_two.json()["items"][0]["task_id"] == "research_task"
+
+
+def test_overview_library_counts_current_batches_and_zero_fills_daily(
+    engine, config, client, snapshot
+):
+    _objects, store = snapshot
+    login(client)
+    today = datetime.now(UTC)
+    first = create_document(
+        engine,
+        config,
+        store,
+        source_id="alpha",
+        dedupe_key="alpha-today",
+        collected_at=today - timedelta(hours=2),
+        published_at=today - timedelta(minutes=30),
+    )
+    second = create_document(
+        engine,
+        config,
+        store,
+        source_id="beta",
+        dedupe_key="beta-old",
+        collected_at=today - timedelta(days=40),
+    )
+    # The first Document holds two chunks in its current batch and one Fact;
+    # the second one is never parsed, so it contributes no chunk.
+    add_parse_batch(engine, first, chunk_texts=("one", "two"))
+    add_fact(engine, first, key="recent", created_at=today - timedelta(hours=1))
+    add_fact(engine, second, key="old", created_at=today - timedelta(days=40))
+
+    body = client.get("/api/overview").json()
+    library = body["library"]
+    assert library["documents"] == 2
+    assert library["chunks"] == 2
+    assert library["facts"] == 2
+    assert library["reports"] == 0
+    assert library["sources"] == 2
+    assert library["documents_this_week"] == 1
+    assert library["facts_this_week"] == 1
+    assert library["earliest_collected_at"].startswith(
+        (today - timedelta(days=40)).date().isoformat()
+    )
+    assert library["latest_collected_at"].startswith(
+        (today - timedelta(hours=2)).date().isoformat()
+    )
+
+    by_source = {
+        item["source_id"]: item for item in library["by_source"]
+    }
+    assert set(by_source) == {"alpha", "beta"}
+    assert by_source["alpha"]["documents"] == 1
+    assert by_source["alpha"]["facts"] == 1
+    assert by_source["alpha"]["freshness"] == "fresh"
+    assert by_source["alpha"]["expected_freshness"] == "2h"
+    assert by_source["alpha"]["last_success_at"] is not None
+    assert by_source["beta"]["documents"] == 1
+    assert by_source["beta"]["facts"] == 1
+
+    # 14 consecutive days, oldest first, missing days present as zero.
+    daily = library["daily"]
+    assert len(daily) == 14
+    assert daily[-1]["date"] == today.date().isoformat()
+    days = [datetime.fromisoformat(item["date"]).date() for item in daily]
+    assert [
+        (days[index + 1] - days[index]).days for index in range(len(days) - 1)
+    ] == [1] * 13
+    assert sum(item["documents"] for item in daily) == 1
+    assert sum(item["facts"] for item in daily) == 1
+    assert any(
+        item["documents"] == 0 and item["facts"] == 0 for item in daily
+    )
+
+
+def test_overview_attention_reports_failures_and_stale_sources(
+    engine, config, client, snapshot
+):
+    _objects, store = snapshot
+    login(client)
+    now = datetime.now(UTC)
+    # beta has an old disclosure and a configured 1h freshness, so it is stale.
+    document_id = create_document(
+        engine,
+        config,
+        store,
+        source_id="beta",
+        dedupe_key="beta-stale",
+        collected_at=now - timedelta(minutes=5),
+        published_at=now - timedelta(hours=5),
+    )
+    with Session(engine) as session:
+        add_task_definition(session, "collection_task")
+        add_task_definition(session, "research_task", task_type="research")
+        collection_run = TaskRun(
+            task_id="collection_task",
+            status="succeeded",
+            objective="Collect",
+            strategy=None,
+            scope={"source_ids": ["beta"]},
+            config_snapshot={},
+            model_snapshot={},
+            prompt_snapshot={},
+            config_hash="a" * 64,
+            output={
+                "sources": [
+                    {
+                        "source_id": "beta",
+                        "discovered": 1,
+                        "ingested": 0,
+                        "reused": 0,
+                        "skipped": 0,
+                        "failed": 1,
+                        "error": {
+                            "code": "HTTP_STATUS",
+                            "message": "Request failed",
+                        },
+                    }
+                ]
+            },
+            created_at=now,
+            finished_at=now,
+        )
+        failed_run = TaskRun(
+            task_id="research_task",
+            status="failed",
+            objective="Research",
+            strategy=None,
+            scope={"topics": ["macro"]},
+            config_snapshot={},
+            model_snapshot={},
+            prompt_snapshot={},
+            config_hash="a" * 64,
+            error={"code": "MODEL_UNAVAILABLE"},
+            created_at=now,
+            finished_at=now,
+        )
+        session.add_all((collection_run, failed_run))
+        session.flush()
+        # A failed background stage is the processing backlog this Overview
+        # reports; a pending row younger than one hour is not.
+        backlog_state = session.get(
+            DocumentProcessingState, (document_id, "facts")
+        )
+        assert backlog_state is not None
+        backlog_state.status = "failed"
+        backlog_state.error = {"code": "FACTS_FAILED"}
+        session.commit()
+
+    attention = client.get("/api/overview").json()["attention"]
+    kinds = {item["kind"] for item in attention}
+    assert kinds == {
+        "source_failure",
+        "source_stale",
+        "task_failed",
+        "processing_backlog",
+    }
+    by_kind = {item["kind"]: item for item in attention}
+    assert by_kind["source_failure"]["source_id"] == "beta"
+    assert by_kind["source_failure"]["link"] == "/sources"
+    assert by_kind["source_stale"]["source_id"] == "beta"
+    assert by_kind["task_failed"]["task_id"] == "research_task"
+    assert by_kind["task_failed"]["link"] == (
+        "/runs?task=research_task&status=failed"
+    )
+    assert by_kind["processing_backlog"]["link"] == "/runs?tab=processing"
+    # The failed row above has no retry scheduled (auto_retry default False in
+    # this fixture), so it is genuinely Owner-facing.
+    assert "处理阶段失败" in by_kind["processing_backlog"]["message"]
+    assert by_kind["task_failed"]["severity"] == "error"
+    # Alpha has content and no expected freshness, so it is never reported
+    # stale.
+    assert not any(
+        item.get("source_id") == "alpha" for item in attention
+    )
+
+
+def test_overview_attention_is_empty_for_a_healthy_library(
+    engine, config, client, snapshot
+):
+    _objects, store = snapshot
+    login(client)
+    now = datetime.now(UTC)
+    document_id = create_document(
+        engine,
+        config,
+        store,
+        source_id="alpha",
+        collected_at=now - timedelta(minutes=5),
+        published_at=now - timedelta(minutes=10),
+    )
+    add_parse_batch(engine, document_id)
+    with Session(engine) as session:
+        # Every stage completed: no failed row and nothing pending.
+        for state in session.scalars(
+            select(DocumentProcessingState).where(
+                DocumentProcessingState.document_id == document_id
+            )
+        ).all():
+            state.status = "completed"
+        session.commit()
+
+    body = client.get("/api/overview").json()
+    assert body["attention"] == []
+    assert body["library"]["documents"] == 1
+    assert body["library"]["by_source"][0]["freshness"] == "fresh"
+
+
+def test_overview_attention_skips_stale_sources_without_expected_freshness(
+    engine, config, client, snapshot, tmp_path
+):
+    _objects, store = snapshot
+    login(client)
+    now = datetime.now(UTC)
+    create_document(
+        engine,
+        config,
+        store,
+        source_id="alpha",
+        collected_at=now - timedelta(days=30),
+        published_at=now - timedelta(days=30),
+    )
+    # Remove the declared cadence: an old Source is only "stale" when its own
+    # configuration says how fresh it should be.
+    tmp_path.joinpath("sources.yaml").write_text(
+        tmp_path.joinpath("sources.yaml")
+        .read_text(encoding="utf-8")
+        .replace("    expected_freshness: 2h\n", "")
+        .replace("    expected_freshness: 1h\n", ""),
+        encoding="utf-8",
+    )
+
+    body = client.get("/api/overview").json()
+    assert body["library"]["by_source"][0]["expected_freshness"] is None
+    assert not any(
+        item["kind"] == "source_stale" for item in body["attention"]
+    )
+
+
+def test_overview_attention_reports_configuration_errors(
+    engine, config, client, tmp_path
+):
+    login(client)
+    tmp_path.joinpath("sources.yaml").write_text(
+        "not: [valid", encoding="utf-8"
+    )
+    body = client.get("/api/overview").json()
+    config_errors = [
+        item for item in body["attention"] if item["kind"] == "config_error"
+    ]
+    assert len(config_errors) == 1
+    assert config_errors[0]["severity"] == "error"
+    assert config_errors[0]["link"] == "/sources"
+    assert body["configuration_errors"]["sources"]["code"]
 
 
 def test_duplicate_trigger_returns_active_run_even_with_broken_yaml(
@@ -1662,3 +1987,47 @@ def test_report_evidence_versions_and_fact_pages_are_bounded(
     reports = client.get("/api/reports", params={"limit": 1})
     assert reports.status_code == 200
     assert reports.json()["items"][0]["report_id"] == str(report_id)
+
+
+def test_overview_attention_ignores_retryable_and_parked_stages(
+    engine, config, client, snapshot
+):
+    """Only Owner-facing stage states raise attention.
+
+    A failed stage with an automatic retry still scheduled, and a pending stage
+    parked on a capability gap, are both states the system already explains.
+    Counting them would make 无阻塞 unreachable in exactly the deployments that
+    have those gaps.
+    """
+
+    _objects, store = snapshot
+    login(client)
+    document_id = create_document(
+        engine,
+        config,
+        store,
+        source_id="alpha",
+        dedupe_key="parked-stage",
+        collected_at=datetime.now(UTC) - timedelta(minutes=5),
+    )
+    with Session(engine) as session:
+        retryable = session.get(DocumentProcessingState, (document_id, "facts"))
+        assert retryable is not None
+        retryable.status = "failed"
+        retryable.error = {"code": "TRANSIENT"}
+        retryable.auto_retry = True
+        retryable.attempts = 1
+        retryable.max_attempts = 3
+        retryable.next_attempt_at = datetime.now(UTC) + timedelta(minutes=5)
+        parked = session.get(DocumentProcessingState, (document_id, "classify"))
+        assert parked is not None
+        parked.status = "pending"
+        parked.wait_reason = "PROCESSOR_NOT_AVAILABLE"
+        parked.updated_at = datetime.now(UTC) - timedelta(hours=3)
+        session.commit()
+
+    attention = client.get("/api/overview").json()["attention"]
+
+    assert not any(
+        item["kind"] == "processing_backlog" for item in attention
+    )

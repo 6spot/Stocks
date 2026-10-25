@@ -187,6 +187,10 @@ export const recentReportSchema = z
     task_id: z.string(),
     title: z.string(),
     created_at: z.string(),
+    // Independent originals and recorded gaps of the report's Evidence
+    // Package; both are absent from list endpoints that do not join it.
+    origin_group_count: nullableNumber,
+    gap_count: nullableNumber,
   })
   .passthrough();
 
@@ -286,6 +290,73 @@ export type DocumentsResponse = z.infer<typeof documentsResponseSchema>;
 
 export const overviewSchema = z
   .object({
+    // Stored-library aggregates. The default keeps an older API payload
+    // (rolling deploy) renderable instead of blanking the whole page.
+    library: z
+      .object({
+        documents: z.number().int().nonnegative(),
+        chunks: z.number().int().nonnegative(),
+        facts: z.number().int().nonnegative(),
+        reports: z.number().int().nonnegative(),
+        sources: z.number().int().nonnegative(),
+        earliest_collected_at: nullableString,
+        latest_collected_at: nullableString,
+        documents_this_week: z.number().int().nonnegative(),
+        facts_this_week: z.number().int().nonnegative(),
+        by_source: z.array(
+          z
+            .object({
+              source_id: z.string(),
+              name: z.string(),
+              documents: z.number().int().nonnegative(),
+              facts: z.number().int().nonnegative(),
+              last_success_at: nullableString,
+              freshness: z.string(),
+              expected_freshness: nullableString,
+            })
+            .passthrough(),
+        ),
+        daily: z.array(
+          z
+            .object({
+              date: z.string(),
+              documents: z.number().int().nonnegative(),
+              facts: z.number().int().nonnegative(),
+            })
+            .passthrough(),
+        ),
+      })
+      .passthrough()
+      .optional()
+      .default({
+        documents: 0,
+        chunks: 0,
+        facts: 0,
+        reports: 0,
+        sources: 0,
+        earliest_collected_at: null,
+        latest_collected_at: null,
+        documents_this_week: 0,
+        facts_this_week: 0,
+        by_source: [],
+        daily: [],
+      }),
+    // Deterministic Owner-facing exceptions; absent on older payloads.
+    attention: z
+      .array(
+        z
+          .object({
+            kind: z.string(),
+            severity: z.string(),
+            message: z.string(),
+            link: z.string(),
+            source_id: nullableString,
+            task_id: nullableString,
+          })
+          .passthrough(),
+      )
+      .optional()
+      .default([]),
     collection: z
       .object({
         configured_sources: z.number().int().nonnegative(),

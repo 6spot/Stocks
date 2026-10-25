@@ -1,0 +1,8 @@
+{"file": "docs/data.md", "reason": "Source 配置、expected_freshness 与 Fact 时间字段语义"}
+{"file": "docs/execution.md", "reason": "Task/Run 与 collection Task 契约"}
+{"file": "docs/quickstart.md", "reason": "采集与处理命令入口"}
+{"file": ".trellis/spec/backend/logging-guidelines.md", "reason": "日志内容与脱敏边界"}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "错误码与异常保留规则"}
+{"file": ".trellis/spec/backend/worker-guidelines.md", "reason": "Worker 进程入口与事务边界"}
+{"file": ".trellis/spec/backend/testing-guidelines.md", "reason": "远程验证强制要求"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "最小测试范围"}

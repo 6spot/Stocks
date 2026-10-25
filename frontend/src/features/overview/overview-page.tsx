@@ -1,14 +1,23 @@
-import { ArrowRight } from "lucide-react";
+import { ArrowRight, CircleAlert, TriangleAlert } from "lucide-react";
+import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
+import { Bar, BarChart, CartesianGrid, XAxis, YAxis } from "recharts";
 import { getOverview } from "@/api/client";
-import { dashboardApi } from "@/api/dashboard";
+import type { Overview } from "@/api/schemas";
 import { EmptyPanel, ErrorPanel, LoadingPanel } from "@/components/async-state";
 import { PageHeader } from "@/components/page-header";
 import { Section } from "@/components/section";
 import { StatusBadge } from "@/components/status-badge";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { buttonVariants } from "@/components/ui/button";
+import {
+  ChartContainer,
+  ChartLegend,
+  ChartLegendContent,
+  ChartTooltip,
+  ChartTooltipContent,
+  type ChartConfig,
+} from "@/components/ui/chart";
 import {
   Table,
   TableBody,
@@ -18,21 +27,410 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { useResource } from "@/hooks/use-resource";
-import { formatDateTime, formatNumber, shortId } from "@/lib/format";
-import { gapLabel, statusLabel } from "@/lib/labels";
-import { cn } from "@/lib/utils";
-import { UsageModels, UsageStats } from "@/components/usage-summary";
+import { formatDateTime, formatNumber } from "@/lib/format";
+import { statusLabel } from "@/lib/labels";
+
+const chartConfig = {
+  documents: {
+    label: "文档",
+    color: "var(--chart-documents)",
+  },
+  facts: {
+    label: "Fact",
+    color: "var(--chart-facts)",
+  },
+} satisfies ChartConfig;
+
+function dayLabel(date: string): string {
+  // "2026-10-24" → "10-24": the year is already implied by the range.
+  return date.slice(5);
+}
+
+/**
+ * Recharts animates with requestAnimationFrame, which the global
+ * prefers-reduced-motion CSS cannot reach. Bars therefore opt out of their
+ * growth animation when the user asked for less motion.
+ */
+function usePrefersReducedMotion(): boolean {
+  const [reduced, setReduced] = useState(
+    () =>
+      typeof window !== "undefined" &&
+      typeof window.matchMedia === "function" &&
+      window.matchMedia("(prefers-reduced-motion: reduce)").matches,
+  );
+  useEffect(() => {
+    if (typeof window.matchMedia !== "function") {
+      return;
+    }
+    const query = window.matchMedia("(prefers-reduced-motion: reduce)");
+    setReduced(query.matches);
+    const listener = (event: MediaQueryListEvent) => setReduced(event.matches);
+    query.addEventListener("change", listener);
+    return () => query.removeEventListener("change", listener);
+  }, []);
+  return reduced;
+}
+
+function StatStrip({ library }: { library: Overview["library"] }) {
+  const stats = [
+    { label: "文档", value: library.documents },
+    { label: "Fact", value: library.facts },
+    { label: "报告", value: library.reports },
+    { label: "来源", value: library.sources },
+  ];
+  const span =
+    library.earliest_collected_at && library.latest_collected_at
+      ? `${library.earliest_collected_at.slice(0, 10)} ~ ${library.latest_collected_at.slice(0, 10)}`
+      : "尚无采集记录";
+  return (
+    <section aria-label="情报存量" className="space-y-3">
+      <dl className="grid grid-cols-2 gap-x-6 gap-y-4 lg:grid-cols-4 lg:divide-x lg:divide-border">
+        {stats.map(({ label, value }) => (
+          <div key={label} className="min-w-0 lg:pl-4 first:lg:pl-0">
+            <dt className="text-xs text-muted-foreground">{label}</dt>
+            <dd className="mt-1 text-2xl font-semibold tabular-nums">
+              {formatNumber(value)}
+            </dd>
+          </div>
+        ))}
+      </dl>
+      <p className="text-xs text-muted-foreground">
+        本周新增 文档 {formatNumber(library.documents_this_week)} · Fact{" "}
+        {formatNumber(library.facts_this_week)} · 时间跨度 {span}
+      </p>
+    </section>
+  );
+}
+
+function InflowChart({ library }: { library: Overview["library"] }) {
+  const reducedMotion = usePrefersReducedMotion();
+  const data = library.daily.map((item) => ({
+    ...item,
+    label: dayLabel(item.date),
+  }));
+  const empty = data.every((item) => !item.documents && !item.facts);
+  return (
+    <Section
+      title="数据流入"
+      description="最近 14 天每日新增文档与 Fact；无数据日期补 0。"
+    >
+      {empty ? (
+        <EmptyPanel
+          title="最近 14 天没有新增数据"
+          description="采集或抽取产生新内容后，这里显示每日流入。"
+        />
+      ) : (
+        <ChartContainer
+          config={chartConfig}
+          className="h-56 w-full"
+          role="img"
+          aria-label="最近 14 天文档与 Fact 新增柱状图"
+        >
+          <BarChart data={data} margin={{ top: 8, right: 8, bottom: 0 }}>
+            <CartesianGrid vertical={false} strokeDasharray="3 3" />
+            <XAxis
+              dataKey="label"
+              tickLine={false}
+              axisLine={false}
+              tickMargin={8}
+              minTickGap={8}
+            />
+            <YAxis
+              width={32}
+              tickLine={false}
+              axisLine={false}
+              allowDecimals={false}
+              tickMargin={4}
+            />
+            <ChartTooltip
+              cursor={false}
+              content={
+                <ChartTooltipContent
+                  labelFormatter={(_, entries) => {
+                    const date = entries[0]?.payload?.date;
+                    return typeof date === "string" ? date : "";
+                  }}
+                />
+              }
+            />
+            <ChartLegend content={<ChartLegendContent />} />
+            <Bar
+              dataKey="documents"
+              fill="var(--color-documents)"
+              radius={[4, 4, 0, 0]}
+              isAnimationActive={!reducedMotion}
+            />
+            <Bar
+              dataKey="facts"
+              fill="var(--color-facts)"
+              radius={[4, 4, 0, 0]}
+              isAnimationActive={!reducedMotion}
+            />
+          </BarChart>
+        </ChartContainer>
+      )}
+    </Section>
+  );
+}
+
+function SourceTable({ library }: { library: Overview["library"] }) {
+  return (
+    <Section
+      title="来源分布"
+      description="每个来源贡献的文档与 Fact；新鲜度按该来源配置的预期披露间隔判断。"
+      contentClassName="space-y-0"
+    >
+      {library.by_source.length ? (
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>来源</TableHead>
+              <TableHead className="text-right">文档</TableHead>
+              <TableHead className="text-right">Fact</TableHead>
+              <TableHead>最近成功</TableHead>
+              <TableHead>新鲜度</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {library.by_source.map((source) => (
+              <TableRow key={source.source_id}>
+                <TableCell className="max-w-56">
+                  <Link
+                    to="/sources"
+                    className="block truncate font-medium text-foreground hover:text-primary hover:underline"
+                    title={source.name}
+                  >
+                    {source.name}
+                  </Link>
+                  <span className="truncate font-code text-xs text-muted-foreground">
+                    {source.source_id}
+                  </span>
+                </TableCell>
+                <TableCell className="text-right tabular-nums">
+                  {formatNumber(source.documents)}
+                </TableCell>
+                <TableCell className="text-right tabular-nums">
+                  {formatNumber(source.facts)}
+                </TableCell>
+                <TableCell className="whitespace-nowrap text-xs text-muted-foreground">
+                  {formatDateTime(source.last_success_at)}
+                </TableCell>
+                <TableCell>
+                  <Badge
+                    variant={
+                      source.freshness === "fresh"
+                        ? "success"
+                        : source.freshness === "stale"
+                          ? "warning"
+                          : "outline"
+                    }
+                    title={
+                      source.expected_freshness
+                        ? `预期 ${source.expected_freshness}`
+                        : "未配置预期新鲜度"
+                    }
+                  >
+                    {statusLabel(source.freshness)}
+                  </Badge>
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      ) : (
+        <EmptyPanel
+          title="还没有来源数据"
+          description="采集成功入库后，这里按来源显示文档与 Fact 数量。"
+        />
+      )}
+    </Section>
+  );
+}
+
+function AttentionSection({ attention }: { attention: Overview["attention"] }) {
+  return (
+    <Section
+      title="需要处理"
+      description="确定性检查得到的异常；没有异常时不显示告警行。"
+    >
+      {attention.length ? (
+        <ul className="divide-y divide-border">
+          {attention.map((item, index) => {
+            const Icon =
+              item.severity === "error" ? CircleAlert : TriangleAlert;
+            return (
+              <li
+                key={`${item.kind}-${item.source_id ?? item.task_id ?? index}`}
+                className="flex flex-wrap items-center justify-between gap-3 py-2 first:pt-0 last:pb-0"
+              >
+                <span className="flex min-w-0 items-start gap-2 text-sm">
+                  <Icon
+                    aria-hidden="true"
+                    className={
+                      item.severity === "error"
+                        ? "mt-0.5 size-4 shrink-0 text-destructive"
+                        : "mt-0.5 size-4 shrink-0 text-warning-text"
+                    }
+                  />
+                  <span className="min-w-0">{item.message}</span>
+                </span>
+                <Link
+                  to={item.link}
+                  aria-label={`查看：${item.message}`}
+                  className="text-xs font-medium text-primary underline-offset-4 hover:underline"
+                >
+                  查看
+                </Link>
+              </li>
+            );
+          })}
+        </ul>
+      ) : (
+        <p className="text-sm text-muted-foreground">无阻塞</p>
+      )}
+    </Section>
+  );
+}
+
+function ReportTable({ reports }: { reports: Overview["reports"] }) {
+  return (
+    <Section
+      title="最新报告"
+      description="研究产出的报告；独立原件与缺口来自保存的证据包。"
+      contentClassName="space-y-0"
+    >
+      {reports.length ? (
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>标题</TableHead>
+              <TableHead>生成时间</TableHead>
+              <TableHead className="text-right">独立原件</TableHead>
+              <TableHead className="text-right">缺口</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {reports.map((report) => (
+              <TableRow key={report.report_id}>
+                <TableCell className="max-w-80">
+                  <Link
+                    to={`/research/${encodeURIComponent(report.report_id)}`}
+                    className="line-clamp-2 font-medium text-foreground hover:text-primary hover:underline"
+                  >
+                    {report.title}
+                  </Link>
+                </TableCell>
+                <TableCell className="whitespace-nowrap text-xs text-muted-foreground">
+                  {formatDateTime(report.created_at)}
+                </TableCell>
+                <TableCell className="text-right tabular-nums">
+                  {formatNumber(report.origin_group_count, "未知")}
+                </TableCell>
+                <TableCell className="text-right tabular-nums">
+                  {formatNumber(report.gap_count, "未知")}
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      ) : (
+        <EmptyPanel title="尚无研究报告" />
+      )}
+    </Section>
+  );
+}
+
+function RecentDocumentTable({
+  documents,
+}: {
+  documents: Overview["recent_documents"];
+}) {
+  return (
+    <Section
+      title="最近入库"
+      description="最近采集的文档；采集成功不代表已完成解析或向量索引。"
+      contentClassName="space-y-0"
+    >
+      {documents.length ? (
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>标题</TableHead>
+              <TableHead>来源</TableHead>
+              <TableHead>采集时间</TableHead>
+              <TableHead>处理状态</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {documents.map((document) => {
+              const stages = document.processing_stages ?? [];
+              const failed = stages.filter(
+                (stage) => stage.status === "failed",
+              ).length;
+              const pending = stages.filter(
+                (stage) =>
+                  stage.status === "pending" || stage.status === "running",
+              ).length;
+              const completed = stages.filter(
+                (stage) => stage.status === "completed",
+              ).length;
+              const skipped = stages.filter(
+                (stage) => stage.status === "skipped",
+              ).length;
+              return (
+                <TableRow key={document.id}>
+                  <TableCell className="max-w-72">
+                    <Link
+                      to={`/intelligence?document=${document.id}`}
+                      className="block truncate font-medium text-foreground hover:text-primary hover:underline"
+                      title={document.title}
+                    >
+                      {document.title}
+                    </Link>
+                  </TableCell>
+                  <TableCell className="max-w-40 truncate text-xs text-muted-foreground">
+                    {document.source_id}
+                  </TableCell>
+                  <TableCell className="whitespace-nowrap text-xs text-muted-foreground">
+                    {formatDateTime(document.collected_at)}
+                  </TableCell>
+                  <TableCell>
+                    {failed ? (
+                      <StatusBadge status="failed" />
+                    ) : pending ? (
+                      <StatusBadge status="pending" />
+                    ) : completed ? (
+                      <StatusBadge status="completed" />
+                    ) : skipped ? (
+                      <StatusBadge status="skipped" />
+                    ) : (
+                      <Badge variant="outline">未创建</Badge>
+                    )}
+                    <span className="ml-2 text-xs text-muted-foreground">
+                      {completed}/{stages.length || 4}
+                    </span>
+                  </TableCell>
+                </TableRow>
+              );
+            })}
+          </TableBody>
+        </Table>
+      ) : (
+        <EmptyPanel title="仓库中还没有文档" />
+      )}
+    </Section>
+  );
+}
 
 export function OverviewPage() {
-  const overview = useResource((signal) => dashboardApi.sources(signal), []);
   const dashboard = useResource((signal) => getOverview(signal), []);
 
   if (dashboard.loading) {
     return (
       <div className="space-y-6">
         <PageHeader
-          title="运行概览"
-          description="采集、处理与研究状态的统一入口。"
+          title="情报概览"
+          description="已积累的情报、新鲜度与需要处理的事项。"
         />
         <LoadingPanel />
       </div>
@@ -41,7 +439,7 @@ export function OverviewPage() {
   if (dashboard.error || !dashboard.data) {
     return (
       <div className="space-y-6">
-        <PageHeader title="运行概览" />
+        <PageHeader title="情报概览" />
         <ErrorPanel
           message={dashboard.error?.message ?? "概览为空"}
           onRetry={dashboard.refresh}
@@ -51,399 +449,29 @@ export function OverviewPage() {
   }
 
   const data = dashboard.data;
-  const healthCount =
-    data.processing_state.pending +
-    data.processing_state.running +
-    data.processing_state.failed;
-  const stats = [
-    {
-      label: "活跃 Run",
-      value: data.runs.active_count,
-      detail: `${data.runs.failed_count} 个失败 Run`,
-      warning: Boolean(data.runs.failed_count),
-    },
-    {
-      label: "待处理阶段",
-      value: healthCount,
-      detail: `${data.processing_state.failed} 个失败`,
-      warning: Boolean(data.processing_state.failed),
-    },
-    {
-      label: "已配置来源",
-      value: data.collection.configured_sources,
-      detail: `${data.collection.partial_sources.length} 个需关注`,
-      warning: Boolean(data.collection.partial_sources.length),
-    },
-    {
-      label: "已保存报告",
-      value: data.reports.length,
-      detail: "最近显示 5 份",
-      warning: false,
-    },
-  ];
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-8 motion-rise">
       <PageHeader
-        title="运行概览"
-        description="从采集中断、处理积压到最新研究，先看需要 Owner 判断的异常。"
+        title="情报概览"
+        description="已积累的情报、来源新鲜度与需要 Owner 判断的事项。"
         actions={
           <Link
-            to="/intelligence"
+            to="/runs"
             className={buttonVariants({ variant: "outline", size: "sm" })}
           >
-            搜索情报
+            查看运行与积压
             <ArrowRight aria-hidden="true" />
           </Link>
         }
       />
 
-      {data.configuration_errors.sources?.message ||
-      data.configuration_errors.tasks?.message ? (
-        <ErrorPanel
-          title="配置文件存在错误"
-          message={
-            [
-              data.configuration_errors.sources?.message,
-              data.configuration_errors.tasks?.message,
-            ]
-              .filter(Boolean)
-              .join("；") || "来源或任务配置未能读取"
-          }
-        />
-      ) : null}
-
-      <section
-        aria-label="关键统计"
-        className="grid grid-cols-2 gap-x-6 gap-y-4 lg:grid-cols-4 lg:divide-x lg:divide-border"
-      >
-        {stats.map(({ label, value, detail, warning }) => (
-          <div key={label} className="min-w-0 lg:pl-4 first:lg:pl-0">
-            <p
-              className="text-2xl font-semibold tabular-nums"
-              aria-label={`${label} ${value}`}
-            >
-              {value}
-            </p>
-            <p className="mt-1 text-xs text-muted-foreground">
-              {label} ·{" "}
-              <span
-                className={cn(
-                  warning && "text-warning-text",
-                )}
-              >
-                {detail}
-              </span>
-            </p>
-          </div>
-        ))}
-      </section>
-
-      <Section
-        title="研究覆盖"
-        description="最近一份成功报告的证据包；未扫描候选与来源缺口保持未知。"
-      >
-        {data.research.latest ? (
-          <div className="space-y-4">
-            <dl className="grid gap-3 text-xs sm:grid-cols-2 lg:grid-cols-4">
-              <div>
-                <dt className="text-muted-foreground">候选发现 / 筛选</dt>
-                <dd className="mt-0.5 tabular-nums">
-                  {formatNumber(
-                    data.research.latest.candidates_discovered,
-                    "未知",
-                  )}{" "}
-                  /{" "}
-                  {formatNumber(
-                    data.research.latest.candidates_screened,
-                    "未知",
-                  )}
-                </dd>
-              </div>
-              <div>
-                <dt className="text-muted-foreground">入选证据 / 独立原件</dt>
-                <dd className="mt-0.5 tabular-nums">
-                  {data.research.latest.selected_count} 组 /{" "}
-                  {formatNumber(
-                    data.research.latest.origin_group_count,
-                    "未知",
-                  )}
-                </dd>
-              </div>
-              <div>
-                <dt className="text-muted-foreground">未扫描候选</dt>
-                <dd className="mt-0.5 tabular-nums">
-                  {formatNumber(
-                    data.research.latest.unexamined_count,
-                    "未知",
-                  )}
-                </dd>
-              </div>
-              <div>
-                <dt className="text-muted-foreground">补证输入</dt>
-                <dd className="mt-0.5 tabular-nums">
-                  {data.research.latest.research_input_count} 条
-                </dd>
-              </div>
-            </dl>
-            {data.research.latest.retrieval_truncated ? (
-              <Alert variant="warning" className="mt-3">
-                <AlertTitle>本次检索达到预算并截断</AlertTitle>
-                <AlertDescription>
-                  未扫描候选数量未知时仍显示未知。
-                </AlertDescription>
-              </Alert>
-            ) : null}
-            {data.research.latest.gaps.length ? (
-              <ul className="flex flex-wrap gap-2 text-xs">
-                {data.research.latest.gaps.map((gap) => (
-                  <li key={gap}>
-                    <Badge variant="warning">{gapLabel(gap)}</Badge>
-                  </li>
-                ))}
-              </ul>
-            ) : (
-              <p className="text-xs text-muted-foreground">
-                证据包未记录来源或索引缺口。
-              </p>
-            )}
-            <Link
-              to={`/research?report=${data.research.latest.report_id}`}
-              className="text-sm font-medium text-primary underline-offset-4 hover:underline"
-            >
-              打开 {data.research.latest.title}
-            </Link>
-          </div>
-        ) : (
-          <EmptyPanel
-            title="尚无成功研究报告"
-            description="生成报告后，这里显示候选扫描、独立原件与缺口。"
-          />
-        )}
-      </Section>
-
-      <Section
-        title="近期模型用量"
-        description={`最近 ${data.research.usage.run_count} 个 Run 已保存的模型调用；未提供费用的调用保持未知。`}
-      >
-        <div className="space-y-3">
-          <UsageStats usage={data.research.usage} />
-          <UsageModels usage={data.research.usage} />
-        </div>
-      </Section>
-
-      <Section
-        title="近期运行"
-        description="失败、停止和新触发的 Run 保留安全错误定位。"
-        contentClassName="space-y-0"
-      >
-        {data.runs.recent.length ? (
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>任务</TableHead>
-                <TableHead>状态</TableHead>
-                <TableHead>创建时间</TableHead>
-                <TableHead className="w-1/3">步骤</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {data.runs.recent.map((run) => (
-                <TableRow key={run.run_id}>
-                  <TableCell className="max-w-64">
-                    <Link
-                      to={`/runs?run=${run.run_id}`}
-                      className="truncate font-medium text-foreground hover:text-primary hover:underline"
-                    >
-                      {run.task_id}
-                    </Link>
-                  </TableCell>
-                  <TableCell>
-                    <StatusBadge status={run.status} />
-                  </TableCell>
-                  <TableCell className="whitespace-nowrap text-xs text-muted-foreground">
-                    {formatDateTime(run.created_at)}
-                  </TableCell>
-                  <TableCell className="text-xs text-muted-foreground">
-                    {run.step_count ?? 0} 个步骤
-                    {run.error?.message ? (
-                      <span className="mt-1 line-clamp-2 block text-destructive">
-                        {run.error.message}
-                      </span>
-                    ) : null}
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        ) : (
-          <EmptyPanel title="尚未运行任何任务" />
-        )}
-      </Section>
-
-      <Section
-        title="最新 Document"
-        description="采集成功不代表已完成解析或向量索引。"
-        contentClassName="space-y-0"
-      >
-        {data.recent_documents.length ? (
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>标题</TableHead>
-                <TableHead>版本</TableHead>
-                <TableHead>完整度</TableHead>
-                <TableHead>采集时间</TableHead>
-                <TableHead>解析 / 索引</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {data.recent_documents.map((document) => {
-                const parsed = document.parse_state?.status;
-                const indexed = document.embedding_state?.status;
-                return (
-                  <TableRow key={document.id}>
-                    <TableCell className="max-w-72">
-                      <Link
-                        to={`/intelligence?document=${document.id}`}
-                        className="block truncate font-medium text-foreground hover:text-primary hover:underline"
-                        title={document.title}
-                      >
-                        {document.title}
-                      </Link>
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant="outline">v{document.version}</Badge>
-                    </TableCell>
-                    <TableCell>
-                      <StatusBadge status={document.completeness} />
-                    </TableCell>
-                    <TableCell className="whitespace-nowrap text-xs text-muted-foreground">
-                      {formatDateTime(document.collected_at)}
-                    </TableCell>
-                    <TableCell className="text-xs text-muted-foreground">
-                      解析 {statusLabel(parsed ?? "missing")} · 索引{" "}
-                      {statusLabel(indexed ?? "pending")}
-                    </TableCell>
-                  </TableRow>
-                );
-              })}
-            </TableBody>
-          </Table>
-        ) : (
-          <EmptyPanel title="仓库中还没有 Document" />
-        )}
-      </Section>
-
-      <Section
-        title="来源状态"
-        description="显示来源请求、新鲜度和后处理积压。"
-        contentClassName="space-y-0"
-      >
-        {overview.loading ? (
-          <LoadingPanel label="正在读取来源" />
-        ) : overview.error ? (
-          <ErrorPanel
-            message={overview.error.message}
-            onRetry={overview.refresh}
-          />
-        ) : overview.data?.items.length ? (
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>来源</TableHead>
-                <TableHead>采集状态</TableHead>
-                <TableHead>新鲜度</TableHead>
-                <TableHead>最近尝试</TableHead>
-                <TableHead>积压</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {overview.data.items.slice(0, 8).map((source) => (
-                <TableRow key={source.source_id}>
-                  <TableCell className="max-w-56">
-                    <p className="truncate font-medium" title={source.name}>
-                      {source.name}
-                    </p>
-                  </TableCell>
-                  <TableCell>
-                    <StatusBadge status={source.collection.status} />
-                  </TableCell>
-                  <TableCell>
-                    <Badge variant="outline">
-                      {statusLabel(source.freshness.status)}
-                    </Badge>
-                  </TableCell>
-                  <TableCell className="whitespace-nowrap text-xs text-muted-foreground">
-                    {formatDateTime(source.collection.latest_attempt_at)}
-                  </TableCell>
-                  <TableCell className="text-xs text-muted-foreground">
-                    {source.collection.processing_backlog
-                      ? `待处理 ${source.collection.processing_backlog.pending} · 失败 ${source.collection.processing_backlog.failed}`
-                      : "无积压"}
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        ) : (
-          <EmptyPanel title="没有可展示的来源" />
-        )}
-      </Section>
-
-      <Section title="近期报告" contentClassName="space-y-0">
-        {data.reports.length ? (
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>标题</TableHead>
-                <TableHead>生成时间</TableHead>
-                <TableHead>Run</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {data.reports.map((report) => (
-                <TableRow key={report.report_id}>
-                  <TableCell className="max-w-80">
-                    <Link
-                      to={`/research?report=${report.report_id}`}
-                      className="line-clamp-2 font-medium text-foreground hover:text-primary hover:underline"
-                    >
-                      {report.title}
-                    </Link>
-                  </TableCell>
-                  <TableCell className="whitespace-nowrap text-xs text-muted-foreground">
-                    {formatDateTime(report.created_at)}
-                  </TableCell>
-                  <TableCell className="font-code text-xs text-muted-foreground">
-                    {shortId(report.run_id)}
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        ) : (
-          <EmptyPanel title="尚无成功报告" />
-        )}
-      </Section>
-
-      {data.collection.partial_sources.length ? (
-        <Section
-          title="需关注的来源"
-          description="这些来源采集未完成；缺口会进入研究覆盖统计。"
-        >
-          <ul className="grid gap-2 text-xs sm:grid-cols-2">
-            {data.collection.partial_sources.map((source) => (
-              <li key={source.source_id}>
-                {source.name}：{statusLabel(source.collection.status)}
-                {source.collection.error?.message
-                  ? ` · ${source.collection.error.message}`
-                  : ""}
-              </li>
-            ))}
-          </ul>
-        </Section>
-      ) : null}
+      <StatStrip library={data.library} />
+      <InflowChart library={data.library} />
+      <SourceTable library={data.library} />
+      <AttentionSection attention={data.attention} />
+      <ReportTable reports={data.reports} />
+      <RecentDocumentTable documents={data.recent_documents} />
     </div>
   );
 }

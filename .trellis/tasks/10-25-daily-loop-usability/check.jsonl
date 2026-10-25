@@ -1,0 +1,5 @@
+{"file": "docs/data.md", "reason": "验收 Fact 时间字段与来源新鲜度语义"}
+{"file": "docs/execution.md", "reason": "验收 collection Task 与 Run 状态"}
+{"file": ".trellis/spec/backend/testing-guidelines.md", "reason": "远程验证与证据记录要求"}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "验收错误码与不泄露凭据"}
+{"file": ".trellis/spec/backend/logging-guidelines.md", "reason": "验收日志内容与脱敏"}

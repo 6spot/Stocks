@@ -39,9 +39,12 @@
 
 规则（确定性、不用模型）：
 - `source_failure`：来源最近一次采集失败。
-- `source_stale`：有 `expected_freshness` 且距最近成功超过该间隔的 2 倍；无预期新鲜度不报。
+- `source_stale`：有 `expected_freshness` 且新鲜度状态为 `stale`（与 `/api/sources` 同一口径，
+  基于最新披露时间而非采集时间）；无预期新鲜度不报。
 - `task_failed`：某 Task 最近一次 Run 为 failed。
-- `processing_backlog`：存在 failed 或超过 1 小时仍 pending 的处理阶段。
+- `processing_backlog`：存在**不会再自动重试**的 failed 阶段，或**无等待原因**且超过 1 小时
+  仍 pending 的阶段。有自动重试排期的失败、以及因能力缺失/内容不支持/等待分类结论而
+  挂起的 pending 不计入（那些状态系统已能解释，计入会让「无阻塞」永不出现）。
 - `config_error`：sources/tasks 配置读取失败。
 全部为空时 `attention` 为 `[]`（前端显示一行「无阻塞」）。
 
