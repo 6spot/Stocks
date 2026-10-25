@@ -1,0 +1,3 @@
+{"file": "docs/interface.md", "reason": "Overview 视图契约"}
+{"file": ".trellis/spec/backend/testing-guidelines.md", "reason": "远程验证要求"}
+{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "前端组件与验证"}
