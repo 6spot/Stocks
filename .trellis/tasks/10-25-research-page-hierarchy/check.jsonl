@@ -1,0 +1,2 @@
+{"file": "docs/interface.md", "reason": "核对展示语义与对照契约未变"}
+{"file": ".trellis/spec/frontend/hook-guidelines.md", "reason": "核对懒加载不引入越界状态"}
