@@ -643,10 +643,16 @@ export const documentDetailSchema = z
     versions: pageSchema(documentVersionSchema).omit({ limit: true }).extend({
       limit: z.number().int(),
     }),
-    current_chunks: pageSchema(chunkSchema).omit({ limit: true }).extend({
-      count: z.number().int().nonnegative(),
-      limit: z.number().int(),
-    }),
+    // /api/documents/{id} returns count/items/next_cursor/limit for chunks;
+    // it never sends has_more, so this is not the generic page wrapper.
+    current_chunks: z
+      .object({
+        items: z.array(chunkSchema),
+        next_cursor: nullableString,
+        count: z.number().int().nonnegative(),
+        limit: z.number().int(),
+      })
+      .passthrough(),
     original: originalDescriptorSchema,
   })
   .passthrough();

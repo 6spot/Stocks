@@ -57,7 +57,7 @@ export function LoginPage() {
 
   return (
     <main className="grid min-h-dvh place-items-center px-4 py-10">
-      <div className="w-full max-w-md">
+      <div className="motion-rise w-full max-w-md">
         <div className="mb-7 text-center">
           <div className="mb-4 inline-flex size-12 items-center justify-center rounded-2xl bg-primary text-primary-foreground shadow-lg shadow-primary/15">
             <ShieldCheck aria-hidden="true" className="size-6" />

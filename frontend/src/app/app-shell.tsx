@@ -48,7 +48,7 @@ function NavigationLinks({ onNavigate }: { onNavigate?: () => void }) {
           onClick={onNavigate}
           className={({ isActive }) =>
             cn(
-              "flex min-h-10 items-center gap-3 rounded-lg px-3 text-sm font-medium text-sidebar-foreground/70 transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+              "press flex min-h-10 items-center gap-3 rounded-lg px-3 text-sm font-medium text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
               isActive &&
                 "bg-sidebar-accent text-sidebar-accent-foreground shadow-sm",
             )
@@ -139,7 +139,9 @@ export function AppShell() {
           </Button>
         </header>
         <main className="mx-auto w-full max-w-[92rem] px-4 py-6 sm:px-6 sm:py-8 lg:px-8">
-          <Outlet />
+          <div key={location.pathname} className="motion-rise">
+            <Outlet />
+          </div>
         </main>
       </div>
 

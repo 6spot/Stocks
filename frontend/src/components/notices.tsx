@@ -24,7 +24,7 @@ export function Notices() {
           <div
             key={notice.id}
             className={cn(
-              "pointer-events-auto flex w-full items-start gap-2 rounded-xl border bg-popover px-3 py-2.5 text-sm shadow-lg",
+              "motion-rise pointer-events-auto flex w-full items-start gap-2 rounded-xl border bg-popover px-3 py-2.5 text-sm shadow-lg shadow-foreground/5",
               notice.tone === "success" &&
                 "border-emerald-200 text-emerald-950",
               notice.tone === "error" &&

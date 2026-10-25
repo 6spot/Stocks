@@ -7,7 +7,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 export function LoadingPanel({ label = "正在读取数据" }: { label?: string }) {
   return (
     <div
-      className="grid gap-3 rounded-xl border border-border/70 bg-card/70 p-4"
+      className="grid gap-3 rounded-xl border border-border/70 bg-card/70 p-4 motion-rise"
       aria-busy="true"
       aria-label={label}
     >
@@ -55,7 +55,10 @@ export function EmptyPanel({
 }) {
   return (
     <div className="flex min-h-40 flex-col items-center justify-center rounded-xl border border-dashed border-border bg-card/50 px-5 py-8 text-center">
-      <Inbox aria-hidden="true" className="mb-3 size-6 text-muted-foreground" />
+      <Inbox
+        aria-hidden="true"
+        className="mb-3 size-6 text-muted-foreground/70"
+      />
       <p className="font-medium">{title}</p>
       {description ? (
         <p className="mt-1 max-w-lg text-sm leading-relaxed text-muted-foreground">

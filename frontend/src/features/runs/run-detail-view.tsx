@@ -229,7 +229,14 @@ export function RunDetailView({
               </TableHeader>
               <TableBody>
                 {data.model_calls.map((call, index) => (
-                  <TableRow key={`${call.step_id}-${call.attempt_number}-${index}`}>
+                  <TableRow
+                    key={`${call.step_id}-${call.attempt_number}-${index}`}
+                    className={
+                      call.status === "failed"
+                        ? "bg-destructive/5 hover:bg-destructive/10"
+                        : undefined
+                    }
+                  >
                     <TableCell className="font-code text-xs">
                       {call.step_id} / {call.attempt_number}
                     </TableCell>

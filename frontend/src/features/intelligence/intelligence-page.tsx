@@ -381,8 +381,8 @@ function SearchHits({
               aria-label={`查看 ${hit.title} 的 Document 详情`}
               className={
                 hit.document_id === selectedDocumentId
-                  ? "cursor-pointer border-primary/40 ring-2 ring-primary/20"
-                  : "cursor-pointer"
+                  ? "press cursor-pointer border-primary/40 ring-2 ring-primary/20"
+                  : "press cursor-pointer hover:ring-foreground/20"
               }
               onClick={() => onSelectDocument(hit.document_id)}
               onKeyDown={(event) => {
@@ -470,8 +470,8 @@ function Documents({
           onClick={() => onSelect(document.id)}
           className={
             selectedId === document.id
-              ? "w-full rounded-xl border border-primary/40 bg-card p-3 text-left ring-2 ring-primary/20"
-              : "w-full rounded-xl border border-border bg-card p-3 text-left transition-colors hover:bg-muted/40"
+              ? "press w-full rounded-xl border border-primary/40 bg-card p-3 text-left ring-2 ring-primary/20"
+              : "press w-full rounded-xl border border-border bg-card p-3 text-left hover:bg-muted/40"
           }
         >
           <div className="flex flex-wrap items-center gap-2">

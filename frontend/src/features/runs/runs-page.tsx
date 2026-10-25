@@ -135,8 +135,8 @@ export function RunsPage() {
                     onClick={() => selectRun(run.run_id)}
                     className={
                       selectedRun === run.run_id
-                        ? "w-full rounded-xl border border-primary/40 bg-card p-3 text-left ring-2 ring-primary/20"
-                        : "w-full rounded-xl border border-border bg-card p-3 text-left transition-colors hover:bg-muted/40"
+                        ? "press w-full rounded-xl border border-primary/40 bg-card p-3 text-left ring-2 ring-primary/20"
+                        : "press w-full rounded-xl border border-border bg-card p-3 text-left hover:bg-muted/40"
                     }
                   >
                     <div className="flex flex-wrap items-center gap-2">

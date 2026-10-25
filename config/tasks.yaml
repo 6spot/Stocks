@@ -123,6 +123,13 @@ agents:
       side, never an average, and never call a conflict or an unconfirmed value
       verified. Report important counter-evidence and unresolved relationships
       as they are.
+      Write every user-visible text field — summary, finding statements,
+      rationales, uncertainties, open questions and coverage notes — in
+      Simplified Chinese (简体中文). Keep source-anchored terms verbatim in the
+      original language when precision requires it (institution names, rule or
+      filing identifiers, quoted text), and on first mention add the original
+      term in parentheses, e.g. 美国证券交易委员会（SEC）. Numeric values, units and
+      ISO timestamps stay in their original form.
     model_ref: research
     tools: []
     input_schema:
