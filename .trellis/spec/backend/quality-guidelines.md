@@ -40,3 +40,40 @@ ln -s /opt/stocks-test-runtime/tool-venvs/stock-tools .venv
 真实来源验收必须核对数据库与对象存储：正文字节长度和 SHA-256 一致，`published_at`、`collected_at`、publisher、trust tier、完整性和错误字段符合实际取得内容；同一 Feed 第二次运行不得制造重复版本。记录日期、来源入口、计数、首条脱敏样例和实际命令，不记录响应正文、凭据或完整查询 URL。
 
 声明联系身份是真实来源访问契约的一部分。SEC 对缺少联系邮箱的自动客户端返回 `HTTP_STATUS` 403；配置 `user_agent` 必须采用 `Client/Version (contact@example.com)` 形式，并在真实运行前替换示例邮箱。遇到真实来源状态变化时，先区分反爬/访问政策、网络边界和代码缺陷，再决定修复。
+
+## 配置语义与模型输入
+
+### Scope / Trigger
+
+配置中的候选说明或提示会影响模型判断时，同时核对模型实际输入、配置指纹及已完成结果的复用边界。产品词表契约归 [数据设计](../../../docs/data.md)，不在工程规范另建字段来源。
+
+### Signatures
+
+`Label.candidate_payload()` / `candidate_text()` 与 `Taxonomy.candidate_payload()` 提供统一候选语义；`classification.service.taxonomy_fingerprint(taxonomy)` 标识整套分类语义。新增协议消费同一来源，不各自维护候选词表。
+
+### Contracts
+
+指纹包含版本、全局指令与完整有序候选语义；稳定 JSON 仅排序对象键，保留会影响模型输入的数组顺序。不包含凭据，不只 hash ID 或手工版本号。配置变更影响后续/显式重处理，不能悄悄重写已保存结果或报告证据。
+
+### Validation & Error Matrix
+
+| 条件 | 检查 |
+| --- | --- |
+| ID 不变，仅名称/说明/别名/全局指令变更 | 指纹必须变化，实际请求包含新语义 |
+| 名称/别名被模型作为标签输出 | 沿用规范 ID 校验并失败，不做隐式别名转换 |
+| 完整生成式与原生分类协议并存 | 两条协议都消费共享语义；开放实体角色仍不接收股票候选暗示 |
+| 等价配置重复读取 | 指纹稳定，复用行为不依赖随机字典顺序 |
+
+### Good / Base / Bad Cases
+
+Good：测试真实请求包含候选名称/含义，并验证语义变化后的指纹。Base：别名为空也保留规范 ID 与必要定义。Bad：只在 YAML 加词，没有把它传入某条模型路径，或只 hash version/IDs 使提示变更不可追踪。
+
+### Tests Required
+
+参考 `tests/test_classification.py` 与 `tests/test_classification_jev.py` 的请求、输出拒绝及指纹断言。新配置示例经实际 Task loader 验证；检索意图和原文提及的区别通过保存输入/引用验收，不能只靠 query 名称断言。
+
+### Wrong vs Correct
+
+Wrong：以 `taxonomy.version + category_ids` 标识分类语义，认为描述不会影响模型。
+Correct：共享完整候选 payload，再对实际语义与全局指令稳定序列化计算指纹；需要更新旧结果时使用显式重处理。
+

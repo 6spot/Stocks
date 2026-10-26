@@ -1,0 +1,815 @@
+{
+  "chunk_id": "25c75d5d-42a7-41b9-930e-c8d359ffdc53",
+  "document_id": "33d881ce-baf5-4adc-bece-200ccb1d2a17",
+  "parse_batch_id": "63ac95e4-330e-4892-b8cd-4f078c75912a",
+  "position": 0,
+  "document_version": 1,
+  "cited_document_version": 1,
+  "version_matches": true,
+  "role": "direct",
+  "reason": "direct_scope_match",
+  "origin_id": "origin-1",
+  "similarity": null,
+  "query_rank": 1,
+  "estimated_tokens": 25,
+  "chunk_available": true,
+  "text": "Acme Holdings quarterly revenue\nAcme Holdings (ACME) reported revenue of 42 million USD for 2026 Q3.",
+  "locator": {
+    "version": 1,
+    "segments": [
+      {
+        "text": "Acme Holdings quarterly revenue",
+        "locator": {
+          "kind": "html",
+          "path": [
+            "document[0]",
+            "html[0]",
+            "body[0]",
+            "article[0]",
+            "h1[0]"
+          ],
+          "element": "h1",
+          "primary": true,
+          "char_end": 97,
+          "char_start": 57,
+          "preformatted": false,
+          "source_ranges": [
+            [
+              61,
+              62
+            ],
+            [
+              62,
+              63
+            ],
+            [
+              63,
+              64
+            ],
+            [
+              64,
+              65
+            ],
+            [
+              65,
+              66
+            ],
+            [
+              66,
+              67
+            ],
+            [
+              67,
+              68
+            ],
+            [
+              68,
+              69
+            ],
+            [
+              69,
+              70
+            ],
+            [
+              70,
+              71
+            ],
+            [
+              71,
+              72
+            ],
+            [
+              72,
+              73
+            ],
+            [
+              73,
+              74
+            ],
+            [
+              74,
+              75
+            ],
+            [
+              75,
+              76
+            ],
+            [
+              76,
+              77
+            ],
+            [
+              77,
+              78
+            ],
+            [
+              78,
+              79
+            ],
+            [
+              79,
+              80
+            ],
+            [
+              80,
+              81
+            ],
+            [
+              81,
+              82
+            ],
+            [
+              82,
+              83
+            ],
+            [
+              83,
+              84
+            ],
+            [
+              84,
+              85
+            ],
+            [
+              85,
+              86
+            ],
+            [
+              86,
+              87
+            ],
+            [
+              87,
+              88
+            ],
+            [
+              88,
+              89
+            ],
+            [
+              89,
+              90
+            ],
+            [
+              90,
+              91
+            ],
+            [
+              91,
+              92
+            ]
+          ],
+          "coordinate_unit": "decoded_html_chars"
+        }
+      },
+      {
+        "text": "Acme Holdings (ACME) reported revenue of 42 million USD for 2026 Q3.",
+        "locator": {
+          "kind": "html",
+          "path": [
+            "document[0]",
+            "html[0]",
+            "body[0]",
+            "article[0]",
+            "p[0]"
+          ],
+          "element": "p",
+          "primary": true,
+          "char_end": 173,
+          "char_start": 98,
+          "preformatted": false,
+          "source_ranges": [
+            [
+              101,
+              102
+            ],
+            [
+              102,
+              103
+            ],
+            [
+              103,
+              104
+            ],
+            [
+              104,
+              105
+            ],
+            [
+              105,
+              106
+            ],
+            [
+              106,
+              107
+            ],
+            [
+              107,
+              108
+            ],
+            [
+              108,
+              109
+            ],
+            [
+              109,
+              110
+            ],
+            [
+              110,
+              111
+            ],
+            [
+              111,
+              112
+            ],
+            [
+              112,
+              113
+            ],
+            [
+              113,
+              114
+            ],
+            [
+              114,
+              115
+            ],
+            [
+              115,
+              116
+            ],
+            [
+              116,
+              117
+            ],
+            [
+              117,
+              118
+            ],
+            [
+              118,
+              119
+            ],
+            [
+              119,
+              120
+            ],
+            [
+              120,
+              121
+            ],
+            [
+              121,
+              122
+            ],
+            [
+              122,
+              123
+            ],
+            [
+              123,
+              124
+            ],
+            [
+              124,
+              125
+            ],
+            [
+              125,
+              126
+            ],
+            [
+              126,
+              127
+            ],
+            [
+              127,
+              128
+            ],
+            [
+              128,
+              129
+            ],
+            [
+              129,
+              130
+            ],
+            [
+              130,
+              131
+            ],
+            [
+              131,
+              132
+            ],
+            [
+              132,
+              133
+            ],
+            [
+              133,
+              134
+            ],
+            [
+              134,
+              135
+            ],
+            [
+              135,
+              136
+            ],
+            [
+              136,
+              137
+            ],
+            [
+              137,
+              138
+            ],
+            [
+              138,
+              139
+            ],
+            [
+              139,
+              140
+            ],
+            [
+              140,
+              141
+            ],
+            [
+              141,
+              142
+            ],
+            [
+              142,
+              143
+            ],
+            [
+              143,
+              144
+            ],
+            [
+              144,
+              145
+            ],
+            [
+              145,
+              146
+            ],
+            [
+              146,
+              147
+            ],
+            [
+              147,
+              148
+            ],
+            [
+              148,
+              149
+            ],
+            [
+              149,
+              150
+            ],
+            [
+              150,
+              151
+            ],
+            [
+              151,
+              152
+            ],
+            [
+              152,
+              153
+            ],
+            [
+              153,
+              154
+            ],
+            [
+              154,
+              155
+            ],
+            [
+              155,
+              156
+            ],
+            [
+              156,
+              157
+            ],
+            [
+              157,
+              158
+            ],
+            [
+              158,
+              159
+            ],
+            [
+              159,
+              160
+            ],
+            [
+              160,
+              161
+            ],
+            [
+              161,
+              162
+            ],
+            [
+              162,
+              163
+            ],
+            [
+              163,
+              164
+            ],
+            [
+              164,
+              165
+            ],
+            [
+              165,
+              166
+            ],
+            [
+              166,
+              167
+            ],
+            [
+              167,
+              168
+            ],
+            [
+              168,
+              169
+            ]
+          ],
+          "coordinate_unit": "decoded_html_chars"
+        }
+      }
+    ]
+  },
+  "parse_is_current": true,
+  "parse_state": {
+    "status": "completed",
+    "processor_version": "semantic-text-v3",
+    "latest_batch_id": "63ac95e4-330e-4892-b8cd-4f078c75912a",
+    "current_batch_id": "63ac95e4-330e-4892-b8cd-4f078c75912a",
+    "chunk_count": 1,
+    "error": null,
+    "attempted_at": "2026-10-26T12:02:30.667346Z"
+  },
+  "embedding_state": {
+    "status": "completed",
+    "current": true,
+    "parse_batch_id": "63ac95e4-330e-4892-b8cd-4f078c75912a",
+    "last_attempt_parse_batch_id": "63ac95e4-330e-4892-b8cd-4f078c75912a",
+    "model_alias": "embedding",
+    "model_name": "controlled-embedding",
+    "dimensions": 1024,
+    "chunk_count": 1,
+    "indexed_count": 1,
+    "unindexed_count": 0,
+    "error": null,
+    "attempted_at": "2026-10-26T12:02:30.722862Z"
+  },
+  "document": {
+    "id": "33d881ce-baf5-4adc-bece-200ccb1d2a17",
+    "source_id": "mp_smoke_eec59cb5f483",
+    "dedupe_key": "58afbb52f8e62c230b82f78dd22bccb253bb508f9a7691de74c3e5701f3af41f",
+    "version": 1,
+    "title": "Acme Holdings quarterly revenue",
+    "original_url": "https://source.smoke.test/article",
+    "published_at": "2026-10-26T12:02:29Z",
+    "source_updated_at": null,
+    "collected_at": "2026-10-26T12:02:30.393119Z",
+    "trust_tier": "T1",
+    "completeness": "complete",
+    "fetch_error": null,
+    "content_type": "text/html; charset=utf-8",
+    "content_size": 198,
+    "content_hash": "ab0ba8cf559ed2a1f8efb9e8d159cf63bff25e45e074e8f1ed8635c38995eaf5",
+    "snapshot_key": "sources/mp_smoke_eec59cb5f483/ab0ba8cf559ed2a1f8efb9e8d159cf63bff25e45e074e8f1ed8635c38995eaf5",
+    "classification": {
+      "usage": {},
+      "method": "decision_model",
+      "reason": "The supplied article explicitly names Acme Holdings (ACME).",
+      "topics": [
+        "growth"
+      ],
+      "regions": [
+        "US"
+      ],
+      "symbols": [
+        "ACME"
+      ],
+      "attempts": [
+        {
+          "role": "classification",
+          "error": null,
+          "status": "succeeded",
+          "cost_usd": null,
+          "duration_ms": 0,
+          "attempt_alias": "classification",
+          "attempt_number": 1,
+          "fallback_reason": null,
+          "attempt_model_name": "controlled-classification",
+          "reported_model_name": "controlled-classification"
+        },
+        {
+          "role": "classification_entities",
+          "error": null,
+          "status": "succeeded",
+          "cost_usd": null,
+          "duration_ms": 0,
+          "attempt_alias": "research",
+          "attempt_number": 1,
+          "fallback_reason": null,
+          "attempt_model_name": "controlled-research",
+          "reported_model_name": "controlled-research"
+        }
+      ],
+      "category": "company",
+      "companies": [
+        "Acme Holdings"
+      ],
+      "model_ref": "classification",
+      "event_type": "earnings",
+      "model_alias": "classification",
+      "model_calls": [
+        {
+          "role": "classification",
+          "usage": {},
+          "answers": {
+            "doc_type": {
+              "type": "choice",
+              "choice": "company",
+              "confidence": 1.0,
+              "probabilities": {
+                "macro": 0.0,
+                "other": 0.0,
+                "policy": 0.0,
+                "company": 1.0,
+                "industry": 0.0
+              }
+            },
+            "event_type": {
+              "type": "choice",
+              "choice": "earnings",
+              "confidence": 1.0,
+              "probabilities": {
+                "__none__": 0.0,
+                "earnings": 1.0,
+                "regulation": 0.0,
+                "data_release": 0.0,
+                "fiscal_policy": 0.0,
+                "monetary_policy": 0.0,
+                "corporate_action": 0.0
+              }
+            },
+            "regions.EU": {
+              "noul": 0.01,
+              "type": "noul"
+            },
+            "regions.UK": {
+              "noul": 0.01,
+              "type": "noul"
+            },
+            "regions.US": {
+              "noul": 0.99,
+              "type": "noul"
+            },
+            "topics.trade": {
+              "noul": 0.01,
+              "type": "noul"
+            },
+            "regions.China": {
+              "noul": 0.01,
+              "type": "noul"
+            },
+            "regions.Japan": {
+              "noul": 0.01,
+              "type": "noul"
+            },
+            "topics.credit": {
+              "noul": 0.01,
+              "type": "noul"
+            },
+            "topics.energy": {
+              "noul": 0.01,
+              "type": "noul"
+            },
+            "topics.growth": {
+              "noul": 0.99,
+              "type": "noul"
+            },
+            "regions.Global": {
+              "noul": 0.01,
+              "type": "noul"
+            },
+            "should_extract": {
+              "noul": 0.99,
+              "type": "noul"
+            },
+            "topics.inflation": {
+              "noul": 0.01,
+              "type": "noul"
+            },
+            "topics.liquidity": {
+              "noul": 0.01,
+              "type": "noul"
+            },
+            "topics.employment": {
+              "noul": 0.01,
+              "type": "noul"
+            },
+            "topics.geopolitics": {
+              "noul": 0.01,
+              "type": "noul"
+            },
+            "regions.AsiaPacific": {
+              "noul": 0.01,
+              "type": "noul"
+            },
+            "topics.interest_rates": {
+              "noul": 0.01,
+              "type": "noul"
+            },
+            "regions.EmergingMarkets": {
+              "noul": 0.01,
+              "type": "noul"
+            },
+            "topics.market_sentiment": {
+              "noul": 0.01,
+              "type": "noul"
+            },
+            "related_industries.media": {
+              "noul": 0.01,
+              "type": "noul"
+            },
+            "related_industries.energy": {
+              "noul": 0.01,
+              "type": "noul"
+            },
+            "related_industries.retail": {
+              "noul": 0.01,
+              "type": "noul"
+            },
+            "related_industries.banking": {
+              "noul": 0.01,
+              "type": "noul"
+            },
+            "related_industries.telecom": {
+              "noul": 0.01,
+              "type": "noul"
+            },
+            "related_industries.consumer": {
+              "noul": 0.01,
+              "type": "noul"
+            },
+            "related_industries.hardware": {
+              "noul": 0.01,
+              "type": "noul"
+            },
+            "related_industries.software": {
+              "noul": 0.01,
+              "type": "noul"
+            },
+            "related_industries.materials": {
+              "noul": 0.01,
+              "type": "noul"
+            },
+            "related_industries.utilities": {
+              "noul": 0.01,
+              "type": "noul"
+            },
+            "related_industries.healthcare": {
+              "noul": 0.01,
+              "type": "noul"
+            },
+            "related_industries.industrials": {
+              "noul": 0.01,
+              "type": "noul"
+            },
+            "related_industries.real_estate": {
+              "noul": 0.01,
+              "type": "noul"
+            },
+            "related_industries.semiconductors": {
+              "noul": 0.01,
+              "type": "noul"
+            },
+            "related_industries.transportation": {
+              "noul": 0.01,
+              "type": "noul"
+            }
+          },
+          "attempts": [
+            {
+              "error": null,
+              "status": "succeeded",
+              "cost_usd": null,
+              "duration_ms": 0,
+              "attempt_alias": "classification",
+              "attempt_number": 1,
+              "fallback_reason": null,
+              "attempt_model_name": "controlled-classification",
+              "reported_model_name": "controlled-classification"
+            }
+          ],
+          "protocol": "typesafe",
+          "provider": "typesafe",
+          "model_alias": "classification",
+          "noul_threshold": 0.5,
+          "reported_model_name": "controlled-classification",
+          "requested_model_name": "controlled-classification"
+        },
+        {
+          "role": "classification_entities",
+          "usage": {},
+          "attempts": [
+            {
+              "error": null,
+              "status": "succeeded",
+              "cost_usd": null,
+              "duration_ms": 0,
+              "attempt_alias": "research",
+              "attempt_number": 1,
+              "fallback_reason": null,
+              "attempt_model_name": "controlled-research",
+              "reported_model_name": "controlled-research"
+            }
+          ],
+          "protocol": "openai_compatible",
+          "provider": "chat",
+          "model_alias": "research",
+          "reported_model_name": "controlled-research",
+          "requested_model_name": "controlled-research"
+        }
+      ],
+      "classified_at": "2026-10-26T12:02:30.780278+00:00",
+      "should_extract": true,
+      "taxonomy_version": "2026-10-21",
+      "related_industries": [],
+      "reported_model_name": "controlled-classification",
+      "requested_model_name": "controlled-classification",
+      "taxonomy_fingerprint": "dca6fef7060cbc359781d588d2791ef053f5248c84c9f2be4e20cf829d0df833",
+      "reason_or_evidence_ref": {
+        "reason": "The supplied article explicitly names Acme Holdings (ACME).",
+        "chunk_ids": [
+          "25c75d5d-42a7-41b9-930e-c8d359ffdc53"
+        ],
+        "truncated": false,
+        "parse_batch_id": "63ac95e4-330e-4892-b8cd-4f078c75912a",
+        "entity_evidence": [
+          {
+            "kind": "company",
+            "quote": "Acme Holdings (ACME) reported revenue of 42 million USD for 2026 Q3.",
+            "value": "Acme Holdings"
+          },
+          {
+            "kind": "symbol",
+            "quote": "Acme Holdings (ACME) reported revenue of 42 million USD for 2026 Q3.",
+            "value": "ACME"
+          }
+        ],
+        "input_characters": 100
+      }
+    }
+  },
+  "origin": {
+    "key": "article_url:https://source.smoke.test/article",
+    "url": "https://source.smoke.test/article",
+    "kind": "article_url",
+    "declared_sources": []
+  },
+  "original": {
+    "stored": true,
+    "readable": true,
+    "storage_key": "sources/mp_smoke_eec59cb5f483/ab0ba8cf559ed2a1f8efb9e8d159cf63bff25e45e074e8f1ed8635c38995eaf5",
+    "content_type": "text/html; charset=utf-8",
+    "content_size": 198,
+    "content_hash": "ab0ba8cf559ed2a1f8efb9e8d159cf63bff25e45e074e8f1ed8635c38995eaf5",
+    "endpoint": "/api/documents/33d881ce-baf5-4adc-bece-200ccb1d2a17/original",
+    "document_id": "33d881ce-baf5-4adc-bece-200ccb1d2a17"
+  },
+  "is_current_collection_pointer": true,
+  "collection_state": {
+    "source_id": "mp_smoke_eec59cb5f483",
+    "dedupe_key": "58afbb52f8e62c230b82f78dd22bccb253bb508f9a7691de74c3e5701f3af41f",
+    "latest_document_id": "33d881ce-baf5-4adc-bece-200ccb1d2a17",
+    "completeness": "complete",
+    "fetch_error": null,
+    "published_at": "2026-10-26T12:02:29Z",
+    "source_updated_at": null,
+    "last_attempted_at": "2026-10-26T12:02:30.393119Z"
+  }
+}

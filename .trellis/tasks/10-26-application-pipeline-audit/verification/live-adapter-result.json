@@ -1,0 +1,47 @@
+{
+  "kind": "real_jev_native_adapter_via_magpie",
+  "real_external_call": true,
+  "model_requested": "typesafe/jev-latest",
+  "question_count": 36,
+  "generation_entity_call": false,
+  "research_call": false,
+  "source": "fictional in-memory article; not a real market fact",
+  "max_attempts": 1,
+  "status": "passed",
+  "reported_model_name": "jev-1.14.0",
+  "usage": {
+    "prompt_tokens": 3303,
+    "completion_tokens": 805,
+    "total_tokens": 4108
+  },
+  "attempts": [
+    {
+      "attempt_number": 1,
+      "attempt_alias": "classification",
+      "attempt_model_name": "typesafe/jev-latest",
+      "reported_model_name": "jev-1.14.0",
+      "status": "succeeded",
+      "duration_ms": 1807,
+      "prompt_tokens": 3303,
+      "completion_tokens": 805,
+      "total_tokens": 4108,
+      "cost_usd": null,
+      "fallback_reason": null,
+      "error": null
+    }
+  ],
+  "normalized": {
+    "category": "company",
+    "event_type": "earnings",
+    "should_extract": true,
+    "topics": [],
+    "related_industries": [
+      "semiconductors",
+      "hardware"
+    ],
+    "regions": [
+      "US"
+    ]
+  },
+  "duration_seconds": 1.833
+}

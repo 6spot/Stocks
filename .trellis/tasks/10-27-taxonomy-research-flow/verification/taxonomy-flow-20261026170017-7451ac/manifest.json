@@ -1,0 +1,166 @@
+{
+  "status": "passed",
+  "stage": "complete",
+  "external_success": false,
+  "real_jev": false,
+  "real_jev_call_count": 0,
+  "output_dir": "/tmp/stocks-v0-taxonomy-research-flow/artifacts/taxonomy-flow-20261026170017-7451ac",
+  "limits": "全部材料为虚构合成测试数据，不能作为真实公司事实、预测或投资依据；除可选 Jev 分类外，来源及生成模型响应均受控。",
+  "browser": "not exercised; API contracts only",
+  "model_transport_calls": {
+    "embedding": 5,
+    "jev_native": 3,
+    "classification_entities": 3,
+    "fact_extraction": 3,
+    "research": 1
+  },
+  "source_http_calls": {
+    "/feed.xml": 1,
+    "/explicit": 1,
+    "/name_only": 1,
+    "/background": 1
+  },
+  "source_id": "taxonomy_source_20261026170017-7451ac",
+  "collection_task_id": "taxonomy_collect_20261026170017-7451ac",
+  "research_task_id": "taxonomy_research_20261026170017-7451ac",
+  "bucket": "taxonomy-flow-20261026170017-7451ac",
+  "model_requested": "typesafe/jev-latest",
+  "taxonomy_fingerprint": "023566a6ea4a236ae169774bcdff02334cfaf5e96746dfdd27d5e14a7af3c61e",
+  "source_mode": "controlled fake public HTTPS via SafeFetcher permitted resolver",
+  "model_mode": "all controlled",
+  "postgres": "real task PostgreSQL/pgvector",
+  "storage": "real task S3 put/get",
+  "collection_run_id": "02515362-7fbf-43f2-b990-eaae6db647fa",
+  "documents": {
+    "explicit": {
+      "document_id": "ccdb47e3-634c-4b37-ae60-d96b7b00ed82",
+      "version": 1,
+      "content_hash": "8db0641c387ecc0e464eb78e2e0724d7b3b99b00338b33ccac25851b707fd419",
+      "snapshot_key": "sources/taxonomy_source_20261026170017-7451ac/8db0641c387ecc0e464eb78e2e0724d7b3b99b00338b33ccac25851b707fd419",
+      "parse_batch_id": "10c19aac-bf6d-43ca-aa20-2e074caffc17",
+      "chunk_ids": [
+        "223e5503-a8cc-45f3-8ca9-872a0150ce73",
+        "85312913-e585-43c5-97be-97aeb0e688f8",
+        "f21ba9ba-a3a7-472a-8fd3-5577b3bc7dc0"
+      ],
+      "embedding_rows": 3,
+      "fact_ids": [
+        "ef62b5e9-1192-4d64-b8dc-d7fa675d5d77"
+      ]
+    },
+    "name_only": {
+      "document_id": "b9837c86-7c04-4f70-8ea4-799ea9c9a34c",
+      "version": 1,
+      "content_hash": "7e6215c60156c5a8fc1e850087b421c1e996ff993114345dd0dee896549c215e",
+      "snapshot_key": "sources/taxonomy_source_20261026170017-7451ac/7e6215c60156c5a8fc1e850087b421c1e996ff993114345dd0dee896549c215e",
+      "parse_batch_id": "72942fd4-5527-4399-be99-a0397479943c",
+      "chunk_ids": [
+        "590fd242-e927-49c4-bc4e-ac6246f285ca",
+        "87805fc2-ad8a-45c9-a1a0-22225e5f32d4",
+        "c576ddf3-9666-49fb-9afe-d97a3f5304f5"
+      ],
+      "embedding_rows": 3,
+      "fact_ids": []
+    },
+    "background": {
+      "document_id": "e8e49d24-b8c1-4240-b239-184963749a4d",
+      "version": 1,
+      "content_hash": "62f89c039c0c78378971d0d91fc7b21b80c31544052107d58dd8d79618a26af2",
+      "snapshot_key": "sources/taxonomy_source_20261026170017-7451ac/62f89c039c0c78378971d0d91fc7b21b80c31544052107d58dd8d79618a26af2",
+      "parse_batch_id": "dcaf8775-04a6-4276-814b-fc1a51e25d0a",
+      "chunk_ids": [
+        "16af6b00-0d94-4b46-a881-c8d06ac7129a",
+        "bb598a1c-450a-4b07-95fb-430957a0e5f8",
+        "d794aae7-eb5c-4b8f-bf4d-078dbb9950b4"
+      ],
+      "embedding_rows": 3,
+      "fact_ids": []
+    }
+  },
+  "processing": {
+    "explicit": {
+      "parse": {
+        "status": "completed",
+        "attempts": 1,
+        "error_code": null,
+        "wait_reason": null
+      },
+      "index": {
+        "status": "completed",
+        "attempts": 1,
+        "error_code": null,
+        "wait_reason": null
+      },
+      "classify": {
+        "status": "completed",
+        "attempts": 1,
+        "error_code": null,
+        "wait_reason": null
+      },
+      "facts": {
+        "status": "completed",
+        "attempts": 1,
+        "error_code": null,
+        "wait_reason": null
+      }
+    },
+    "name_only": {
+      "parse": {
+        "status": "completed",
+        "attempts": 1,
+        "error_code": null,
+        "wait_reason": null
+      },
+      "index": {
+        "status": "completed",
+        "attempts": 1,
+        "error_code": null,
+        "wait_reason": null
+      },
+      "classify": {
+        "status": "completed",
+        "attempts": 1,
+        "error_code": null,
+        "wait_reason": null
+      },
+      "facts": {
+        "status": "completed",
+        "attempts": 1,
+        "error_code": null,
+        "wait_reason": null
+      }
+    },
+    "background": {
+      "parse": {
+        "status": "completed",
+        "attempts": 1,
+        "error_code": null,
+        "wait_reason": null
+      },
+      "index": {
+        "status": "completed",
+        "attempts": 1,
+        "error_code": null,
+        "wait_reason": null
+      },
+      "classify": {
+        "status": "completed",
+        "attempts": 1,
+        "error_code": null,
+        "wait_reason": null
+      },
+      "facts": {
+        "status": "completed",
+        "attempts": 1,
+        "error_code": null,
+        "wait_reason": null
+      }
+    }
+  },
+  "fact_id": "ef62b5e9-1192-4d64-b8dc-d7fa675d5d77",
+  "research_run_id": "485467bb-e6ca-46e4-9d5c-2a6c00b04bc0",
+  "evidence_package_id": "a03a39b6-aaa4-488e-8ff6-80f255401b78",
+  "analysis_id": "c18346df-e174-4672-b854-1c9007ecd18c",
+  "report_id": "72f7b322-25f4-45a3-bd96-95c9268efc1c",
+  "cleanup": "task bucket and database rows retained for parent; no cleanup performed"
+}

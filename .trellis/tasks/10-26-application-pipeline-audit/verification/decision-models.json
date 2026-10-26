@@ -1,0 +1,20 @@
+{
+  "check": "Magpie native decision model discovery",
+  "status_code": 200,
+  "matching_models": [
+    {
+      "id": "typesafe/jev-latest",
+      "kind": "decision",
+      "native_endpoints": [
+        "/v1/systemone"
+      ]
+    },
+    {
+      "id": "typesafe/jev-preview",
+      "kind": "decision",
+      "native_endpoints": [
+        "/v1/systemone"
+      ]
+    }
+  ]
+}

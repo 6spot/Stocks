@@ -1,0 +1,68 @@
+{
+  "status": "passed",
+  "stage": "complete",
+  "external_success": false,
+  "source_id": "mp_smoke_eec59cb5f483",
+  "collection_task_id": "mp_collect_eec59cb5f483",
+  "research_task_id": "mp_research_eec59cb5f483",
+  "bucket": "stocks-mp-smoke-eec59cb5f483",
+  "output_dir": "/tmp/stocks-v0-application-pipeline-audit-jev/source/.trellis/tasks/10-26-application-pipeline-audit/research/smoke-output-5479a419c88a",
+  "postgres": "real isolated PostgreSQL + pgvector",
+  "storage": "real isolated S3 put/get",
+  "external": "controlled HTTP/model transports",
+  "browser": "not exercised; API citation contracts only",
+  "collection_run_id": "bc8244eb-d9fe-4972-b195-d53a78ec2dcd",
+  "source_calls": {
+    "/feed.xml": 1,
+    "/article": 1
+  },
+  "model_calls": {
+    "embedding": 3,
+    "jev_native": 1,
+    "classification_entities": 1,
+    "fact_extraction": 1,
+    "research": 1
+  },
+  "document_id": "33d881ce-baf5-4adc-bece-200ccb1d2a17",
+  "document_version": 1,
+  "content_hash": "ab0ba8cf559ed2a1f8efb9e8d159cf63bff25e45e074e8f1ed8635c38995eaf5",
+  "snapshot_key": "sources/mp_smoke_eec59cb5f483/ab0ba8cf559ed2a1f8efb9e8d159cf63bff25e45e074e8f1ed8635c38995eaf5",
+  "processing": {
+    "parse": {
+      "status": "completed",
+      "attempts": 1,
+      "wait_reason": null,
+      "error_code": null
+    },
+    "index": {
+      "status": "completed",
+      "attempts": 1,
+      "wait_reason": null,
+      "error_code": null
+    },
+    "classify": {
+      "status": "completed",
+      "attempts": 1,
+      "wait_reason": null,
+      "error_code": null
+    },
+    "facts": {
+      "status": "completed",
+      "attempts": 1,
+      "wait_reason": null,
+      "error_code": null
+    }
+  },
+  "parse_batch_id": "63ac95e4-330e-4892-b8cd-4f078c75912a",
+  "chunk_ids": [
+    "25c75d5d-42a7-41b9-930e-c8d359ffdc53"
+  ],
+  "fact_id": "bfb28d67-8655-4f3f-abe1-5d5ec0e003f5",
+  "embedding_rows": 1,
+  "research_run_id": "c43f5891-9d05-4107-93ce-cfdf06cd80b4",
+  "evidence_package_id": "e94ad821-6d83-4dbc-ba70-c2c38e191216",
+  "analysis_id": "b7003ba6-3c1e-4098-9f26-f6ca723f51a2",
+  "report_id": "d8ba52b2-1fda-4d14-b7e3-bf837714ac2c",
+  "cited_chunk_id": "25c75d5d-42a7-41b9-930e-c8d359ffdc53",
+  "cleanup": "resources intentionally retained for main"
+}

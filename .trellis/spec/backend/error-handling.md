@@ -14,6 +14,43 @@
 
 两个 `httpx` 测试细节：超时以普通 dict 写入 `request.extensions["timeout"]`（值是 int，如 `{"connect": 300, ...}`），断言用 `timeout.get("connect")` 而不是下标或切片；MockTransport handler 内抛出的 `TypeError` 会被 `research_chat` 的 `except (ValueError, KeyError, TypeError)` 捕获并当作 `invalid_response` 重试，因此 mock 内不能让被测断言以异常形式逃逸——需要在 handler 里记录状态、返回合法响应。
 
+## 原生决策协议接入
+
+### Scope / Trigger
+
+新增模型协议或拆分模型职责时，先确认接口能表达的输出类型。产品字段与配置契约归 [任务执行与模型接入](../../../docs/execution.md) 和 [数据设计](../../../docs/data.md)；本节只规定适配边界。
+
+### Signatures
+
+`async ModelClient.typesafe_decision(routing: ChatRouting, *, state: dict, questions: dict, validate_content: Callable[[str], object]) -> ChatResponse` 调用原生 `/systemone`；`classification/jev.py` 构造与校验决策；`decision.classify_document(...) -> ClassificationDecision` 合并结果。不把原生决策塞入 Chat Completions 的任意 JSON Schema 路径。
+
+### Contracts
+
+凭据经环境变量准备，只在实际使用路由时要求可选供应商配置完整；未启用的独立分类服务不得阻止研究或向量路由加载。分类与开放实体抽取是两个显式角色，保存各次调用身份、使用量与依据；不能把第二角色作为第一角色失败后的隐式回退。
+
+### Validation & Error Matrix
+
+| 条件 | 处理 |
+| --- | --- |
+| 缺失/多余答案、类型或候选不匹配、非法或非有限概率 | 拒绝输出，处理阶段失败，不保存空成功 |
+| 概率为 `0.01`、`0.99` 等数值 | 按配置阈值比较，拒绝 bool 冒充数字，不用 `bool(probability)` |
+| 开放实体不在输入原文证据中 | 拒绝结果，不从候选名单或系统知识补全 |
+| 可重试传输失败 | 遵守现有有限次数、超时与脱敏 attempt 记录 |
+| 失败响应含服务商正文或密钥 | 只暴露固定错误，不能写入状态、日志或快照 |
+
+### Good / Base / Bad Cases
+
+Good：受控协议测试同时检查请求与严格响应，并用真实持久化验证阶段失败可见。Base：空实体列表有明确有效输出且不伪造公司。Bad：直接将原生概率当布尔值，或固定候选选择失败后无记录地调用生成模型。
+
+### Tests Required
+
+参考 `tests/test_classification_jev.py`：官方请求字段/认证、问题与候选限制、答案身份/数值、实体证据、两个角色的来源与用量、失败阶段可见性，以及未配置可选供应商时其他路由仍可用。真实供应商调用必须另记；Mock 不能等同外部验收。
+
+### Wrong vs Correct
+
+Wrong：`should_extract = bool(answer["noul"])`。
+Correct：先验证有限的 0..1 数字，再与已验证的配置阈值比较；实体生成作为明确的独立步骤执行，任一步失败均保留失败语义。
+
 ## 外部采集
 
 `stocks.collection.errors.CollectionError` 是采集边界的稳定错误载体，包含 `code`、固定 `message`、可选脱敏 `url` 和结构化 `details`。配置、Feed 和 HTTP 失败使用不同错误码；外部异常可保留为 Python `__cause__` 供诊断，但 CLI/API 输出只调用 `to_dict()`，不得返回异常原文、完整响应或请求头。

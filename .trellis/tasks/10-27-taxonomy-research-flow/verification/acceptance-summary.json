@@ -1,0 +1,75 @@
+{
+  "status": "passed",
+  "real_jev_call_count": 3,
+  "external_success": false,
+  "report_id": "e5b1c502-0b13-4d6c-8828-7ab3f8fff8fa",
+  "research_run_id": "91385cb2-234e-49ab-8316-8db532ee453b",
+  "taxonomy_fingerprint": "023566a6ea4a236ae169774bcdff02334cfaf5e96746dfdd27d5e14a7af3c61e",
+  "documents": {
+    "explicit": {
+      "document_id": "2bda6af0-e707-4d3c-9e2b-2d9752c50a0c",
+      "category": "company",
+      "event_type": "earnings",
+      "industries": [
+        "semiconductors",
+        "hardware"
+      ],
+      "companies": [
+        "Northstar Silicon"
+      ],
+      "symbols": [
+        "NSIL"
+      ],
+      "should_extract": true,
+      "facts_status": "completed",
+      "facts_skip_reason": null,
+      "fact_ids": [
+        "3ce9d2a6-8151-4baf-b1c7-b47fc11b0f5e"
+      ],
+      "reported_model_name": "jev-1.14.0",
+      "native_attempt_count": 1
+    },
+    "name_only": {
+      "document_id": "98d51822-4f4b-4bcd-a93b-81a2387d4319",
+      "category": "company",
+      "event_type": null,
+      "industries": [
+        "semiconductors",
+        "hardware"
+      ],
+      "companies": [
+        "Northstar Silicon"
+      ],
+      "symbols": [],
+      "should_extract": false,
+      "facts_status": "skipped",
+      "facts_skip_reason": "NOT_APPLICABLE",
+      "fact_ids": [],
+      "reported_model_name": "jev-1.14.0",
+      "native_attempt_count": 1
+    },
+    "background": {
+      "document_id": "274f8b35-9dc7-4ff5-92e0-6f82c117d1cd",
+      "category": "industry",
+      "event_type": null,
+      "industries": [
+        "semiconductors",
+        "hardware"
+      ],
+      "companies": [],
+      "symbols": [],
+      "should_extract": false,
+      "facts_status": "skipped",
+      "facts_skip_reason": "NOT_APPLICABLE",
+      "fact_ids": [],
+      "reported_model_name": "jev-1.14.0",
+      "native_attempt_count": 1
+    }
+  },
+  "native_input_tokens": 18473,
+  "native_output_tokens": 2417,
+  "native_duration_ms": 4445,
+  "question_count": 36,
+  "report_retained_gap": "no_background_selected",
+  "native_total_tokens": 20890
+}

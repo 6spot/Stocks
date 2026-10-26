@@ -1,0 +1,925 @@
+{
+  "explicit": {
+    "usage": {
+      "total_tokens": 7142,
+      "prompt_tokens": 6237,
+      "completion_tokens": 905
+    },
+    "method": "decision_model",
+    "reason": "受控实体响应只返回当前原文明示的公司和代码；公司名与行业关联不能用于推断代码。",
+    "topics": [
+      "growth"
+    ],
+    "regions": [
+      "US"
+    ],
+    "symbols": [
+      "NSIL"
+    ],
+    "attempts": [
+      {
+        "role": "classification",
+        "error": null,
+        "status": "succeeded",
+        "cost_usd": null,
+        "duration_ms": 1871,
+        "total_tokens": 6942,
+        "attempt_alias": "classification",
+        "prompt_tokens": 6137,
+        "attempt_number": 1,
+        "fallback_reason": null,
+        "completion_tokens": 805,
+        "attempt_model_name": "typesafe/jev-latest",
+        "reported_model_name": "jev-1.14.0"
+      },
+      {
+        "role": "classification_entities",
+        "error": null,
+        "status": "succeeded",
+        "cost_usd": null,
+        "duration_ms": 0,
+        "total_tokens": 200,
+        "attempt_alias": "research",
+        "prompt_tokens": 100,
+        "attempt_number": 1,
+        "fallback_reason": null,
+        "completion_tokens": 100,
+        "attempt_model_name": "controlled-research",
+        "reported_model_name": "controlled-research"
+      }
+    ],
+    "category": "company",
+    "companies": [
+      "Northstar Silicon"
+    ],
+    "model_ref": "classification",
+    "event_type": "earnings",
+    "model_alias": "classification",
+    "model_calls": [
+      {
+        "role": "classification",
+        "usage": {
+          "total_tokens": 6942,
+          "prompt_tokens": 6137,
+          "completion_tokens": 805
+        },
+        "answers": {
+          "doc_type": {
+            "type": "choice",
+            "choice": "company",
+            "confidence": 0.95,
+            "probabilities": {
+              "macro": 0.0,
+              "other": 0.01,
+              "policy": 0.0,
+              "company": 0.96,
+              "industry": 0.03
+            }
+          },
+          "event_type": {
+            "type": "choice",
+            "choice": "earnings",
+            "confidence": 1.0,
+            "probabilities": {
+              "__none__": 0.0,
+              "earnings": 1.0,
+              "regulation": 0.0,
+              "data_release": 0.0,
+              "fiscal_policy": 0.0,
+              "monetary_policy": 0.0,
+              "corporate_action": 0.0
+            }
+          },
+          "regions.EU": {
+            "noul": 0.16,
+            "type": "noul"
+          },
+          "regions.UK": {
+            "noul": 0.06,
+            "type": "noul"
+          },
+          "regions.US": {
+            "noul": 0.79,
+            "type": "noul"
+          },
+          "topics.trade": {
+            "noul": 0.08,
+            "type": "noul"
+          },
+          "regions.China": {
+            "noul": 0.06,
+            "type": "noul"
+          },
+          "regions.Japan": {
+            "noul": 0.05,
+            "type": "noul"
+          },
+          "topics.credit": {
+            "noul": 0.06,
+            "type": "noul"
+          },
+          "topics.energy": {
+            "noul": 0.05,
+            "type": "noul"
+          },
+          "topics.growth": {
+            "noul": 0.71,
+            "type": "noul"
+          },
+          "regions.Global": {
+            "noul": 0.16,
+            "type": "noul"
+          },
+          "should_extract": {
+            "noul": 0.82,
+            "type": "noul"
+          },
+          "topics.inflation": {
+            "noul": 0.11,
+            "type": "noul"
+          },
+          "topics.liquidity": {
+            "noul": 0.16,
+            "type": "noul"
+          },
+          "topics.employment": {
+            "noul": 0.05,
+            "type": "noul"
+          },
+          "topics.geopolitics": {
+            "noul": 0.09,
+            "type": "noul"
+          },
+          "regions.AsiaPacific": {
+            "noul": 0.16,
+            "type": "noul"
+          },
+          "topics.interest_rates": {
+            "noul": 0.05,
+            "type": "noul"
+          },
+          "regions.EmergingMarkets": {
+            "noul": 0.18,
+            "type": "noul"
+          },
+          "topics.market_sentiment": {
+            "noul": 0.11,
+            "type": "noul"
+          },
+          "related_industries.media": {
+            "noul": 0.05,
+            "type": "noul"
+          },
+          "related_industries.energy": {
+            "noul": 0.05,
+            "type": "noul"
+          },
+          "related_industries.retail": {
+            "noul": 0.06,
+            "type": "noul"
+          },
+          "related_industries.banking": {
+            "noul": 0.04,
+            "type": "noul"
+          },
+          "related_industries.telecom": {
+            "noul": 0.18,
+            "type": "noul"
+          },
+          "related_industries.consumer": {
+            "noul": 0.08,
+            "type": "noul"
+          },
+          "related_industries.hardware": {
+            "noul": 0.86,
+            "type": "noul"
+          },
+          "related_industries.software": {
+            "noul": 0.08,
+            "type": "noul"
+          },
+          "related_industries.materials": {
+            "noul": 0.14,
+            "type": "noul"
+          },
+          "related_industries.utilities": {
+            "noul": 0.24,
+            "type": "noul"
+          },
+          "related_industries.healthcare": {
+            "noul": 0.04,
+            "type": "noul"
+          },
+          "related_industries.industrials": {
+            "noul": 0.28,
+            "type": "noul"
+          },
+          "related_industries.real_estate": {
+            "noul": 0.04,
+            "type": "noul"
+          },
+          "related_industries.semiconductors": {
+            "noul": 0.96,
+            "type": "noul"
+          },
+          "related_industries.transportation": {
+            "noul": 0.05,
+            "type": "noul"
+          }
+        },
+        "attempts": [
+          {
+            "error": null,
+            "status": "succeeded",
+            "cost_usd": null,
+            "duration_ms": 1871,
+            "total_tokens": 6942,
+            "attempt_alias": "classification",
+            "prompt_tokens": 6137,
+            "attempt_number": 1,
+            "fallback_reason": null,
+            "completion_tokens": 805,
+            "attempt_model_name": "typesafe/jev-latest",
+            "reported_model_name": "jev-1.14.0"
+          }
+        ],
+        "protocol": "typesafe",
+        "provider": "typesafe",
+        "model_alias": "classification",
+        "noul_threshold": 0.5,
+        "reported_model_name": "jev-1.14.0",
+        "requested_model_name": "typesafe/jev-latest"
+      },
+      {
+        "role": "classification_entities",
+        "usage": {
+          "total_tokens": 200,
+          "prompt_tokens": 100,
+          "completion_tokens": 100
+        },
+        "attempts": [
+          {
+            "error": null,
+            "status": "succeeded",
+            "cost_usd": null,
+            "duration_ms": 0,
+            "total_tokens": 200,
+            "attempt_alias": "research",
+            "prompt_tokens": 100,
+            "attempt_number": 1,
+            "fallback_reason": null,
+            "completion_tokens": 100,
+            "attempt_model_name": "controlled-research",
+            "reported_model_name": "controlled-research"
+          }
+        ],
+        "protocol": "openai_compatible",
+        "provider": "chat",
+        "model_alias": "research",
+        "reported_model_name": "controlled-research",
+        "requested_model_name": "controlled-research"
+      }
+    ],
+    "classified_at": "2026-10-26T17:00:29.226921+00:00",
+    "should_extract": true,
+    "taxonomy_version": "2026-10-27",
+    "related_industries": [
+      "semiconductors",
+      "hardware"
+    ],
+    "reported_model_name": "jev-1.14.0",
+    "requested_model_name": "typesafe/jev-latest",
+    "taxonomy_fingerprint": "023566a6ea4a236ae169774bcdff02334cfaf5e96746dfdd27d5e14a7af3c61e",
+    "reason_or_evidence_ref": {
+      "reason": "受控实体响应只返回当前原文明示的公司和代码；公司名与行业关联不能用于推断代码。",
+      "chunk_ids": [
+        "45e25605-9dcc-45b8-9f5a-c077bae22423",
+        "33ffd250-a2b2-4773-8322-7ad84d627e1d",
+        "5bc3cc96-f017-45e9-8be2-ce23e81252ea"
+      ],
+      "truncated": false,
+      "parse_batch_id": "f3fe2162-3baf-4196-be5b-30c1b63069ea",
+      "entity_evidence": [
+        {
+          "kind": "company",
+          "quote": "Northstar Silicon (NSIL) reported revenue of 42 million USD for 2026 Q3.",
+          "value": "Northstar Silicon"
+        },
+        {
+          "kind": "symbol",
+          "quote": "Northstar Silicon (NSIL) reported revenue of 42 million USD for 2026 Q3.",
+          "value": "NSIL"
+        }
+      ],
+      "input_characters": 2732
+    }
+  },
+  "name_only": {
+    "usage": {
+      "total_tokens": 7180,
+      "prompt_tokens": 6274,
+      "completion_tokens": 906
+    },
+    "method": "decision_model",
+    "reason": "受控实体响应只返回当前原文明示的公司和代码；公司名与行业关联不能用于推断代码。",
+    "topics": [
+      "growth"
+    ],
+    "regions": [
+      "US"
+    ],
+    "symbols": [],
+    "attempts": [
+      {
+        "role": "classification",
+        "error": null,
+        "status": "succeeded",
+        "cost_usd": null,
+        "duration_ms": 933,
+        "total_tokens": 6980,
+        "attempt_alias": "classification",
+        "prompt_tokens": 6174,
+        "attempt_number": 1,
+        "fallback_reason": null,
+        "completion_tokens": 806,
+        "attempt_model_name": "typesafe/jev-latest",
+        "reported_model_name": "jev-1.14.0"
+      },
+      {
+        "role": "classification_entities",
+        "error": null,
+        "status": "succeeded",
+        "cost_usd": null,
+        "duration_ms": 0,
+        "total_tokens": 200,
+        "attempt_alias": "research",
+        "prompt_tokens": 100,
+        "attempt_number": 1,
+        "fallback_reason": null,
+        "completion_tokens": 100,
+        "attempt_model_name": "controlled-research",
+        "reported_model_name": "controlled-research"
+      }
+    ],
+    "category": "company",
+    "companies": [
+      "Northstar Silicon"
+    ],
+    "model_ref": "classification",
+    "event_type": null,
+    "model_alias": "classification",
+    "model_calls": [
+      {
+        "role": "classification",
+        "usage": {
+          "total_tokens": 6980,
+          "prompt_tokens": 6174,
+          "completion_tokens": 806
+        },
+        "answers": {
+          "doc_type": {
+            "type": "choice",
+            "choice": "company",
+            "confidence": 0.75,
+            "probabilities": {
+              "macro": 0.01,
+              "other": 0.02,
+              "policy": 0.0,
+              "company": 0.8,
+              "industry": 0.17
+            }
+          },
+          "event_type": {
+            "type": "choice",
+            "choice": "__none__",
+            "confidence": 0.95,
+            "probabilities": {
+              "__none__": 0.96,
+              "earnings": 0.04,
+              "regulation": 0.0,
+              "data_release": 0.0,
+              "fiscal_policy": 0.0,
+              "monetary_policy": 0.0,
+              "corporate_action": 0.0
+            }
+          },
+          "regions.EU": {
+            "noul": 0.14,
+            "type": "noul"
+          },
+          "regions.UK": {
+            "noul": 0.07,
+            "type": "noul"
+          },
+          "regions.US": {
+            "noul": 0.88,
+            "type": "noul"
+          },
+          "topics.trade": {
+            "noul": 0.13,
+            "type": "noul"
+          },
+          "regions.China": {
+            "noul": 0.06,
+            "type": "noul"
+          },
+          "regions.Japan": {
+            "noul": 0.05,
+            "type": "noul"
+          },
+          "topics.credit": {
+            "noul": 0.04,
+            "type": "noul"
+          },
+          "topics.energy": {
+            "noul": 0.05,
+            "type": "noul"
+          },
+          "topics.growth": {
+            "noul": 0.76,
+            "type": "noul"
+          },
+          "regions.Global": {
+            "noul": 0.12,
+            "type": "noul"
+          },
+          "should_extract": {
+            "noul": 0.39,
+            "type": "noul"
+          },
+          "topics.inflation": {
+            "noul": 0.07,
+            "type": "noul"
+          },
+          "topics.liquidity": {
+            "noul": 0.07,
+            "type": "noul"
+          },
+          "topics.employment": {
+            "noul": 0.06,
+            "type": "noul"
+          },
+          "topics.geopolitics": {
+            "noul": 0.18,
+            "type": "noul"
+          },
+          "regions.AsiaPacific": {
+            "noul": 0.1,
+            "type": "noul"
+          },
+          "topics.interest_rates": {
+            "noul": 0.05,
+            "type": "noul"
+          },
+          "regions.EmergingMarkets": {
+            "noul": 0.1,
+            "type": "noul"
+          },
+          "topics.market_sentiment": {
+            "noul": 0.07,
+            "type": "noul"
+          },
+          "related_industries.media": {
+            "noul": 0.05,
+            "type": "noul"
+          },
+          "related_industries.energy": {
+            "noul": 0.04,
+            "type": "noul"
+          },
+          "related_industries.retail": {
+            "noul": 0.05,
+            "type": "noul"
+          },
+          "related_industries.banking": {
+            "noul": 0.03,
+            "type": "noul"
+          },
+          "related_industries.telecom": {
+            "noul": 0.16,
+            "type": "noul"
+          },
+          "related_industries.consumer": {
+            "noul": 0.07,
+            "type": "noul"
+          },
+          "related_industries.hardware": {
+            "noul": 0.85,
+            "type": "noul"
+          },
+          "related_industries.software": {
+            "noul": 0.06,
+            "type": "noul"
+          },
+          "related_industries.materials": {
+            "noul": 0.17,
+            "type": "noul"
+          },
+          "related_industries.utilities": {
+            "noul": 0.26,
+            "type": "noul"
+          },
+          "related_industries.healthcare": {
+            "noul": 0.04,
+            "type": "noul"
+          },
+          "related_industries.industrials": {
+            "noul": 0.43,
+            "type": "noul"
+          },
+          "related_industries.real_estate": {
+            "noul": 0.04,
+            "type": "noul"
+          },
+          "related_industries.semiconductors": {
+            "noul": 0.96,
+            "type": "noul"
+          },
+          "related_industries.transportation": {
+            "noul": 0.04,
+            "type": "noul"
+          }
+        },
+        "attempts": [
+          {
+            "error": null,
+            "status": "succeeded",
+            "cost_usd": null,
+            "duration_ms": 933,
+            "total_tokens": 6980,
+            "attempt_alias": "classification",
+            "prompt_tokens": 6174,
+            "attempt_number": 1,
+            "fallback_reason": null,
+            "completion_tokens": 806,
+            "attempt_model_name": "typesafe/jev-latest",
+            "reported_model_name": "jev-1.14.0"
+          }
+        ],
+        "protocol": "typesafe",
+        "provider": "typesafe",
+        "model_alias": "classification",
+        "noul_threshold": 0.5,
+        "reported_model_name": "jev-1.14.0",
+        "requested_model_name": "typesafe/jev-latest"
+      },
+      {
+        "role": "classification_entities",
+        "usage": {
+          "total_tokens": 200,
+          "prompt_tokens": 100,
+          "completion_tokens": 100
+        },
+        "attempts": [
+          {
+            "error": null,
+            "status": "succeeded",
+            "cost_usd": null,
+            "duration_ms": 0,
+            "total_tokens": 200,
+            "attempt_alias": "research",
+            "prompt_tokens": 100,
+            "attempt_number": 1,
+            "fallback_reason": null,
+            "completion_tokens": 100,
+            "attempt_model_name": "controlled-research",
+            "reported_model_name": "controlled-research"
+          }
+        ],
+        "protocol": "openai_compatible",
+        "provider": "chat",
+        "model_alias": "research",
+        "reported_model_name": "controlled-research",
+        "requested_model_name": "controlled-research"
+      }
+    ],
+    "classified_at": "2026-10-26T17:00:31.314514+00:00",
+    "should_extract": false,
+    "taxonomy_version": "2026-10-27",
+    "related_industries": [
+      "semiconductors",
+      "hardware"
+    ],
+    "reported_model_name": "jev-1.14.0",
+    "requested_model_name": "typesafe/jev-latest",
+    "taxonomy_fingerprint": "023566a6ea4a236ae169774bcdff02334cfaf5e96746dfdd27d5e14a7af3c61e",
+    "reason_or_evidence_ref": {
+      "reason": "受控实体响应只返回当前原文明示的公司和代码；公司名与行业关联不能用于推断代码。",
+      "chunk_ids": [
+        "dd7f155a-dc74-4b5a-be6c-8208640f3b3f",
+        "f4f12ce8-64a6-42fb-9ca7-23bf4e6cc59d",
+        "b6eaee9a-4d27-4c32-b9f9-460f9d48da2a"
+      ],
+      "truncated": false,
+      "parse_batch_id": "712a7269-a89d-4410-8ca0-479edbe62960",
+      "entity_evidence": [
+        {
+          "kind": "company",
+          "quote": "Northstar Silicon describes its chip design roadmap and US semiconductor demand without publishing a ticker or numeric operating metrics.",
+          "value": "Northstar Silicon"
+        }
+      ],
+      "input_characters": 3199
+    }
+  },
+  "background": {
+    "usage": {
+      "total_tokens": 7168,
+      "prompt_tokens": 6262,
+      "completion_tokens": 906
+    },
+    "method": "decision_model",
+    "reason": "受控实体响应只返回当前原文明示的公司和代码；公司名与行业关联不能用于推断代码。",
+    "topics": [
+      "growth"
+    ],
+    "regions": [
+      "US"
+    ],
+    "symbols": [],
+    "attempts": [
+      {
+        "role": "classification",
+        "error": null,
+        "status": "succeeded",
+        "cost_usd": null,
+        "duration_ms": 1641,
+        "total_tokens": 6968,
+        "attempt_alias": "classification",
+        "prompt_tokens": 6162,
+        "attempt_number": 1,
+        "fallback_reason": null,
+        "completion_tokens": 806,
+        "attempt_model_name": "typesafe/jev-latest",
+        "reported_model_name": "jev-1.14.0"
+      },
+      {
+        "role": "classification_entities",
+        "error": null,
+        "status": "succeeded",
+        "cost_usd": null,
+        "duration_ms": 0,
+        "total_tokens": 200,
+        "attempt_alias": "research",
+        "prompt_tokens": 100,
+        "attempt_number": 1,
+        "fallback_reason": null,
+        "completion_tokens": 100,
+        "attempt_model_name": "controlled-research",
+        "reported_model_name": "controlled-research"
+      }
+    ],
+    "category": "industry",
+    "companies": [],
+    "model_ref": "classification",
+    "event_type": null,
+    "model_alias": "classification",
+    "model_calls": [
+      {
+        "role": "classification",
+        "usage": {
+          "total_tokens": 6968,
+          "prompt_tokens": 6162,
+          "completion_tokens": 806
+        },
+        "answers": {
+          "doc_type": {
+            "type": "choice",
+            "choice": "industry",
+            "confidence": 0.97,
+            "probabilities": {
+              "macro": 0.01,
+              "other": 0.01,
+              "policy": 0.0,
+              "company": 0.0,
+              "industry": 0.98
+            }
+          },
+          "event_type": {
+            "type": "choice",
+            "choice": "__none__",
+            "confidence": 1.0,
+            "probabilities": {
+              "__none__": 1.0,
+              "earnings": 0.0,
+              "regulation": 0.0,
+              "data_release": 0.0,
+              "fiscal_policy": 0.0,
+              "monetary_policy": 0.0,
+              "corporate_action": 0.0
+            }
+          },
+          "regions.EU": {
+            "noul": 0.05,
+            "type": "noul"
+          },
+          "regions.UK": {
+            "noul": 0.03,
+            "type": "noul"
+          },
+          "regions.US": {
+            "noul": 0.94,
+            "type": "noul"
+          },
+          "topics.trade": {
+            "noul": 0.06,
+            "type": "noul"
+          },
+          "regions.China": {
+            "noul": 0.04,
+            "type": "noul"
+          },
+          "regions.Japan": {
+            "noul": 0.03,
+            "type": "noul"
+          },
+          "topics.credit": {
+            "noul": 0.03,
+            "type": "noul"
+          },
+          "topics.energy": {
+            "noul": 0.03,
+            "type": "noul"
+          },
+          "topics.growth": {
+            "noul": 0.81,
+            "type": "noul"
+          },
+          "regions.Global": {
+            "noul": 0.14,
+            "type": "noul"
+          },
+          "should_extract": {
+            "noul": 0.29,
+            "type": "noul"
+          },
+          "topics.inflation": {
+            "noul": 0.06,
+            "type": "noul"
+          },
+          "topics.liquidity": {
+            "noul": 0.05,
+            "type": "noul"
+          },
+          "topics.employment": {
+            "noul": 0.03,
+            "type": "noul"
+          },
+          "topics.geopolitics": {
+            "noul": 0.08,
+            "type": "noul"
+          },
+          "regions.AsiaPacific": {
+            "noul": 0.07,
+            "type": "noul"
+          },
+          "topics.interest_rates": {
+            "noul": 0.04,
+            "type": "noul"
+          },
+          "regions.EmergingMarkets": {
+            "noul": 0.03,
+            "type": "noul"
+          },
+          "topics.market_sentiment": {
+            "noul": 0.06,
+            "type": "noul"
+          },
+          "related_industries.media": {
+            "noul": 0.04,
+            "type": "noul"
+          },
+          "related_industries.energy": {
+            "noul": 0.03,
+            "type": "noul"
+          },
+          "related_industries.retail": {
+            "noul": 0.04,
+            "type": "noul"
+          },
+          "related_industries.banking": {
+            "noul": 0.03,
+            "type": "noul"
+          },
+          "related_industries.telecom": {
+            "noul": 0.19,
+            "type": "noul"
+          },
+          "related_industries.consumer": {
+            "noul": 0.08,
+            "type": "noul"
+          },
+          "related_industries.hardware": {
+            "noul": 0.77,
+            "type": "noul"
+          },
+          "related_industries.software": {
+            "noul": 0.06,
+            "type": "noul"
+          },
+          "related_industries.materials": {
+            "noul": 0.09,
+            "type": "noul"
+          },
+          "related_industries.utilities": {
+            "noul": 0.14,
+            "type": "noul"
+          },
+          "related_industries.healthcare": {
+            "noul": 0.03,
+            "type": "noul"
+          },
+          "related_industries.industrials": {
+            "noul": 0.39,
+            "type": "noul"
+          },
+          "related_industries.real_estate": {
+            "noul": 0.03,
+            "type": "noul"
+          },
+          "related_industries.semiconductors": {
+            "noul": 0.98,
+            "type": "noul"
+          },
+          "related_industries.transportation": {
+            "noul": 0.04,
+            "type": "noul"
+          }
+        },
+        "attempts": [
+          {
+            "error": null,
+            "status": "succeeded",
+            "cost_usd": null,
+            "duration_ms": 1641,
+            "total_tokens": 6968,
+            "attempt_alias": "classification",
+            "prompt_tokens": 6162,
+            "attempt_number": 1,
+            "fallback_reason": null,
+            "completion_tokens": 806,
+            "attempt_model_name": "typesafe/jev-latest",
+            "reported_model_name": "jev-1.14.0"
+          }
+        ],
+        "protocol": "typesafe",
+        "provider": "typesafe",
+        "model_alias": "classification",
+        "noul_threshold": 0.5,
+        "reported_model_name": "jev-1.14.0",
+        "requested_model_name": "typesafe/jev-latest"
+      },
+      {
+        "role": "classification_entities",
+        "usage": {
+          "total_tokens": 200,
+          "prompt_tokens": 100,
+          "completion_tokens": 100
+        },
+        "attempts": [
+          {
+            "error": null,
+            "status": "succeeded",
+            "cost_usd": null,
+            "duration_ms": 0,
+            "total_tokens": 200,
+            "attempt_alias": "research",
+            "prompt_tokens": 100,
+            "attempt_number": 1,
+            "fallback_reason": null,
+            "completion_tokens": 100,
+            "attempt_model_name": "controlled-research",
+            "reported_model_name": "controlled-research"
+          }
+        ],
+        "protocol": "openai_compatible",
+        "provider": "chat",
+        "model_alias": "research",
+        "reported_model_name": "controlled-research",
+        "requested_model_name": "controlled-research"
+      }
+    ],
+    "classified_at": "2026-10-26T17:00:32.420384+00:00",
+    "should_extract": false,
+    "taxonomy_version": "2026-10-27",
+    "related_industries": [
+      "semiconductors",
+      "hardware"
+    ],
+    "reported_model_name": "jev-1.14.0",
+    "requested_model_name": "typesafe/jev-latest",
+    "taxonomy_fingerprint": "023566a6ea4a236ae169774bcdff02334cfaf5e96746dfdd27d5e14a7af3c61e",
+    "reason_or_evidence_ref": {
+      "reason": "受控实体响应只返回当前原文明示的公司和代码；公司名与行业关联不能用于推断代码。",
+      "chunk_ids": [
+        "48dcd8eb-233c-46aa-940c-af0b78efe78c",
+        "0f3a1d89-1a10-46b4-8787-472aefacd201",
+        "4957661e-ed55-42d3-8034-10ad4585cd4d"
+      ],
+      "truncated": false,
+      "parse_batch_id": "a9b4d903-8c5e-471f-8e93-8db0afdcd8c0",
+      "entity_evidence": [],
+      "input_characters": 3298
+    }
+  }
+}

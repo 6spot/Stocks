@@ -1,0 +1,211 @@
+tasks:
+- id: taxonomy_collect_20261026170017-7451ac
+  name: Synthetic three-document collection
+  type: collection
+  trigger: manual
+  enabled: true
+  sources:
+  - taxonomy_source_20261026170017-7451ac
+  steps:
+  - id: collect
+    collect_sources:
+      kind: collect_sources
+- id: taxonomy_research_20261026170017-7451ac
+  name: 虚构公司与行业背景证据研究
+  type: research
+  trigger: manual
+  enabled: true
+  objective: 区分 Northstar Silicon（NSIL）显式公司证据、只有公司名的证据与半导体行业背景，逐项引用并说明合成数据边界。
+  strategy: evidence_first
+  scope:
+    companies:
+    - Northstar Silicon
+    symbols:
+    - NSIL
+    industries:
+    - semiconductors
+    regions:
+    - US
+  steps:
+  - id: evidence
+    select_evidence:
+      kind: select_evidence
+      queries:
+      - Northstar Silicon NSIL quarterly revenue company commentary
+      - US semiconductor demand advanced packaging industry background
+      limit_per_query: 24
+      max_tokens: 30000
+      source_ids:
+      - taxonomy_source_20261026170017-7451ac
+  - id: research
+    research_agent:
+      kind: research_agent
+      agent: research_writer
+      input: evidence
+agents:
+- id: research_writer
+  role: Research writer
+  prompt: 'Analyze only the supplied saved evidence. Distinguish facts from source
+    opinions and model inference. Return a complete, independently readable Simplified
+    Chinese research article with a specific title, a summary, and sections organized
+    by meaningful themes rather than by document or a list of findings. Explain the
+    important reasoning and material uncertainty in the section bodies so the article
+    stands on its own. Attribute source opinions, make model inference conditional,
+    and never add unsupported content. Use Markdown prose in section bodies; never
+    expose raw internal finding, document or chunk IDs in the prose. Supply stable
+    unique IDs and concise descriptive titles for the structured findings; each section
+    lists its supporting finding_ids without duplicates and every finding must be
+    used by at least one section. Each finding must cite exact supplied evidence references.
+    The article title must describe the research topic, not use a generic Finding
+    label. If evidence is insufficient, write an honest article explaining the limits
+    with empty findings and empty section finding_ids rather than inventing conclusions.
+    Count independent originals, not documents: evidence listed in one coverage.origin_groups
+    entry is a single source, so more copies of it never make a finding more certain,
+    and material whose origin is unknown stays unknown. When coverage.metric_comparisons
+    lists same-metric values, state each published value with its unit and observation
+    period side by side, never an average, and never call a conflict or an unconfirmed
+    value verified. Report important counter-evidence and unresolved relationships
+    as they are. Write every user-visible text field — article title, summary, section
+    headings and bodies, finding titles, statements, rationales, uncertainties, open
+    questions and coverage notes — in Simplified Chinese (简体中文). Keep source-anchored
+    terms verbatim in the original language when precision requires it (institution
+    names, rule or filing identifiers, quoted text), and on first mention add the
+    original term in parentheses, e.g. 美国证券交易委员会（SEC）. Numeric values, units and ISO
+    timestamps stay in their original form.'
+  model_ref: research
+  tools: []
+  input_schema:
+    type: object
+    additionalProperties: false
+    required:
+    - run_id
+    - objective
+    - strategy
+    - scope
+    - as_of
+    - evidence_package_id
+    - evidence
+    - coverage
+    - truncated
+    properties:
+      run_id:
+        type: string
+      objective:
+        type: string
+      strategy:
+        anyOf:
+        - type: string
+        - type: 'null'
+      scope:
+        type: object
+        additionalProperties: true
+      as_of:
+        type: string
+      evidence_package_id:
+        type: string
+      evidence:
+        type: array
+        items:
+          type: object
+          additionalProperties: true
+      coverage:
+        type: object
+        additionalProperties: true
+      truncated:
+        type: boolean
+  output_schema:
+    title: research_writer_output
+    type: object
+    additionalProperties: false
+    required:
+    - title
+    - summary
+    - sections
+    - findings
+    - open_questions
+    - evidence_refs
+    properties:
+      title:
+        type: string
+      summary:
+        type: string
+      sections:
+        type: array
+        minItems: 1
+        items:
+          type: object
+          additionalProperties: false
+          required:
+          - heading
+          - body
+          - finding_ids
+          properties:
+            heading:
+              type: string
+            body:
+              type: string
+            finding_ids:
+              type: array
+              items:
+                type: string
+      findings:
+        type: array
+        items:
+          type: object
+          additionalProperties: false
+          required:
+          - id
+          - title
+          - kind
+          - statement
+          - rationale
+          - uncertainty
+          - evidence_refs
+          properties:
+            id:
+              type: string
+            title:
+              type: string
+            kind:
+              type: string
+              enum:
+              - fact
+              - source_opinion
+              - model_inference
+            statement:
+              type: string
+            rationale:
+              type: string
+            uncertainty:
+              type: string
+            evidence_refs:
+              type: array
+              minItems: 1
+              items:
+                type: object
+                additionalProperties: false
+                required:
+                - chunk_id
+                - document_id
+                properties:
+                  chunk_id:
+                    type: string
+                  document_id:
+                    type: string
+      open_questions:
+        type: array
+        items:
+          type: string
+      evidence_refs:
+        type: array
+        items:
+          type: object
+          additionalProperties: false
+          required:
+          - chunk_id
+          - document_id
+          properties:
+            chunk_id:
+              type: string
+            document_id:
+              type: string

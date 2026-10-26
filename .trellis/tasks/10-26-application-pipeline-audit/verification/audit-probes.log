@@ -1,0 +1,22 @@
+FF                                                                       [100%]
+=================================== FAILURES ===================================
+___________________ test_worker_honors_settings_config_paths ___________________
+../.trellis/tasks/10-26-application-pipeline-audit/research/audit_probes.py:34: in test_worker_honors_settings_config_paths
+    assert (
+E   AssertionError: assert ('config/task...sources.yaml') == ('custom/task...sources.yaml')
+E     
+E     At index 0 diff: 'config/tasks.yaml' != 'custom/tasks.yaml'
+E     Use -v to get more diff
+_____________ test_historical_semantic_document_keeps_saved_facts ______________
+../.trellis/tasks/10-26-application-pipeline-audit/research/audit_probes.py:118: in test_historical_semantic_document_keeps_saved_facts
+    assert {item["fact_id"] for item in groups[0]["fact_refs"]} == {
+E   AssertionError: Stored Facts must accompany the selected historical document
+E   assert set() == {'fccaef70-32...3fc37ff9a13f'}
+E     
+E     Extra items in the right set:
+E     'fccaef70-32bf-490e-9660-3fc37ff9a13f'
+E     Use -v to get more diff
+=========================== short test summary info ============================
+FAILED ../.trellis/tasks/10-26-application-pipeline-audit/research/audit_probes.py::test_worker_honors_settings_config_paths
+FAILED ../.trellis/tasks/10-26-application-pipeline-audit/research/audit_probes.py::test_historical_semantic_document_keeps_saved_facts
+2 failed in 0.82s

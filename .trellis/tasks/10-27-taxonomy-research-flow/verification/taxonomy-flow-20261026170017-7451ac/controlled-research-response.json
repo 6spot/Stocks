@@ -1,0 +1,106 @@
+{
+  "title": "虚构半导体公司证据与行业背景的研究边界",
+  "summary": "本批虚构证据同时覆盖显式公司收入、仅公司名称的定性说明及半导体行业背景。行业关联不能证明原文提及公司或代码。全部材料为虚构合成测试数据，不能作为真实公司事实、预测或投资依据；除可选 Jev 分类外，来源及生成模型响应均受控。",
+  "sections": [
+    {
+      "heading": "公司证据",
+      "body": "合成财报明确写出 Northstar Silicon（NSIL）季度收入为 42 million USD；第二篇只出现公司名，不能补推代码，也没有可提取的数值。",
+      "finding_ids": [
+        "revenue",
+        "name_only"
+      ]
+    },
+    {
+      "heading": "行业背景与解释边界",
+      "body": "背景材料描述美国半导体需求和先进封装约束，可辅助理解产业环境；其中没有公司或代码，不能用于断言特定公司受益。",
+      "finding_ids": [
+        "background",
+        "relationship"
+      ]
+    },
+    {
+      "heading": "数据与方法局限",
+      "body": "全部材料为虚构合成测试数据，不能作为真实公司事实、预测或投资依据；除可选 Jev 分类外，来源及生成模型响应均受控。固定向量仅验证检索和引用管道，不能证明语义排序质量；未接入真实证券主数据或真实行情。",
+      "finding_ids": []
+    }
+  ],
+  "findings": [
+    {
+      "id": "revenue",
+      "title": "虚构季度收入记录",
+      "kind": "fact",
+      "statement": "虚构公司财报原文明示 NSIL 和季度收入 42 million USD，数值事实只归属该版本。",
+      "rationale": "原文及保存的 Fact 引用同一条记录。",
+      "uncertainty": "全部材料为虚构合成测试数据，不能作为真实公司事实、预测或投资依据；除可选 Jev 分类外，来源及生成模型响应均受控。",
+      "evidence_refs": [
+        {
+          "chunk_id": "85312913-e585-43c5-97be-97aeb0e688f8",
+          "document_id": "ccdb47e3-634c-4b37-ae60-d96b7b00ed82"
+        }
+      ]
+    },
+    {
+      "id": "name_only",
+      "title": "只有公司名的定性材料",
+      "kind": "fact",
+      "statement": "公司名称材料只支持定性路线图说明，没有股票代码或数值，不能推断 NSIL。",
+      "rationale": "仅按该篇原文明示实体解释证据。",
+      "uncertainty": "无法从这篇材料提取数值或验证公司表现。",
+      "evidence_refs": [
+        {
+          "chunk_id": "87805fc2-ad8a-45c9-a1a0-22225e5f32d4",
+          "document_id": "b9837c86-7c04-4f70-8ea4-799ea9c9a34c"
+        }
+      ]
+    },
+    {
+      "id": "background",
+      "title": "没有公司实体的行业背景",
+      "kind": "fact",
+      "statement": "纯行业材料支持半导体需求与封装背景讨论，不证明文中出现任何公司或代码。",
+      "rationale": "行业关联标签和实际公司实体是不同的证据关系。",
+      "uncertainty": "不能据此判断某家公司受益。",
+      "evidence_refs": [
+        {
+          "chunk_id": "d794aae7-eb5c-4b8f-bf4d-078dbb9950b4",
+          "document_id": "e8e49d24-b8c1-4240-b239-184963749a4d"
+        }
+      ]
+    },
+    {
+      "id": "relationship",
+      "title": "产业约束与公司经营的待验证关系",
+      "kind": "model_inference",
+      "statement": "公司材料和行业背景可以并列用于研究，行业约束对公司经营的影响仍是待核实假设。",
+      "rationale": "并列证据提供讨论背景，并未建立因果联系。",
+      "uncertainty": "全部材料为虚构合成测试数据，不能作为真实公司事实、预测或投资依据；除可选 Jev 分类外，来源及生成模型响应均受控。",
+      "evidence_refs": [
+        {
+          "chunk_id": "85312913-e585-43c5-97be-97aeb0e688f8",
+          "document_id": "ccdb47e3-634c-4b37-ae60-d96b7b00ed82"
+        },
+        {
+          "chunk_id": "d794aae7-eb5c-4b8f-bf4d-078dbb9950b4",
+          "document_id": "e8e49d24-b8c1-4240-b239-184963749a4d"
+        }
+      ]
+    }
+  ],
+  "open_questions": [
+    "真实公司与行业数据尚未提供；需要独立来源验证后才可形成现实投资判断。"
+  ],
+  "evidence_refs": [
+    {
+      "chunk_id": "85312913-e585-43c5-97be-97aeb0e688f8",
+      "document_id": "ccdb47e3-634c-4b37-ae60-d96b7b00ed82"
+    },
+    {
+      "chunk_id": "87805fc2-ad8a-45c9-a1a0-22225e5f32d4",
+      "document_id": "b9837c86-7c04-4f70-8ea4-799ea9c9a34c"
+    },
+    {
+      "chunk_id": "d794aae7-eb5c-4b8f-bf4d-078dbb9950b4",
+      "document_id": "e8e49d24-b8c1-4240-b239-184963749a4d"
+    }
+  ]
+}

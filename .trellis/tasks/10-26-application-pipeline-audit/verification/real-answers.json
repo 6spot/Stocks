@@ -1,0 +1,164 @@
+{
+  "doc_type": {
+    "type": "choice",
+    "choice": "company",
+    "confidence": 1.0,
+    "probabilities": {
+      "macro": 0.0,
+      "policy": 0.0,
+      "industry": 0.0,
+      "company": 1.0,
+      "other": 0.0
+    }
+  },
+  "should_extract": {
+    "type": "noul",
+    "noul": 0.85
+  },
+  "event_type": {
+    "type": "choice",
+    "choice": "earnings",
+    "confidence": 1.0,
+    "probabilities": {
+      "monetary_policy": 0.0,
+      "fiscal_policy": 0.0,
+      "regulation": 0.0,
+      "earnings": 1.0,
+      "corporate_action": 0.0,
+      "data_release": 0.0,
+      "__none__": 0.0
+    }
+  },
+  "topics.interest_rates": {
+    "type": "noul",
+    "noul": 0.05
+  },
+  "topics.inflation": {
+    "type": "noul",
+    "noul": 0.1
+  },
+  "topics.liquidity": {
+    "type": "noul",
+    "noul": 0.17
+  },
+  "topics.employment": {
+    "type": "noul",
+    "noul": 0.06
+  },
+  "topics.growth": {
+    "type": "noul",
+    "noul": 0.43
+  },
+  "topics.energy": {
+    "type": "noul",
+    "noul": 0.04
+  },
+  "topics.trade": {
+    "type": "noul",
+    "noul": 0.06
+  },
+  "topics.geopolitics": {
+    "type": "noul",
+    "noul": 0.06
+  },
+  "topics.market_sentiment": {
+    "type": "noul",
+    "noul": 0.1
+  },
+  "topics.credit": {
+    "type": "noul",
+    "noul": 0.05
+  },
+  "related_industries.banking": {
+    "type": "noul",
+    "noul": 0.04
+  },
+  "related_industries.real_estate": {
+    "type": "noul",
+    "noul": 0.05
+  },
+  "related_industries.semiconductors": {
+    "type": "noul",
+    "noul": 0.57
+  },
+  "related_industries.software": {
+    "type": "noul",
+    "noul": 0.09
+  },
+  "related_industries.hardware": {
+    "type": "noul",
+    "noul": 0.65
+  },
+  "related_industries.energy": {
+    "type": "noul",
+    "noul": 0.06
+  },
+  "related_industries.utilities": {
+    "type": "noul",
+    "noul": 0.07
+  },
+  "related_industries.industrials": {
+    "type": "noul",
+    "noul": 0.17
+  },
+  "related_industries.healthcare": {
+    "type": "noul",
+    "noul": 0.04
+  },
+  "related_industries.consumer": {
+    "type": "noul",
+    "noul": 0.1
+  },
+  "related_industries.retail": {
+    "type": "noul",
+    "noul": 0.06
+  },
+  "related_industries.transportation": {
+    "type": "noul",
+    "noul": 0.04
+  },
+  "related_industries.materials": {
+    "type": "noul",
+    "noul": 0.15
+  },
+  "related_industries.telecom": {
+    "type": "noul",
+    "noul": 0.13
+  },
+  "related_industries.media": {
+    "type": "noul",
+    "noul": 0.05
+  },
+  "regions.US": {
+    "type": "noul",
+    "noul": 0.53
+  },
+  "regions.EU": {
+    "type": "noul",
+    "noul": 0.07
+  },
+  "regions.UK": {
+    "type": "noul",
+    "noul": 0.05
+  },
+  "regions.China": {
+    "type": "noul",
+    "noul": 0.05
+  },
+  "regions.Japan": {
+    "type": "noul",
+    "noul": 0.05
+  },
+  "regions.AsiaPacific": {
+    "type": "noul",
+    "noul": 0.08
+  },
+  "regions.EmergingMarkets": {
+    "type": "noul",
+    "noul": 0.07
+  },
+  "regions.Global": {
+    "type": "noul",
+    "noul": 0.12
+  }
+}

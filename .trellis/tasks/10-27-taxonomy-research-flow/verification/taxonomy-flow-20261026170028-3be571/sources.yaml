@@ -1,0 +1,13 @@
+sources:
+- source_id: taxonomy_source_20261026170028-3be571
+  name: Synthetic taxonomy source
+  connector: rss
+  enabled: true
+  publisher: Synthetic taxonomy fixture
+  trust_tier: T1
+  timeout_seconds: 5
+  max_items: 3
+  max_response_bytes: 1000000
+  max_redirects: 1
+  feed_url: https://source.smoke.test/feed.xml
+  user_agent: StocksTaxonomySmoke/1.0 (smoke@example.com)

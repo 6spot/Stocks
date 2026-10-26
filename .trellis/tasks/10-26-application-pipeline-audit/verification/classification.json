@@ -1,0 +1,310 @@
+{
+  "usage": {
+    "total_tokens": 310,
+    "prompt_tokens": 200,
+    "completion_tokens": 110
+  },
+  "method": "decision_model",
+  "reason": "The supplied article explicitly names Acme Holdings (ACME).",
+  "topics": [
+    "growth"
+  ],
+  "regions": [
+    "US"
+  ],
+  "symbols": [
+    "ACME"
+  ],
+  "attempts": [
+    {
+      "role": "classification",
+      "error": null,
+      "status": "succeeded",
+      "cost_usd": null,
+      "duration_ms": 0,
+      "total_tokens": 130,
+      "attempt_alias": "classification",
+      "prompt_tokens": 100,
+      "attempt_number": 1,
+      "fallback_reason": null,
+      "completion_tokens": 30,
+      "attempt_model_name": "controlled-classification",
+      "reported_model_name": "controlled-classification"
+    },
+    {
+      "role": "classification_entities",
+      "error": null,
+      "status": "succeeded",
+      "cost_usd": null,
+      "duration_ms": 0,
+      "total_tokens": 180,
+      "attempt_alias": "research",
+      "prompt_tokens": 100,
+      "attempt_number": 1,
+      "fallback_reason": null,
+      "completion_tokens": 80,
+      "attempt_model_name": "controlled-research",
+      "reported_model_name": "controlled-research"
+    }
+  ],
+  "category": "company",
+  "companies": [
+    "Acme Holdings"
+  ],
+  "model_ref": "classification",
+  "event_type": "earnings",
+  "model_alias": "classification",
+  "model_calls": [
+    {
+      "role": "classification",
+      "usage": {
+        "total_tokens": 130,
+        "prompt_tokens": 100,
+        "completion_tokens": 30
+      },
+      "answers": {
+        "doc_type": {
+          "type": "choice",
+          "choice": "company",
+          "confidence": 1.0,
+          "probabilities": {
+            "macro": 0.0,
+            "other": 0.0,
+            "policy": 0.0,
+            "company": 1.0,
+            "industry": 0.0
+          }
+        },
+        "event_type": {
+          "type": "choice",
+          "choice": "earnings",
+          "confidence": 1.0,
+          "probabilities": {
+            "__none__": 0.0,
+            "earnings": 1.0,
+            "regulation": 0.0,
+            "data_release": 0.0,
+            "fiscal_policy": 0.0,
+            "monetary_policy": 0.0,
+            "corporate_action": 0.0
+          }
+        },
+        "regions.EU": {
+          "noul": 0.01,
+          "type": "noul"
+        },
+        "regions.UK": {
+          "noul": 0.01,
+          "type": "noul"
+        },
+        "regions.US": {
+          "noul": 0.99,
+          "type": "noul"
+        },
+        "topics.trade": {
+          "noul": 0.01,
+          "type": "noul"
+        },
+        "regions.China": {
+          "noul": 0.01,
+          "type": "noul"
+        },
+        "regions.Japan": {
+          "noul": 0.01,
+          "type": "noul"
+        },
+        "topics.credit": {
+          "noul": 0.01,
+          "type": "noul"
+        },
+        "topics.energy": {
+          "noul": 0.01,
+          "type": "noul"
+        },
+        "topics.growth": {
+          "noul": 0.99,
+          "type": "noul"
+        },
+        "regions.Global": {
+          "noul": 0.01,
+          "type": "noul"
+        },
+        "should_extract": {
+          "noul": 0.99,
+          "type": "noul"
+        },
+        "topics.inflation": {
+          "noul": 0.01,
+          "type": "noul"
+        },
+        "topics.liquidity": {
+          "noul": 0.01,
+          "type": "noul"
+        },
+        "topics.employment": {
+          "noul": 0.01,
+          "type": "noul"
+        },
+        "topics.geopolitics": {
+          "noul": 0.01,
+          "type": "noul"
+        },
+        "regions.AsiaPacific": {
+          "noul": 0.01,
+          "type": "noul"
+        },
+        "topics.interest_rates": {
+          "noul": 0.01,
+          "type": "noul"
+        },
+        "regions.EmergingMarkets": {
+          "noul": 0.01,
+          "type": "noul"
+        },
+        "topics.market_sentiment": {
+          "noul": 0.01,
+          "type": "noul"
+        },
+        "related_industries.media": {
+          "noul": 0.01,
+          "type": "noul"
+        },
+        "related_industries.energy": {
+          "noul": 0.01,
+          "type": "noul"
+        },
+        "related_industries.retail": {
+          "noul": 0.01,
+          "type": "noul"
+        },
+        "related_industries.banking": {
+          "noul": 0.01,
+          "type": "noul"
+        },
+        "related_industries.telecom": {
+          "noul": 0.01,
+          "type": "noul"
+        },
+        "related_industries.consumer": {
+          "noul": 0.01,
+          "type": "noul"
+        },
+        "related_industries.hardware": {
+          "noul": 0.01,
+          "type": "noul"
+        },
+        "related_industries.software": {
+          "noul": 0.01,
+          "type": "noul"
+        },
+        "related_industries.materials": {
+          "noul": 0.01,
+          "type": "noul"
+        },
+        "related_industries.utilities": {
+          "noul": 0.01,
+          "type": "noul"
+        },
+        "related_industries.healthcare": {
+          "noul": 0.01,
+          "type": "noul"
+        },
+        "related_industries.industrials": {
+          "noul": 0.01,
+          "type": "noul"
+        },
+        "related_industries.real_estate": {
+          "noul": 0.01,
+          "type": "noul"
+        },
+        "related_industries.semiconductors": {
+          "noul": 0.01,
+          "type": "noul"
+        },
+        "related_industries.transportation": {
+          "noul": 0.01,
+          "type": "noul"
+        }
+      },
+      "attempts": [
+        {
+          "error": null,
+          "status": "succeeded",
+          "cost_usd": null,
+          "duration_ms": 0,
+          "total_tokens": 130,
+          "attempt_alias": "classification",
+          "prompt_tokens": 100,
+          "attempt_number": 1,
+          "fallback_reason": null,
+          "completion_tokens": 30,
+          "attempt_model_name": "controlled-classification",
+          "reported_model_name": "controlled-classification"
+        }
+      ],
+      "protocol": "typesafe",
+      "provider": "typesafe",
+      "model_alias": "classification",
+      "noul_threshold": 0.5,
+      "reported_model_name": "controlled-classification",
+      "requested_model_name": "controlled-classification"
+    },
+    {
+      "role": "classification_entities",
+      "usage": {
+        "total_tokens": 180,
+        "prompt_tokens": 100,
+        "completion_tokens": 80
+      },
+      "attempts": [
+        {
+          "error": null,
+          "status": "succeeded",
+          "cost_usd": null,
+          "duration_ms": 0,
+          "total_tokens": 180,
+          "attempt_alias": "research",
+          "prompt_tokens": 100,
+          "attempt_number": 1,
+          "fallback_reason": null,
+          "completion_tokens": 80,
+          "attempt_model_name": "controlled-research",
+          "reported_model_name": "controlled-research"
+        }
+      ],
+      "protocol": "openai_compatible",
+      "provider": "chat",
+      "model_alias": "research",
+      "reported_model_name": "controlled-research",
+      "requested_model_name": "controlled-research"
+    }
+  ],
+  "classified_at": "2026-10-26T12:02:30.780278+00:00",
+  "should_extract": true,
+  "taxonomy_version": "2026-10-21",
+  "related_industries": [],
+  "reported_model_name": "controlled-classification",
+  "requested_model_name": "controlled-classification",
+  "taxonomy_fingerprint": "dca6fef7060cbc359781d588d2791ef053f5248c84c9f2be4e20cf829d0df833",
+  "reason_or_evidence_ref": {
+    "reason": "The supplied article explicitly names Acme Holdings (ACME).",
+    "chunk_ids": [
+      "25c75d5d-42a7-41b9-930e-c8d359ffdc53"
+    ],
+    "truncated": false,
+    "parse_batch_id": "63ac95e4-330e-4892-b8cd-4f078c75912a",
+    "entity_evidence": [
+      {
+        "kind": "company",
+        "quote": "Acme Holdings (ACME) reported revenue of 42 million USD for 2026 Q3.",
+        "value": "Acme Holdings"
+      },
+      {
+        "kind": "symbol",
+        "quote": "Acme Holdings (ACME) reported revenue of 42 million USD for 2026 Q3.",
+        "value": "ACME"
+      }
+    ],
+    "input_characters": 100
+  }
+}

@@ -1,0 +1,11 @@
+{"file":"AGENTS.md","reason":"项目边界与仅允许远程验证的约束"}
+{"file":".trellis/spec/guides/agent-execution-guide.md","reason":"有界诊断与阻塞交回"}
+{"file":".trellis/spec/backend/index.md","reason":"后端规范导航"}
+{"file":".trellis/spec/backend/testing-guidelines.md","reason":"服务器隔离、凭据与运行验证"}
+{"file":".trellis/spec/frontend/index.md","reason":"前端规范导航"}
+{"file":"docs/architecture.md","reason":"模块边界和独立调度"}
+{"file":"docs/interface.md","reason":"报告与证据交互契约"}
+{"file":".trellis/tasks/10-26-application-pipeline-audit/prd.md","reason":"本任务授权范围和验收标准"}
+{"file":".trellis/tasks/10-26-application-pipeline-audit/design.md","reason":"跨环节状态和数据衔接的审查方法"}
+{"file":".trellis/tasks/10-26-application-pipeline-audit/implement.md","reason":"执行步骤与最小必要验证"}
+{"file":".trellis/tasks/10-26-application-pipeline-audit/research.md","reason":"领域文档分段读取要求、源码测试导航与初步证据"}

@@ -1,0 +1,7 @@
+{"file":".trellis/spec/guides/agent-execution-guide.md","reason":"核对审查完成与阻塞边界"}
+{"file":".trellis/spec/backend/testing-guidelines.md","reason":"核对验证环境和证据真实性"}
+{"file":"docs/architecture.md","reason":"核对独立调度和模块职责"}
+{"file":"docs/interface.md","reason":"核对报告展示与失败可见性"}
+{"file":".trellis/tasks/10-26-application-pipeline-audit/prd.md","reason":"核对验收覆盖和授权范围"}
+{"file":".trellis/tasks/10-26-application-pipeline-audit/design.md","reason":"核对各数据边界和运行推断边界"}
+{"file":".trellis/tasks/10-26-application-pipeline-audit/research.md","reason":"按导航读取完整领域契约、源码和候选测试"}

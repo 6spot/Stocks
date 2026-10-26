@@ -1,0 +1,5 @@
+stocks-test-taxonomy-research-flow-postgres
+stocks-test-taxonomy-research-flow-s3
+Both task containers, task PostgreSQL anonymous volume and task runtime directory verified absent.
+Private database/Owner/gateway credential files removed with task runtime. Public tool runtime retained.
+Exit request sent.

@@ -1,0 +1,7 @@
+{"file":"AGENTS.md","reason":"项目边界与仅远程验证"}
+{"file":".trellis/spec/guides/agent-execution-guide.md","reason":"有界实施与交回"}
+{"file":".trellis/spec/backend/index.md","reason":"后端规范导航"}
+{"file":".trellis/spec/backend/quality-guidelines.md","reason":"最小必要验证"}
+{"file":".trellis/spec/backend/testing-guidelines.md","reason":"指定服务器隔离环境"}
+{"file":".trellis/spec/backend/error-handling.md","reason":"模型协议与失败语义"}
+{"file":".trellis/tasks/10-27-taxonomy-research-flow/research/research.md","reason":"已核实的词表、指纹与研究取材现状"}

@@ -1,0 +1,87 @@
+providers:
+  typesafe:
+    protocol: typesafe
+    base_url: https://models.smoke.test/v1
+    api_key: controlled-placeholder
+    capabilities:
+    - decision
+    timeout_seconds: 45
+  chat:
+    protocol: openai_compatible
+    base_url: https://models.smoke.test/v1
+    api_key: controlled-placeholder
+    capabilities:
+    - chat
+    - text
+    - structured_output
+    timeout_seconds: 45
+  embedder:
+    protocol: openai_compatible
+    base_url: https://models.smoke.test/v1
+    api_key: controlled-placeholder
+    timeout_seconds: 45
+models:
+  classification:
+    provider: typesafe
+    name: typesafe/jev-latest
+    capabilities:
+    - decision
+  research:
+    provider: chat
+    name: controlled-research
+    capabilities:
+    - chat
+    - text
+    - structured_output
+  embedding:
+    provider: embedder
+    name: controlled-embedding
+    dimensions: 1024
+embedding:
+  models:
+  - embedding
+agents:
+  research:
+    routing:
+      primary: research
+      fallbacks: []
+      required_capabilities:
+      - chat
+      - text
+      - structured_output
+      timeout_seconds: 45
+      retries: 0
+      retry_backoff_seconds: 0
+  classification:
+    protocol: typesafe
+    noul_threshold: 0.5
+    routing:
+      primary: classification
+      fallbacks: []
+      required_capabilities:
+      - decision
+      timeout_seconds: 45
+      retries: 0
+      retry_backoff_seconds: 0
+  classification_entities:
+    protocol: openai_compatible
+    routing:
+      primary: research
+      fallbacks: []
+      required_capabilities:
+      - chat
+      - structured_output
+      timeout_seconds: 45
+      retries: 0
+      retry_backoff_seconds: 0
+  fact_extraction:
+    protocol: openai_compatible
+    routing:
+      primary: research
+      fallbacks: []
+      required_capabilities:
+      - chat
+      - structured_output
+      timeout_seconds: 45
+      retries: 0
+      retry_backoff_seconds: 0

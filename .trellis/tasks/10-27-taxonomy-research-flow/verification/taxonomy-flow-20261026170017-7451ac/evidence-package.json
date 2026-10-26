@@ -1,0 +1,514 @@
+{
+  "selected_chunks": [
+    {
+      "role": "direct",
+      "kinds": [
+        "document_ingested",
+        "document_parsed",
+        "document_indexed",
+        "document_classified"
+      ],
+      "title": "Fictional US semiconductor industry background",
+      "reason": "direct_scope_match",
+      "reasons": [
+        "new_document_indexed",
+        "direct_scope_match",
+        "background_scope_match"
+      ],
+      "chunk_id": "d794aae7-eb5c-4b8f-bf4d-078dbb9950b4",
+      "fact_ids": [],
+      "position": 0,
+      "chunk_ids": [
+        "d794aae7-eb5c-4b8f-bf4d-078dbb9950b4",
+        "bb598a1c-450a-4b07-95fb-430957a0e5f8",
+        "16af6b00-0d94-4b46-a881-c8d06ac7129a"
+      ],
+      "origin_id": "origin-1",
+      "source_id": "taxonomy_source_20261026170017-7451ac",
+      "dimensions": 1024,
+      "model_name": "controlled-embedding",
+      "query_rank": 1,
+      "similarity": null,
+      "document_id": "e8e49d24-b8c1-4240-b239-184963749a4d",
+      "collected_at": "2026-10-26T17:00:18.435616+00:00",
+      "completeness": "complete",
+      "published_at": "2026-10-25T12:00:00+00:00",
+      "evidence_role": "new_information",
+      "parse_batch_id": "dcaf8775-04a6-4276-814b-fc1a51e25d0a",
+      "document_version": 1,
+      "estimated_tokens": 226,
+      "source_updated_at": null
+    },
+    {
+      "role": "direct",
+      "kinds": [
+        "document_ingested",
+        "document_parsed",
+        "document_indexed",
+        "document_classified"
+      ],
+      "title": "Fictional US semiconductor industry background",
+      "reason": "direct_scope_match",
+      "reasons": [
+        "new_document_indexed",
+        "direct_scope_match",
+        "background_scope_match"
+      ],
+      "chunk_id": "bb598a1c-450a-4b07-95fb-430957a0e5f8",
+      "fact_ids": [],
+      "position": 1,
+      "chunk_ids": [
+        "d794aae7-eb5c-4b8f-bf4d-078dbb9950b4",
+        "bb598a1c-450a-4b07-95fb-430957a0e5f8",
+        "16af6b00-0d94-4b46-a881-c8d06ac7129a"
+      ],
+      "origin_id": "origin-1",
+      "source_id": "taxonomy_source_20261026170017-7451ac",
+      "dimensions": 1024,
+      "model_name": "controlled-embedding",
+      "query_rank": 2,
+      "similarity": null,
+      "document_id": "e8e49d24-b8c1-4240-b239-184963749a4d",
+      "collected_at": "2026-10-26T17:00:18.435616+00:00",
+      "completeness": "complete",
+      "published_at": "2026-10-25T12:00:00+00:00",
+      "evidence_role": "new_information",
+      "parse_batch_id": "dcaf8775-04a6-4276-814b-fc1a51e25d0a",
+      "document_version": 1,
+      "estimated_tokens": 299,
+      "source_updated_at": null
+    },
+    {
+      "role": "direct",
+      "kinds": [
+        "document_ingested",
+        "document_parsed",
+        "document_indexed",
+        "document_classified"
+      ],
+      "title": "Fictional US semiconductor industry background",
+      "reason": "direct_scope_match",
+      "reasons": [
+        "new_document_indexed",
+        "direct_scope_match",
+        "background_scope_match"
+      ],
+      "chunk_id": "16af6b00-0d94-4b46-a881-c8d06ac7129a",
+      "fact_ids": [],
+      "position": 2,
+      "chunk_ids": [
+        "d794aae7-eb5c-4b8f-bf4d-078dbb9950b4",
+        "bb598a1c-450a-4b07-95fb-430957a0e5f8",
+        "16af6b00-0d94-4b46-a881-c8d06ac7129a"
+      ],
+      "origin_id": "origin-1",
+      "source_id": "taxonomy_source_20261026170017-7451ac",
+      "dimensions": 1024,
+      "model_name": "controlled-embedding",
+      "query_rank": 3,
+      "similarity": null,
+      "document_id": "e8e49d24-b8c1-4240-b239-184963749a4d",
+      "collected_at": "2026-10-26T17:00:18.435616+00:00",
+      "completeness": "complete",
+      "published_at": "2026-10-25T12:00:00+00:00",
+      "evidence_role": "new_information",
+      "parse_batch_id": "dcaf8775-04a6-4276-814b-fc1a51e25d0a",
+      "document_version": 1,
+      "estimated_tokens": 300,
+      "source_updated_at": null
+    },
+    {
+      "role": "direct",
+      "kinds": [
+        "document_ingested",
+        "document_parsed",
+        "document_indexed",
+        "document_classified"
+      ],
+      "title": "Fictional Northstar Silicon semiconductor product commentary",
+      "reason": "direct_scope_match",
+      "reasons": [
+        "new_document_indexed",
+        "direct_scope_match",
+        "background_scope_match"
+      ],
+      "chunk_id": "87805fc2-ad8a-45c9-a1a0-22225e5f32d4",
+      "fact_ids": [],
+      "position": 0,
+      "chunk_ids": [
+        "87805fc2-ad8a-45c9-a1a0-22225e5f32d4",
+        "c576ddf3-9666-49fb-9afe-d97a3f5304f5",
+        "590fd242-e927-49c4-bc4e-ac6246f285ca"
+      ],
+      "origin_id": "origin-2",
+      "source_id": "taxonomy_source_20261026170017-7451ac",
+      "dimensions": 1024,
+      "model_name": "controlled-embedding",
+      "query_rank": 1,
+      "similarity": null,
+      "document_id": "b9837c86-7c04-4f70-8ea4-799ea9c9a34c",
+      "collected_at": "2026-10-26T17:00:18.416147+00:00",
+      "completeness": "complete",
+      "published_at": "2026-10-25T12:00:00+00:00",
+      "evidence_role": "new_information",
+      "parse_batch_id": "72942fd4-5527-4399-be99-a0397479943c",
+      "document_version": 1,
+      "estimated_tokens": 298,
+      "source_updated_at": null
+    },
+    {
+      "role": "direct",
+      "kinds": [
+        "document_ingested",
+        "document_parsed",
+        "document_indexed",
+        "document_classified"
+      ],
+      "title": "Fictional Northstar Silicon semiconductor product commentary",
+      "reason": "direct_scope_match",
+      "reasons": [
+        "new_document_indexed",
+        "direct_scope_match",
+        "background_scope_match"
+      ],
+      "chunk_id": "c576ddf3-9666-49fb-9afe-d97a3f5304f5",
+      "fact_ids": [],
+      "position": 1,
+      "chunk_ids": [
+        "87805fc2-ad8a-45c9-a1a0-22225e5f32d4",
+        "c576ddf3-9666-49fb-9afe-d97a3f5304f5",
+        "590fd242-e927-49c4-bc4e-ac6246f285ca"
+      ],
+      "origin_id": "origin-2",
+      "source_id": "taxonomy_source_20261026170017-7451ac",
+      "dimensions": 1024,
+      "model_name": "controlled-embedding",
+      "query_rank": 2,
+      "similarity": null,
+      "document_id": "b9837c86-7c04-4f70-8ea4-799ea9c9a34c",
+      "collected_at": "2026-10-26T17:00:18.416147+00:00",
+      "completeness": "complete",
+      "published_at": "2026-10-25T12:00:00+00:00",
+      "evidence_role": "new_information",
+      "parse_batch_id": "72942fd4-5527-4399-be99-a0397479943c",
+      "document_version": 1,
+      "estimated_tokens": 283,
+      "source_updated_at": null
+    },
+    {
+      "role": "direct",
+      "kinds": [
+        "document_ingested",
+        "document_parsed",
+        "document_indexed",
+        "document_classified"
+      ],
+      "title": "Fictional Northstar Silicon semiconductor product commentary",
+      "reason": "direct_scope_match",
+      "reasons": [
+        "new_document_indexed",
+        "direct_scope_match",
+        "background_scope_match"
+      ],
+      "chunk_id": "590fd242-e927-49c4-bc4e-ac6246f285ca",
+      "fact_ids": [],
+      "position": 2,
+      "chunk_ids": [
+        "87805fc2-ad8a-45c9-a1a0-22225e5f32d4",
+        "c576ddf3-9666-49fb-9afe-d97a3f5304f5",
+        "590fd242-e927-49c4-bc4e-ac6246f285ca"
+      ],
+      "origin_id": "origin-2",
+      "source_id": "taxonomy_source_20261026170017-7451ac",
+      "dimensions": 1024,
+      "model_name": "controlled-embedding",
+      "query_rank": 3,
+      "similarity": null,
+      "document_id": "b9837c86-7c04-4f70-8ea4-799ea9c9a34c",
+      "collected_at": "2026-10-26T17:00:18.416147+00:00",
+      "completeness": "complete",
+      "published_at": "2026-10-25T12:00:00+00:00",
+      "evidence_role": "new_information",
+      "parse_batch_id": "72942fd4-5527-4399-be99-a0397479943c",
+      "document_version": 1,
+      "estimated_tokens": 219,
+      "source_updated_at": null
+    },
+    {
+      "role": "direct",
+      "kinds": [
+        "document_ingested",
+        "document_parsed",
+        "document_indexed",
+        "document_classified",
+        "fact_extracted"
+      ],
+      "title": "Fictional Northstar Silicon (NSIL) quarterly semiconductor results",
+      "reason": "direct_scope_match",
+      "reasons": [
+        "new_fact_extracted",
+        "direct_scope_match",
+        "background_scope_match"
+      ],
+      "chunk_id": "85312913-e585-43c5-97be-97aeb0e688f8",
+      "fact_ids": [
+        "ef62b5e9-1192-4d64-b8dc-d7fa675d5d77"
+      ],
+      "position": 0,
+      "chunk_ids": [
+        "85312913-e585-43c5-97be-97aeb0e688f8",
+        "f21ba9ba-a3a7-472a-8fd3-5577b3bc7dc0",
+        "223e5503-a8cc-45f3-8ca9-872a0150ce73"
+      ],
+      "origin_id": "origin-3",
+      "source_id": "taxonomy_source_20261026170017-7451ac",
+      "dimensions": 1024,
+      "model_name": "controlled-embedding",
+      "query_rank": 1,
+      "similarity": null,
+      "document_id": "ccdb47e3-634c-4b37-ae60-d96b7b00ed82",
+      "collected_at": "2026-10-26T17:00:18.173632+00:00",
+      "completeness": "complete",
+      "published_at": "2026-10-25T12:00:00+00:00",
+      "evidence_role": "new_information",
+      "parse_batch_id": "10c19aac-bf6d-43ca-aa20-2e074caffc17",
+      "document_version": 1,
+      "estimated_tokens": 255,
+      "source_updated_at": null
+    },
+    {
+      "role": "direct",
+      "kinds": [
+        "document_ingested",
+        "document_parsed",
+        "document_indexed",
+        "document_classified",
+        "fact_extracted"
+      ],
+      "title": "Fictional Northstar Silicon (NSIL) quarterly semiconductor results",
+      "reason": "direct_scope_match",
+      "reasons": [
+        "new_fact_extracted",
+        "direct_scope_match",
+        "background_scope_match"
+      ],
+      "chunk_id": "f21ba9ba-a3a7-472a-8fd3-5577b3bc7dc0",
+      "fact_ids": [
+        "ef62b5e9-1192-4d64-b8dc-d7fa675d5d77"
+      ],
+      "position": 1,
+      "chunk_ids": [
+        "85312913-e585-43c5-97be-97aeb0e688f8",
+        "f21ba9ba-a3a7-472a-8fd3-5577b3bc7dc0",
+        "223e5503-a8cc-45f3-8ca9-872a0150ce73"
+      ],
+      "origin_id": "origin-3",
+      "source_id": "taxonomy_source_20261026170017-7451ac",
+      "dimensions": 1024,
+      "model_name": "controlled-embedding",
+      "query_rank": 2,
+      "similarity": null,
+      "document_id": "ccdb47e3-634c-4b37-ae60-d96b7b00ed82",
+      "collected_at": "2026-10-26T17:00:18.173632+00:00",
+      "completeness": "complete",
+      "published_at": "2026-10-25T12:00:00+00:00",
+      "evidence_role": "new_information",
+      "parse_batch_id": "10c19aac-bf6d-43ca-aa20-2e074caffc17",
+      "document_version": 1,
+      "estimated_tokens": 300,
+      "source_updated_at": null
+    },
+    {
+      "role": "direct",
+      "kinds": [
+        "document_ingested",
+        "document_parsed",
+        "document_indexed",
+        "document_classified",
+        "fact_extracted"
+      ],
+      "title": "Fictional Northstar Silicon (NSIL) quarterly semiconductor results",
+      "reason": "direct_scope_match",
+      "reasons": [
+        "new_fact_extracted",
+        "direct_scope_match",
+        "background_scope_match"
+      ],
+      "chunk_id": "223e5503-a8cc-45f3-8ca9-872a0150ce73",
+      "fact_ids": [
+        "ef62b5e9-1192-4d64-b8dc-d7fa675d5d77"
+      ],
+      "position": 2,
+      "chunk_ids": [
+        "85312913-e585-43c5-97be-97aeb0e688f8",
+        "f21ba9ba-a3a7-472a-8fd3-5577b3bc7dc0",
+        "223e5503-a8cc-45f3-8ca9-872a0150ce73"
+      ],
+      "origin_id": "origin-3",
+      "source_id": "taxonomy_source_20261026170017-7451ac",
+      "dimensions": 1024,
+      "model_name": "controlled-embedding",
+      "query_rank": 3,
+      "similarity": null,
+      "document_id": "ccdb47e3-634c-4b37-ae60-d96b7b00ed82",
+      "collected_at": "2026-10-26T17:00:18.173632+00:00",
+      "completeness": "complete",
+      "published_at": "2026-10-25T12:00:00+00:00",
+      "evidence_role": "new_information",
+      "parse_batch_id": "10c19aac-bf6d-43ca-aa20-2e074caffc17",
+      "document_version": 1,
+      "estimated_tokens": 128,
+      "source_updated_at": null
+    }
+  ],
+  "evidence_groups": [
+    {
+      "ref": "d794aae7-eb5c-4b8f-bf4d-078dbb9950b4",
+      "role": "new_information",
+      "kinds": [
+        "document_ingested",
+        "document_parsed",
+        "document_indexed",
+        "document_classified"
+      ],
+      "title": "Fictional US semiconductor industry background",
+      "origin": {
+        "key": "article_url:https://source.smoke.test/background",
+        "url": "https://source.smoke.test/background",
+        "kind": "article_url",
+        "declared_sources": []
+      },
+      "reasons": [
+        "new_document_indexed",
+        "direct_scope_match",
+        "background_scope_match"
+      ],
+      "chunk_ids": [
+        "d794aae7-eb5c-4b8f-bf4d-078dbb9950b4",
+        "bb598a1c-450a-4b07-95fb-430957a0e5f8",
+        "16af6b00-0d94-4b46-a881-c8d06ac7129a"
+      ],
+      "fact_refs": [],
+      "origin_id": "origin-1",
+      "source_id": "taxonomy_source_20261026170017-7451ac",
+      "watermark": 13,
+      "fact_count": 0,
+      "match_role": "direct",
+      "chunk_count": 3,
+      "document_id": "e8e49d24-b8c1-4240-b239-184963749a4d",
+      "collected_at": "2026-10-26T17:00:18.435616+00:00",
+      "published_at": "2026-10-25T12:00:00+00:00",
+      "evidence_group": true,
+      "document_version": 1,
+      "origin_group_size": 1
+    },
+    {
+      "ref": "87805fc2-ad8a-45c9-a1a0-22225e5f32d4",
+      "role": "new_information",
+      "kinds": [
+        "document_ingested",
+        "document_parsed",
+        "document_indexed",
+        "document_classified"
+      ],
+      "title": "Fictional Northstar Silicon semiconductor product commentary",
+      "origin": {
+        "key": "article_url:https://source.smoke.test/name_only",
+        "url": "https://source.smoke.test/name_only",
+        "kind": "article_url",
+        "declared_sources": []
+      },
+      "reasons": [
+        "new_document_indexed",
+        "direct_scope_match",
+        "background_scope_match"
+      ],
+      "chunk_ids": [
+        "87805fc2-ad8a-45c9-a1a0-22225e5f32d4",
+        "c576ddf3-9666-49fb-9afe-d97a3f5304f5",
+        "590fd242-e927-49c4-bc4e-ac6246f285ca"
+      ],
+      "fact_refs": [],
+      "origin_id": "origin-2",
+      "source_id": "taxonomy_source_20261026170017-7451ac",
+      "watermark": 10,
+      "fact_count": 0,
+      "match_role": "direct",
+      "chunk_count": 3,
+      "document_id": "b9837c86-7c04-4f70-8ea4-799ea9c9a34c",
+      "collected_at": "2026-10-26T17:00:18.416147+00:00",
+      "published_at": "2026-10-25T12:00:00+00:00",
+      "evidence_group": true,
+      "document_version": 1,
+      "origin_group_size": 1
+    },
+    {
+      "ref": "85312913-e585-43c5-97be-97aeb0e688f8",
+      "role": "new_information",
+      "kinds": [
+        "document_ingested",
+        "document_parsed",
+        "document_indexed",
+        "document_classified",
+        "fact_extracted"
+      ],
+      "title": "Fictional Northstar Silicon (NSIL) quarterly semiconductor results",
+      "origin": {
+        "key": "article_url:https://source.smoke.test/explicit",
+        "url": "https://source.smoke.test/explicit",
+        "kind": "article_url",
+        "declared_sources": []
+      },
+      "reasons": [
+        "new_fact_extracted",
+        "direct_scope_match",
+        "background_scope_match"
+      ],
+      "chunk_ids": [
+        "85312913-e585-43c5-97be-97aeb0e688f8",
+        "f21ba9ba-a3a7-472a-8fd3-5577b3bc7dc0",
+        "223e5503-a8cc-45f3-8ca9-872a0150ce73"
+      ],
+      "fact_refs": [
+        {
+          "unit": "million USD",
+          "value": 42.0,
+          "symbol": "NSIL",
+          "fact_id": "ef62b5e9-1192-4d64-b8dc-d7fa675d5d77",
+          "conflict": false,
+          "fact_type": "company_metric",
+          "metric_id": "revenue",
+          "statement": "Northstar Silicon (NSIL) reported revenue of 42 million USD for 2026 Q3.",
+          "attributes": {
+            "model_ref": "fact_extraction",
+            "model_alias": "research"
+          },
+          "period_end": "2026-09-30T23:59:59+00:00",
+          "document_id": "ccdb47e3-634c-4b37-ae60-d96b7b00ed82",
+          "available_at": null,
+          "evidence_ref": {
+            "kind": "chunk",
+            "chunk_id": "85312913-e585-43c5-97be-97aeb0e688f8",
+            "position": 0,
+            "parse_batch_id": "10c19aac-bf6d-43ca-aa20-2e074caffc17"
+          },
+          "period_start": "2026-07-01T00:00:00+00:00",
+          "subject_name": "Northstar Silicon",
+          "origin_method": "llm_extraction"
+        }
+      ],
+      "origin_id": "origin-3",
+      "source_id": "taxonomy_source_20261026170017-7451ac",
+      "watermark": 7,
+      "fact_count": 1,
+      "match_role": "direct",
+      "chunk_count": 3,
+      "document_id": "ccdb47e3-634c-4b37-ae60-d96b7b00ed82",
+      "collected_at": "2026-10-26T17:00:18.173632+00:00",
+      "published_at": "2026-10-25T12:00:00+00:00",
+      "evidence_group": true,
+      "document_version": 1,
+      "origin_group_size": 1
+    }
+  ]
+}

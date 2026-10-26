@@ -111,7 +111,11 @@ docker run --rm -d \
 
 - 隔离对象存储：其他任务遗留的 seaweedfs 容器可能已经没空写卷（PutObject 报
   `No writable volumes`），不能因为端口能连就当可复用。本任务需要对象存储时用自己的
-  容器名、独立数据目录和独立 bucket；启动参数用 `server -dir=/data -s3 -s3.port=8333`，
+  容器名、独立数据目录和独立 bucket；同一容器创建多个 bucket 仍可能耗尽默认卷数，
+  确认日志为 `No writable volumes` 后，可在本任务容器使用
+  `-volume.max=32 -master.volumeSizeLimitMB=32` 为少量测试对象提供足够的小卷；不要删除
+  其他任务数据或把卷分配失败归因于凭据。启动参数用 `server -dir=/data -s3 -s3.port=8333`，
+
   不要额外加 `-ip=`（会让客户端连接在请求中被直接关闭）。
 
   新建的 seaweedfs 需要先建 bucket（`curl -X PUT http://127.0.0.1:<port>/<bucket>`）：
