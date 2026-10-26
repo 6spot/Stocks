@@ -335,7 +335,7 @@ function ReportBody({
           </p>
         ) : null}
         <div
-          className="report-prose mt-4 max-w-[75ch]"
+          className="report-prose mt-4 max-w-none"
           dangerouslySetInnerHTML={{
             __html: renderMarkdown(data.report.content),
           }}
