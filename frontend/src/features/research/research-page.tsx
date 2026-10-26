@@ -390,7 +390,7 @@ function ReportBody({
         open={supportOpen}
         onToggle={(event) => setSupportOpen(event.currentTarget.open)}
       >
-        <summary className="w-fit cursor-pointer rounded-sm text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+        <summary className="min-h-11 w-fit cursor-pointer rounded-sm py-3 text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:min-h-0 sm:py-0">
           研究资料与生成信息
         </summary>
         {supportOpen ? (
@@ -473,7 +473,7 @@ function ReportBody({
                 </ul>
               ) : <p className="mt-4 text-sm text-muted-foreground">未记录覆盖缺口，不代表资料已穷尽或结论已核实。</p>}
               <details className="mt-4 text-xs text-muted-foreground">
-                <summary className="cursor-pointer">查看范围与选择配置</summary>
+                <summary className="min-h-11 cursor-pointer py-3 sm:min-h-0 sm:py-0">查看范围与选择配置</summary>
                 <pre className="mt-2 whitespace-pre-wrap break-all font-code">{formatValue({
                   scope: data.evidence_package.scope,
                   selection_policy_version: data.evidence_package.selection_policy_version,
@@ -644,7 +644,7 @@ function EvidenceRow({
         )}
         {evidence.locator !== null && evidence.locator !== undefined ? (
           <details className="mt-2 text-xs text-muted-foreground">
-            <summary className="cursor-pointer font-medium text-foreground">
+            <summary className="min-h-11 cursor-pointer py-3 font-medium text-foreground sm:min-h-0 sm:py-0">
               原始定位
             </summary>
             <pre className="mt-2 max-h-48 overflow-auto rounded-lg bg-muted p-3 whitespace-pre-wrap">

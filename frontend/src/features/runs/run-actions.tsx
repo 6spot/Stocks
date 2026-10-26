@@ -83,7 +83,7 @@ export function RunActions({
 
   return (
     <>
-      <div className="flex flex-wrap gap-2">
+      <div className="hidden flex-wrap gap-2 sm:flex">
         {run.actions.can_retry ? (
           <Button
             type="button"

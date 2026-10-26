@@ -152,7 +152,7 @@ export function ProcessingPanel() {
               <TableHead>状态</TableHead>
               <TableHead>尝试</TableHead>
               <TableHead>最近开始</TableHead>
-              <TableHead className="text-right">操作</TableHead>
+              <TableHead className="hidden text-right sm:table-cell">操作</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -207,7 +207,7 @@ export function ProcessingPanel() {
                   <TableCell className="text-xs whitespace-nowrap text-muted-foreground">
                     {formatDateTime(item.started_at)}
                   </TableCell>
-                  <TableCell className="text-right">
+                  <TableCell className="hidden text-right sm:table-cell">
                     <Button
                       type="button"
                       variant="outline"

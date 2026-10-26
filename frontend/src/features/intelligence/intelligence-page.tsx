@@ -213,7 +213,7 @@ export function IntelligencePage() {
           </div>
 
           <details className="rounded-lg border border-border p-3">
-            <summary className="cursor-pointer text-sm font-medium">
+            <summary className="min-h-11 cursor-pointer py-3 text-sm font-medium sm:min-h-0 sm:py-0">
               <span className="inline-flex items-center gap-2">
                 <CalendarRange aria-hidden="true" className="size-4" />
                 来源与时间筛选

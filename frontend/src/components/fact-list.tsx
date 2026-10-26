@@ -87,7 +87,7 @@ export function FactTable({ facts }: { facts: Fact[] }) {
             <TableCell className="text-xs">
               {fact.evidence_ref !== null && fact.evidence_ref !== undefined ? (
                 <details className="text-muted-foreground">
-                  <summary className="cursor-pointer font-medium text-foreground">
+                  <summary className="min-h-11 cursor-pointer py-3 font-medium text-foreground sm:min-h-0 sm:py-0">
                     {shortId(fact.id)}
                   </summary>
                   <pre className="mt-2 max-h-48 overflow-auto rounded-lg bg-muted p-2 whitespace-pre-wrap">

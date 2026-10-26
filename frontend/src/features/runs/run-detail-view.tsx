@@ -240,7 +240,7 @@ export function RunDetailView({
                 ) : null}
                 {step.output !== null && step.output !== undefined ? (
                   <details className="mt-1 text-xs text-muted-foreground">
-                    <summary className="cursor-pointer font-medium text-foreground">
+                    <summary className="min-h-11 cursor-pointer py-3 font-medium text-foreground sm:min-h-0 sm:py-0">
                       安全输出
                     </summary>
                     <pre className="mt-2 max-h-56 overflow-auto rounded-lg bg-muted p-3 whitespace-pre-wrap">

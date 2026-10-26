@@ -49,6 +49,16 @@ import { ExternalLink } from "lucide-react";
 - 拖拽中的坐标、命中目标和预览留在局部；确认放置后才更新业务顺序。需要服务端保存时显示提交结果，失败恢复或保留可重试状态，不把本地顺序当成服务端已保存。
 - 拖拽预览和位移动画由 dnd-kit 控制时，Motion 不同时控制同一元素的 `transform`。
 
+## 响应式：断点交 CSS，不用 JS 切换渲染
+
+布局随视口变化一律用 Tailwind 断点类表达，**不读 `matchMedia`、不写 `useMediaQuery`、不按断点返回不同 JSX 结构**。CSS 断点不存在“JS 认为桌面、CSS 认为手机”的不一致，也不需要把 `min-width` 数值与 Tailwind 断点手工同步。
+
+- **数据表格保持原列语义**。高密度对照表在窄屏靠 `ui/table.tsx` 既有的 `overflow-x-auto` 容器横向滑动读完所有列，不做卡片化、列折叠或列隐藏；`TableHead` 的 `whitespace-nowrap` 正是触发容器滚动而非把文字压成一列的机制。页面级不得横向滚动（`documentElement.scrollWidth <= innerWidth`），滚动只发生在表格容器内。
+- **写操作在手机上隐藏时用 `display:none`（`hidden sm:*`），不用 `pointer-events-none`**。后者只是视觉禁用，键盘 Tab 仍能聚焦并回车触发，与 `aria-disabled` 的承诺不一致；`display:none` 让元素离开可访问树，语义诚实。需要连带隐藏列时，`<th>` 与对应 `<td>` 必须成对加 `hidden sm:table-cell`，否则窄屏会多出空白列。
+- **`<summary>` 撑命中区时只用 `py` + `min-h`，不要改成 `flex`/`grid`**。`<summary>` 默认 `display: list-item`，折叠三角标记（`::marker`）只在该值下渲染；改 `flex` 会静默去掉“可展开”的视觉提示。
+- **放大命中区的类必须在 `sm` 以上回退**（如 `min-h-11 min-w-11 sm:min-h-0 sm:min-w-0`），否则 44px 的内联引用角标会撞开桌面正文行距。
+- **`env(safe-area-inset-*)` 需要 `viewport-fit=cover` 才非零**。未在 viewport meta 声明 `viewport-fit=cover` 时，iOS Safari 会自动把页面内缩到安全区，此时写 `pb-[max(...)]` 是无效代码（但也无害，可作为将来 opt-in 后的前置准备）。不要只加 `env()` 就认为已处理刘海屏，也不要为了一段无效的 `env()` 反向添加 `viewport-fit=cover`——那需要同时补顶部安全区并重测。
+
 ## 组件位置与证据展示
 
 页面和组件的目录应跟随实际功能边界保持可查找；目录模式形成后在此记录真实文件路径和最小示例，不把假设的目录树写成既定规范。

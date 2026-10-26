@@ -80,7 +80,7 @@ export function TasksPage() {
               <TableHead>启用</TableHead>
               <TableHead>策略</TableHead>
               <TableHead>最近 Run</TableHead>
-              <TableHead className="text-right">操作</TableHead>
+              <TableHead className="hidden text-right sm:table-cell">操作</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -94,7 +94,7 @@ export function TasksPage() {
                       {task.task_id}
                     </p>
                     <details className="mt-1 text-xs text-muted-foreground">
-                      <summary className="cursor-pointer font-medium text-foreground">
+                      <summary className="min-h-11 cursor-pointer py-3 font-medium text-foreground sm:min-h-0 sm:py-0">
                         研究范围
                       </summary>
                       <pre className="mt-2 max-h-40 overflow-auto rounded-lg bg-muted p-2 whitespace-pre-wrap">
@@ -165,7 +165,7 @@ export function TasksPage() {
                       <span className="text-muted-foreground">从未运行</span>
                     )}
                   </TableCell>
-                  <TableCell className="text-right">
+                  <TableCell className="hidden text-right sm:table-cell">
                     <Button
                       type="button"
                       size="sm"

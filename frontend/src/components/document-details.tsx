@@ -23,7 +23,7 @@ function LocatorDetails({ locator }: { locator: unknown }) {
   }
   return (
     <details className="text-xs text-muted-foreground">
-      <summary className="cursor-pointer font-medium text-foreground">
+      <summary className="min-h-11 cursor-pointer py-3 font-medium text-foreground sm:min-h-0 sm:py-0">
         原始定位
       </summary>
       <p className="mt-1 leading-relaxed">

@@ -1,0 +1,4 @@
+{"file": "docs/interface.md", "reason": "控制台响应式契约：桌面/移动共享内容，只调整导航与证据详情的响应式布局"}
+{"file": ".trellis/spec/frontend/component-guidelines.md", "reason": "Nova 风格与设计变量、Lucide、仅用 Tailwind/CSS transition、手机宽度避免压缩多列"}
+{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "UI 检查清单：手机宽度检查导航与证据详情、命中区与可访问名称、构建与类型检查为必要检查"}
+{"file": ".trellis/spec/backend/testing-guidelines.md", "reason": "所有验证只在测试服务器 100.120.14.84 的隔离任务目录执行，本机仅编辑与打包"}

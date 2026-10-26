@@ -67,7 +67,7 @@ export function ResearchArticle({
         <Dialog key={key}>
           <DialogTrigger
             aria-label={`查看来源 ${number}：${item?.document.title ?? "引用片段不可用"}`}
-            className="cursor-pointer rounded-sm px-1 text-xs font-medium text-primary underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            className="inline-flex min-h-11 min-w-11 cursor-pointer items-center justify-center rounded-sm px-1 text-xs font-medium text-primary underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:inline sm:min-h-0 sm:min-w-0"
           >
             [E{number}]
           </DialogTrigger>
@@ -115,7 +115,7 @@ export function ResearchArticle({
             ) : null}
             {findings.length ? (
               <details className="group border-l-2 border-border pl-4">
-                <summary className="w-fit cursor-pointer rounded-sm text-xs text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                <summary className="min-h-11 w-fit cursor-pointer rounded-sm py-3 text-xs text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:min-h-0 sm:py-0">
                   查看分析依据 · {findings.length} 项发现
                 </summary>
                 <div className="mt-4 divide-y divide-border">

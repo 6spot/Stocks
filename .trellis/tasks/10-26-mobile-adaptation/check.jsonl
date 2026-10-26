@@ -1,0 +1,3 @@
+{"file": "docs/interface.md", "reason": "核对移动端只调整导航与证据详情布局，内容语义与契约未变"}
+{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "核对手机宽度导航与证据详情已验收、命中区与可访问名称未退化、验收记录含真实 viewport"}
+{"file": ".trellis/spec/frontend/component-guidelines.md", "reason": "核对未引入新依赖或第二套样式，写操作隐藏未破坏焦点与可访问语义"}

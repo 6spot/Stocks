@@ -1,0 +1,910 @@
+{
+  "results": [
+    {
+      "page": "overview",
+      "viewport": "390x844",
+      "name": "overview: no page-level horizontal scroll",
+      "passed": true,
+      "detail": "{\"docScrollWidth\":390,\"docClientWidth\":390,\"innerWidth\":390,\"bodyScrollWidth\":390}"
+    },
+    {
+      "page": "overview",
+      "viewport": "390x844",
+      "name": "overview: table [来源…] scrolls horizontally to last column",
+      "passed": true,
+      "detail": "{\"index\":0,\"aria\":null,\"firstHeader\":\"来源\",\"headerCount\":5,\"visibleHeaders\":5,\"scrollWidth\":510,\"clientWidth\":358,\"maxScroll\":152,\"reachedScrollLeft\":152}"
+    },
+    {
+      "page": "overview",
+      "viewport": "390x844",
+      "name": "overview: table [标题…] scrolls horizontally to last column",
+      "passed": true,
+      "detail": "{\"index\":1,\"aria\":null,\"firstHeader\":\"标题\",\"headerCount\":4,\"visibleHeaders\":4,\"scrollWidth\":358,\"clientWidth\":358,\"maxScroll\":0,\"reachedScrollLeft\":0}"
+    },
+    {
+      "page": "overview",
+      "viewport": "390x844",
+      "name": "overview: table [标题…] scrolls horizontally to last column",
+      "passed": true,
+      "detail": "{\"index\":2,\"aria\":null,\"firstHeader\":\"标题\",\"headerCount\":4,\"visibleHeaders\":4,\"scrollWidth\":618,\"clientWidth\":358,\"maxScroll\":260,\"reachedScrollLeft\":260}"
+    },
+    {
+      "page": "sources",
+      "viewport": "390x844",
+      "name": "sources: no page-level horizontal scroll",
+      "passed": true,
+      "detail": "{\"docScrollWidth\":390,\"docClientWidth\":390,\"innerWidth\":390,\"bodyScrollWidth\":390}"
+    },
+    {
+      "page": "sources",
+      "viewport": "390x844",
+      "name": "sources: table [来源…] scrolls horizontally to last column",
+      "passed": true,
+      "detail": "{\"index\":0,\"aria\":null,\"firstHeader\":\"来源\",\"headerCount\":9,\"visibleHeaders\":9,\"scrollWidth\":1037,\"clientWidth\":358,\"maxScroll\":679,\"reachedScrollLeft\":679}"
+    },
+    {
+      "page": "tasks",
+      "viewport": "390x844",
+      "name": "tasks: no page-level horizontal scroll",
+      "passed": true,
+      "detail": "{\"docScrollWidth\":390,\"docClientWidth\":390,\"innerWidth\":390,\"bodyScrollWidth\":390}"
+    },
+    {
+      "page": "tasks",
+      "viewport": "390x844",
+      "name": "tasks: table [任务…] scrolls horizontally to last column",
+      "passed": true,
+      "detail": "{\"index\":0,\"aria\":null,\"firstHeader\":\"任务\",\"headerCount\":6,\"visibleHeaders\":5,\"scrollWidth\":503,\"clientWidth\":358,\"maxScroll\":145,\"reachedScrollLeft\":145}"
+    },
+    {
+      "page": "intelligence",
+      "viewport": "390x844",
+      "name": "intelligence: no page-level horizontal scroll",
+      "passed": true,
+      "detail": "{\"docScrollWidth\":390,\"docClientWidth\":390,\"innerWidth\":390,\"bodyScrollWidth\":390}"
+    },
+    {
+      "page": "intelligence",
+      "viewport": "390x844",
+      "name": "intelligence: table [标题…] scrolls horizontally to last column",
+      "passed": true,
+      "detail": "{\"index\":0,\"aria\":null,\"firstHeader\":\"标题\",\"headerCount\":5,\"visibleHeaders\":5,\"scrollWidth\":498,\"clientWidth\":358,\"maxScroll\":140,\"reachedScrollLeft\":140}"
+    },
+    {
+      "page": "research",
+      "viewport": "390x844",
+      "name": "research: no page-level horizontal scroll",
+      "passed": true,
+      "detail": "{\"docScrollWidth\":390,\"docClientWidth\":390,\"innerWidth\":390,\"bodyScrollWidth\":390}"
+    },
+    {
+      "page": "research",
+      "viewport": "390x844",
+      "name": "research: table [报告列表] scrolls horizontally to last column",
+      "passed": true,
+      "detail": "{\"index\":0,\"aria\":\"报告列表\",\"firstHeader\":\"报告标题\",\"headerCount\":4,\"visibleHeaders\":4,\"scrollWidth\":537,\"clientWidth\":358,\"maxScroll\":179,\"reachedScrollLeft\":179}"
+    },
+    {
+      "page": "runs",
+      "viewport": "390x844",
+      "name": "runs: no page-level horizontal scroll",
+      "passed": true,
+      "detail": "{\"docScrollWidth\":390,\"docClientWidth\":390,\"innerWidth\":390,\"bodyScrollWidth\":390}"
+    },
+    {
+      "page": "runs",
+      "viewport": "390x844",
+      "name": "runs: table [任务…] scrolls horizontally to last column",
+      "passed": true,
+      "detail": "{\"index\":0,\"aria\":null,\"firstHeader\":\"任务\",\"headerCount\":6,\"visibleHeaders\":6,\"scrollWidth\":553,\"clientWidth\":358,\"maxScroll\":195,\"reachedScrollLeft\":195}"
+    },
+    {
+      "page": "processing",
+      "viewport": "390x844",
+      "name": "processing: no page-level horizontal scroll",
+      "passed": true,
+      "detail": "{\"docScrollWidth\":390,\"docClientWidth\":390,\"innerWidth\":390,\"bodyScrollWidth\":390}"
+    },
+    {
+      "page": "processing",
+      "viewport": "390x844",
+      "name": "processing: table [Document…] scrolls horizontally to last column",
+      "passed": true,
+      "detail": "{\"index\":0,\"aria\":null,\"firstHeader\":\"Document\",\"headerCount\":6,\"visibleHeaders\":5,\"scrollWidth\":587,\"clientWidth\":358,\"maxScroll\":229,\"reachedScrollLeft\":229}"
+    },
+    {
+      "page": "report-detail",
+      "viewport": "390x844",
+      "name": "report-detail: no page-level horizontal scroll",
+      "passed": true,
+      "detail": "{\"docScrollWidth\":390,\"docClientWidth\":390,\"innerWidth\":390,\"bodyScrollWidth\":390}"
+    },
+    {
+      "page": "tasks",
+      "viewport": "390x844",
+      "name": "tasks: 手动触发 button present in DOM but zero-size on phone",
+      "passed": true,
+      "detail": "{\"found\":true,\"visible\":false,\"headerCells\":[{\"text\":\"任务\",\"width\":224},{\"text\":\"类型\",\"width\":84.03125},{\"text\":\"启用\",\"width\":40},{\"text\":\"策略\",\"width\":90.046875},{\"text\":\"最近 Run\",\"width\":65.359375},{\"text\":\"操作\",\"width\":0}],\"hasHint\":false,\"firstButtonTag\":\"BUTTON\"}"
+    },
+    {
+      "page": "tasks",
+      "viewport": "390x844",
+      "name": "tasks: 操作 header column hidden on phone",
+      "passed": true,
+      "detail": "[{\"text\":\"任务\",\"width\":224},{\"text\":\"类型\",\"width\":84.03125},{\"text\":\"启用\",\"width\":40},{\"text\":\"策略\",\"width\":90.046875},{\"text\":\"最近 Run\",\"width\":65.359375},{\"text\":\"操作\",\"width\":0}]"
+    },
+    {
+      "page": "tasks",
+      "viewport": "390x844",
+      "name": "tasks: no write-operation hint text added",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "page": "runs",
+      "viewport": "390x844",
+      "name": "runs: \"重试失败步骤\" present but not rendered on phone",
+      "passed": true,
+      "detail": "{\"name\":\"重试失败步骤\",\"found\":true,\"width\":0}"
+    },
+    {
+      "page": "runs",
+      "viewport": "390x844",
+      "name": "runs: \"继续未完成扫描\" present but not rendered on phone",
+      "passed": true,
+      "detail": "{\"name\":\"继续未完成扫描\",\"found\":true,\"width\":0}"
+    },
+    {
+      "page": "processing",
+      "viewport": "390x844",
+      "name": "processing: 重试此阶段 present but not rendered on phone",
+      "passed": true,
+      "detail": "{\"found\":true,\"width\":0,\"headerCells\":[{\"text\":\"Document\",\"width\":256},{\"text\":\"阶段\",\"width\":82},{\"text\":\"状态\",\"width\":70},{\"text\":\"尝试\",\"width\":40},{\"text\":\"最近开始\",\"width\":138.765625},{\"text\":\"操作\",\"width\":0}]}"
+    },
+    {
+      "page": "processing",
+      "viewport": "390x844",
+      "name": "processing: 操作 header hidden on phone",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "page": "report-detail",
+      "viewport": "390x844",
+      "name": "report-detail: [E] citation [E1] tap target >= 44x44",
+      "passed": true,
+      "detail": "{\"w\":44,\"h\":44,\"text\":\"[E1]\"}"
+    },
+    {
+      "page": "report-detail",
+      "viewport": "390x844",
+      "name": "report-detail: [E] citation [E23] tap target >= 44x44",
+      "passed": true,
+      "detail": "{\"w\":44,\"h\":44,\"text\":\"[E23]\"}"
+    },
+    {
+      "page": "report-detail",
+      "viewport": "390x844",
+      "name": "report-detail: [E] citation [E42] tap target >= 44x44",
+      "passed": true,
+      "detail": "{\"w\":44,\"h\":44,\"text\":\"[E42]\"}"
+    },
+    {
+      "page": "report-detail",
+      "viewport": "390x844",
+      "name": "report-detail: [E] citation [E52] tap target >= 44x44",
+      "passed": true,
+      "detail": "{\"w\":44,\"h\":44,\"text\":\"[E52]\"}"
+    },
+    {
+      "page": "report-detail",
+      "viewport": "390x844",
+      "name": "report-detail: [E] citation [E53] tap target >= 44x44",
+      "passed": true,
+      "detail": "{\"w\":44,\"h\":44,\"text\":\"[E53]\"}"
+    },
+    {
+      "page": "report-detail",
+      "viewport": "390x844",
+      "name": "report-detail: summary \"查看分析依据 · 5 项发现\" tap height >= 44",
+      "passed": true,
+      "detail": "{\"h\":44,\"w\":141,\"text\":\"查看分析依据 · 5 项发现\"}"
+    },
+    {
+      "page": "report-detail",
+      "viewport": "390x844",
+      "name": "report-detail: summary \"查看分析依据 · 5 项发现\" tap height >= 44",
+      "passed": true,
+      "detail": "{\"h\":44,\"w\":141,\"text\":\"查看分析依据 · 5 项发现\"}"
+    },
+    {
+      "page": "report-detail",
+      "viewport": "390x844",
+      "name": "report-detail: summary \"查看分析依据 · 5 项发现\" tap height >= 44",
+      "passed": true,
+      "detail": "{\"h\":44,\"w\":141,\"text\":\"查看分析依据 · 5 项发现\"}"
+    },
+    {
+      "page": "report-detail",
+      "viewport": "390x844",
+      "name": "report-detail: summary \"查看分析依据 · 4 项发现\" tap height >= 44",
+      "passed": true,
+      "detail": "{\"h\":44,\"w\":141,\"text\":\"查看分析依据 · 4 项发现\"}"
+    },
+    {
+      "page": "report-detail",
+      "viewport": "390x844",
+      "name": "report-detail: summary \"查看分析依据 · 4 项发现\" tap height >= 44",
+      "passed": true,
+      "detail": "{\"h\":44,\"w\":141,\"text\":\"查看分析依据 · 4 项发现\"}"
+    },
+    {
+      "page": "report-detail",
+      "viewport": "390x844",
+      "name": "report-detail: summary \"研究资料与生成信息\" tap height >= 44",
+      "passed": true,
+      "detail": "{\"h\":44,\"w\":141,\"text\":\"研究资料与生成信息\"}"
+    },
+    {
+      "page": "report-detail",
+      "viewport": "390x844",
+      "name": "report-detail: evidence dialog opens from keyboard",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "page": "report-detail",
+      "viewport": "390x844",
+      "name": "report-detail: evidence dialog fits viewport width",
+      "passed": true,
+      "detail": "{\"x\":16,\"y\":16,\"width\":358,\"height\":812}"
+    },
+    {
+      "page": "report-detail",
+      "viewport": "390x844",
+      "name": "report-detail: focus returns to citation trigger after Escape",
+      "passed": true,
+      "detail": "查看来源 1：SEC Issues “Innovation Exemption” to Facilitate the Trading of Tokenized NMS Stock and Request for Comment"
+    },
+    {
+      "page": "intelligence",
+      "viewport": "390x844",
+      "name": "intelligence: document drawer opens full-width on phone",
+      "passed": true,
+      "detail": "{\"width\":390,\"height\":844,\"scrollable\":true,\"overflowY\":\"auto\",\"viewportW\":390}"
+    },
+    {
+      "page": "intelligence",
+      "viewport": "390x844",
+      "name": "intelligence: document drawer content scrollable",
+      "passed": true,
+      "detail": "{\"width\":390,\"height\":844,\"scrollable\":true,\"overflowY\":\"auto\",\"viewportW\":390}"
+    },
+    {
+      "page": "login",
+      "viewport": "390x844",
+      "name": "login: no page-level horizontal scroll",
+      "passed": true,
+      "detail": "{\"docScrollWidth\":390,\"docClientWidth\":390,\"innerWidth\":390,\"bodyScrollWidth\":390}"
+    },
+    {
+      "page": "overview",
+      "viewport": "360x800",
+      "name": "overview: no page-level horizontal scroll",
+      "passed": true,
+      "detail": "{\"docScrollWidth\":360,\"docClientWidth\":360,\"innerWidth\":360,\"bodyScrollWidth\":360}"
+    },
+    {
+      "page": "overview",
+      "viewport": "360x800",
+      "name": "overview: table [来源…] scrolls horizontally to last column",
+      "passed": true,
+      "detail": "{\"index\":0,\"aria\":null,\"firstHeader\":\"来源\",\"headerCount\":5,\"visibleHeaders\":5,\"scrollWidth\":510,\"clientWidth\":328,\"maxScroll\":182,\"reachedScrollLeft\":182}"
+    },
+    {
+      "page": "overview",
+      "viewport": "360x800",
+      "name": "overview: table [标题…] scrolls horizontally to last column",
+      "passed": true,
+      "detail": "{\"index\":1,\"aria\":null,\"firstHeader\":\"标题\",\"headerCount\":4,\"visibleHeaders\":4,\"scrollWidth\":328,\"clientWidth\":328,\"maxScroll\":0,\"reachedScrollLeft\":0}"
+    },
+    {
+      "page": "overview",
+      "viewport": "360x800",
+      "name": "overview: table [标题…] scrolls horizontally to last column",
+      "passed": true,
+      "detail": "{\"index\":2,\"aria\":null,\"firstHeader\":\"标题\",\"headerCount\":4,\"visibleHeaders\":4,\"scrollWidth\":618,\"clientWidth\":328,\"maxScroll\":290,\"reachedScrollLeft\":290}"
+    },
+    {
+      "page": "sources",
+      "viewport": "360x800",
+      "name": "sources: no page-level horizontal scroll",
+      "passed": true,
+      "detail": "{\"docScrollWidth\":360,\"docClientWidth\":360,\"innerWidth\":360,\"bodyScrollWidth\":360}"
+    },
+    {
+      "page": "sources",
+      "viewport": "360x800",
+      "name": "sources: table [来源…] scrolls horizontally to last column",
+      "passed": true,
+      "detail": "{\"index\":0,\"aria\":null,\"firstHeader\":\"来源\",\"headerCount\":9,\"visibleHeaders\":9,\"scrollWidth\":1037,\"clientWidth\":328,\"maxScroll\":709,\"reachedScrollLeft\":709}"
+    },
+    {
+      "page": "tasks",
+      "viewport": "360x800",
+      "name": "tasks: no page-level horizontal scroll",
+      "passed": true,
+      "detail": "{\"docScrollWidth\":360,\"docClientWidth\":360,\"innerWidth\":360,\"bodyScrollWidth\":360}"
+    },
+    {
+      "page": "tasks",
+      "viewport": "360x800",
+      "name": "tasks: table [任务…] scrolls horizontally to last column",
+      "passed": true,
+      "detail": "{\"index\":0,\"aria\":null,\"firstHeader\":\"任务\",\"headerCount\":6,\"visibleHeaders\":5,\"scrollWidth\":503,\"clientWidth\":328,\"maxScroll\":175,\"reachedScrollLeft\":175}"
+    },
+    {
+      "page": "intelligence",
+      "viewport": "360x800",
+      "name": "intelligence: no page-level horizontal scroll",
+      "passed": true,
+      "detail": "{\"docScrollWidth\":360,\"docClientWidth\":360,\"innerWidth\":360,\"bodyScrollWidth\":360}"
+    },
+    {
+      "page": "intelligence",
+      "viewport": "360x800",
+      "name": "intelligence: table [标题…] scrolls horizontally to last column",
+      "passed": true,
+      "detail": "{\"index\":0,\"aria\":null,\"firstHeader\":\"标题\",\"headerCount\":5,\"visibleHeaders\":5,\"scrollWidth\":498,\"clientWidth\":328,\"maxScroll\":170,\"reachedScrollLeft\":170}"
+    },
+    {
+      "page": "research",
+      "viewport": "360x800",
+      "name": "research: no page-level horizontal scroll",
+      "passed": true,
+      "detail": "{\"docScrollWidth\":360,\"docClientWidth\":360,\"innerWidth\":360,\"bodyScrollWidth\":360}"
+    },
+    {
+      "page": "research",
+      "viewport": "360x800",
+      "name": "research: table [报告列表] scrolls horizontally to last column",
+      "passed": true,
+      "detail": "{\"index\":0,\"aria\":\"报告列表\",\"firstHeader\":\"报告标题\",\"headerCount\":4,\"visibleHeaders\":4,\"scrollWidth\":537,\"clientWidth\":328,\"maxScroll\":209,\"reachedScrollLeft\":209}"
+    },
+    {
+      "page": "runs",
+      "viewport": "360x800",
+      "name": "runs: no page-level horizontal scroll",
+      "passed": true,
+      "detail": "{\"docScrollWidth\":360,\"docClientWidth\":360,\"innerWidth\":360,\"bodyScrollWidth\":360}"
+    },
+    {
+      "page": "runs",
+      "viewport": "360x800",
+      "name": "runs: table [任务…] scrolls horizontally to last column",
+      "passed": true,
+      "detail": "{\"index\":0,\"aria\":null,\"firstHeader\":\"任务\",\"headerCount\":6,\"visibleHeaders\":6,\"scrollWidth\":553,\"clientWidth\":328,\"maxScroll\":225,\"reachedScrollLeft\":225}"
+    },
+    {
+      "page": "processing",
+      "viewport": "360x800",
+      "name": "processing: no page-level horizontal scroll",
+      "passed": true,
+      "detail": "{\"docScrollWidth\":360,\"docClientWidth\":360,\"innerWidth\":360,\"bodyScrollWidth\":360}"
+    },
+    {
+      "page": "processing",
+      "viewport": "360x800",
+      "name": "processing: table [Document…] scrolls horizontally to last column",
+      "passed": true,
+      "detail": "{\"index\":0,\"aria\":null,\"firstHeader\":\"Document\",\"headerCount\":6,\"visibleHeaders\":5,\"scrollWidth\":587,\"clientWidth\":328,\"maxScroll\":259,\"reachedScrollLeft\":259}"
+    },
+    {
+      "page": "report-detail",
+      "viewport": "360x800",
+      "name": "report-detail: no page-level horizontal scroll",
+      "passed": true,
+      "detail": "{\"docScrollWidth\":360,\"docClientWidth\":360,\"innerWidth\":360,\"bodyScrollWidth\":360}"
+    },
+    {
+      "page": "tasks",
+      "viewport": "360x800",
+      "name": "tasks: 手动触发 button present in DOM but zero-size on phone",
+      "passed": true,
+      "detail": "{\"found\":true,\"visible\":false,\"headerCells\":[{\"text\":\"任务\",\"width\":224},{\"text\":\"类型\",\"width\":84.03125},{\"text\":\"启用\",\"width\":40},{\"text\":\"策略\",\"width\":90.046875},{\"text\":\"最近 Run\",\"width\":65.359375},{\"text\":\"操作\",\"width\":0}],\"hasHint\":false,\"firstButtonTag\":\"BUTTON\"}"
+    },
+    {
+      "page": "tasks",
+      "viewport": "360x800",
+      "name": "tasks: 操作 header column hidden on phone",
+      "passed": true,
+      "detail": "[{\"text\":\"任务\",\"width\":224},{\"text\":\"类型\",\"width\":84.03125},{\"text\":\"启用\",\"width\":40},{\"text\":\"策略\",\"width\":90.046875},{\"text\":\"最近 Run\",\"width\":65.359375},{\"text\":\"操作\",\"width\":0}]"
+    },
+    {
+      "page": "tasks",
+      "viewport": "360x800",
+      "name": "tasks: no write-operation hint text added",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "page": "runs",
+      "viewport": "360x800",
+      "name": "runs: \"重试失败步骤\" present but not rendered on phone",
+      "passed": true,
+      "detail": "{\"name\":\"重试失败步骤\",\"found\":true,\"width\":0}"
+    },
+    {
+      "page": "runs",
+      "viewport": "360x800",
+      "name": "runs: \"继续未完成扫描\" present but not rendered on phone",
+      "passed": true,
+      "detail": "{\"name\":\"继续未完成扫描\",\"found\":true,\"width\":0}"
+    },
+    {
+      "page": "processing",
+      "viewport": "360x800",
+      "name": "processing: 重试此阶段 present but not rendered on phone",
+      "passed": true,
+      "detail": "{\"found\":true,\"width\":0,\"headerCells\":[{\"text\":\"Document\",\"width\":256},{\"text\":\"阶段\",\"width\":82},{\"text\":\"状态\",\"width\":70},{\"text\":\"尝试\",\"width\":40},{\"text\":\"最近开始\",\"width\":138.765625},{\"text\":\"操作\",\"width\":0}]}"
+    },
+    {
+      "page": "processing",
+      "viewport": "360x800",
+      "name": "processing: 操作 header hidden on phone",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "page": "report-detail",
+      "viewport": "360x800",
+      "name": "report-detail: [E] citation [E1] tap target >= 44x44",
+      "passed": true,
+      "detail": "{\"w\":44,\"h\":44,\"text\":\"[E1]\"}"
+    },
+    {
+      "page": "report-detail",
+      "viewport": "360x800",
+      "name": "report-detail: [E] citation [E23] tap target >= 44x44",
+      "passed": true,
+      "detail": "{\"w\":44,\"h\":44,\"text\":\"[E23]\"}"
+    },
+    {
+      "page": "report-detail",
+      "viewport": "360x800",
+      "name": "report-detail: [E] citation [E42] tap target >= 44x44",
+      "passed": true,
+      "detail": "{\"w\":44,\"h\":44,\"text\":\"[E42]\"}"
+    },
+    {
+      "page": "report-detail",
+      "viewport": "360x800",
+      "name": "report-detail: [E] citation [E52] tap target >= 44x44",
+      "passed": true,
+      "detail": "{\"w\":44,\"h\":44,\"text\":\"[E52]\"}"
+    },
+    {
+      "page": "report-detail",
+      "viewport": "360x800",
+      "name": "report-detail: [E] citation [E53] tap target >= 44x44",
+      "passed": true,
+      "detail": "{\"w\":44,\"h\":44,\"text\":\"[E53]\"}"
+    },
+    {
+      "page": "report-detail",
+      "viewport": "360x800",
+      "name": "report-detail: summary \"查看分析依据 · 5 项发现\" tap height >= 44",
+      "passed": true,
+      "detail": "{\"h\":44,\"w\":141,\"text\":\"查看分析依据 · 5 项发现\"}"
+    },
+    {
+      "page": "report-detail",
+      "viewport": "360x800",
+      "name": "report-detail: summary \"查看分析依据 · 5 项发现\" tap height >= 44",
+      "passed": true,
+      "detail": "{\"h\":44,\"w\":141,\"text\":\"查看分析依据 · 5 项发现\"}"
+    },
+    {
+      "page": "report-detail",
+      "viewport": "360x800",
+      "name": "report-detail: summary \"查看分析依据 · 5 项发现\" tap height >= 44",
+      "passed": true,
+      "detail": "{\"h\":44,\"w\":141,\"text\":\"查看分析依据 · 5 项发现\"}"
+    },
+    {
+      "page": "report-detail",
+      "viewport": "360x800",
+      "name": "report-detail: summary \"查看分析依据 · 4 项发现\" tap height >= 44",
+      "passed": true,
+      "detail": "{\"h\":44,\"w\":141,\"text\":\"查看分析依据 · 4 项发现\"}"
+    },
+    {
+      "page": "report-detail",
+      "viewport": "360x800",
+      "name": "report-detail: summary \"查看分析依据 · 4 项发现\" tap height >= 44",
+      "passed": true,
+      "detail": "{\"h\":44,\"w\":141,\"text\":\"查看分析依据 · 4 项发现\"}"
+    },
+    {
+      "page": "report-detail",
+      "viewport": "360x800",
+      "name": "report-detail: summary \"研究资料与生成信息\" tap height >= 44",
+      "passed": true,
+      "detail": "{\"h\":44,\"w\":141,\"text\":\"研究资料与生成信息\"}"
+    },
+    {
+      "page": "report-detail",
+      "viewport": "360x800",
+      "name": "report-detail: evidence dialog opens from keyboard",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "page": "report-detail",
+      "viewport": "360x800",
+      "name": "report-detail: evidence dialog fits viewport width",
+      "passed": true,
+      "detail": "{\"x\":16,\"y\":16,\"width\":328,\"height\":768}"
+    },
+    {
+      "page": "report-detail",
+      "viewport": "360x800",
+      "name": "report-detail: focus returns to citation trigger after Escape",
+      "passed": true,
+      "detail": "查看来源 1：SEC Issues “Innovation Exemption” to Facilitate the Trading of Tokenized NMS Stock and Request for Comment"
+    },
+    {
+      "page": "intelligence",
+      "viewport": "360x800",
+      "name": "intelligence: document drawer opens full-width on phone",
+      "passed": true,
+      "detail": "{\"width\":360,\"height\":800,\"scrollable\":true,\"overflowY\":\"auto\",\"viewportW\":360}"
+    },
+    {
+      "page": "intelligence",
+      "viewport": "360x800",
+      "name": "intelligence: document drawer content scrollable",
+      "passed": true,
+      "detail": "{\"width\":360,\"height\":800,\"scrollable\":true,\"overflowY\":\"auto\",\"viewportW\":360}"
+    },
+    {
+      "page": "login",
+      "viewport": "360x800",
+      "name": "login: no page-level horizontal scroll",
+      "passed": true,
+      "detail": "{\"docScrollWidth\":360,\"docClientWidth\":360,\"innerWidth\":360,\"bodyScrollWidth\":360}"
+    },
+    {
+      "page": "desktop-tasks",
+      "viewport": "1280x800",
+      "name": "desktop tasks: 手动触发 visible",
+      "passed": true,
+      "detail": "{\"triggerWidth\":91,\"triggerFound\":true,\"headers\":[{\"text\":\"任务\",\"width\":273},{\"text\":\"类型\",\"width\":176},{\"text\":\"启用\",\"width\":49},{\"text\":\"策略\",\"width\":110},{\"text\":\"最近 Run\",\"width\":238},{\"text\":\"操作\",\"width\":131}]}"
+    },
+    {
+      "page": "desktop-tasks",
+      "viewport": "1280x800",
+      "name": "desktop tasks: 操作 column visible",
+      "passed": true,
+      "detail": "[{\"text\":\"任务\",\"width\":273},{\"text\":\"类型\",\"width\":176},{\"text\":\"启用\",\"width\":49},{\"text\":\"策略\",\"width\":110},{\"text\":\"最近 Run\",\"width\":238},{\"text\":\"操作\",\"width\":131}]"
+    },
+    {
+      "page": "desktop-runs",
+      "viewport": "1280x800",
+      "name": "desktop runs: recovery actions rendered",
+      "passed": true,
+      "detail": "[{\"name\":\"重试失败步骤\",\"found\":true,\"width\":117},{\"name\":\"继续未完成扫描\",\"found\":true,\"width\":130}]"
+    },
+    {
+      "page": "desktop-research",
+      "viewport": "1280x800",
+      "name": "desktop research: citation stays compact (not 44px tall)",
+      "passed": true,
+      "detail": "{\"w\":29,\"h\":16}"
+    },
+    {
+      "page": "desktop-research",
+      "viewport": "1280x800",
+      "name": "desktop research: summary \"查看分析依据 · 5 项发现\" stays compact",
+      "passed": true,
+      "detail": "{\"h\":16,\"text\":\"查看分析依据 · 5 项发现\"}"
+    },
+    {
+      "page": "desktop-research",
+      "viewport": "1280x800",
+      "name": "desktop research: summary \"查看分析依据 · 5 项发现\" stays compact",
+      "passed": true,
+      "detail": "{\"h\":16,\"text\":\"查看分析依据 · 5 项发现\"}"
+    },
+    {
+      "page": "desktop-research",
+      "viewport": "1280x800",
+      "name": "desktop research: summary \"查看分析依据 · 5 项发现\" stays compact",
+      "passed": true,
+      "detail": "{\"h\":16,\"text\":\"查看分析依据 · 5 项发现\"}"
+    },
+    {
+      "page": "desktop-overview",
+      "viewport": "1280x800",
+      "name": "desktop overview: 3 tables still render as tables",
+      "passed": true,
+      "detail": "[\"来源\",\"标题\",\"标题\"]"
+    }
+  ],
+  "tableRecords": [
+    {
+      "page": "overview",
+      "viewport": "390x844",
+      "index": 0,
+      "aria": null,
+      "firstHeader": "来源",
+      "headerCount": 5,
+      "visibleHeaders": 5,
+      "scrollWidth": 510,
+      "clientWidth": 358,
+      "maxScroll": 152,
+      "reachedScrollLeft": 152
+    },
+    {
+      "page": "overview",
+      "viewport": "390x844",
+      "index": 1,
+      "aria": null,
+      "firstHeader": "标题",
+      "headerCount": 4,
+      "visibleHeaders": 4,
+      "scrollWidth": 358,
+      "clientWidth": 358,
+      "maxScroll": 0,
+      "reachedScrollLeft": 0
+    },
+    {
+      "page": "overview",
+      "viewport": "390x844",
+      "index": 2,
+      "aria": null,
+      "firstHeader": "标题",
+      "headerCount": 4,
+      "visibleHeaders": 4,
+      "scrollWidth": 618,
+      "clientWidth": 358,
+      "maxScroll": 260,
+      "reachedScrollLeft": 260
+    },
+    {
+      "page": "sources",
+      "viewport": "390x844",
+      "index": 0,
+      "aria": null,
+      "firstHeader": "来源",
+      "headerCount": 9,
+      "visibleHeaders": 9,
+      "scrollWidth": 1037,
+      "clientWidth": 358,
+      "maxScroll": 679,
+      "reachedScrollLeft": 679
+    },
+    {
+      "page": "tasks",
+      "viewport": "390x844",
+      "index": 0,
+      "aria": null,
+      "firstHeader": "任务",
+      "headerCount": 6,
+      "visibleHeaders": 5,
+      "scrollWidth": 503,
+      "clientWidth": 358,
+      "maxScroll": 145,
+      "reachedScrollLeft": 145
+    },
+    {
+      "page": "intelligence",
+      "viewport": "390x844",
+      "index": 0,
+      "aria": null,
+      "firstHeader": "标题",
+      "headerCount": 5,
+      "visibleHeaders": 5,
+      "scrollWidth": 498,
+      "clientWidth": 358,
+      "maxScroll": 140,
+      "reachedScrollLeft": 140
+    },
+    {
+      "page": "research",
+      "viewport": "390x844",
+      "index": 0,
+      "aria": "报告列表",
+      "firstHeader": "报告标题",
+      "headerCount": 4,
+      "visibleHeaders": 4,
+      "scrollWidth": 537,
+      "clientWidth": 358,
+      "maxScroll": 179,
+      "reachedScrollLeft": 179
+    },
+    {
+      "page": "runs",
+      "viewport": "390x844",
+      "index": 0,
+      "aria": null,
+      "firstHeader": "任务",
+      "headerCount": 6,
+      "visibleHeaders": 6,
+      "scrollWidth": 553,
+      "clientWidth": 358,
+      "maxScroll": 195,
+      "reachedScrollLeft": 195
+    },
+    {
+      "page": "processing",
+      "viewport": "390x844",
+      "index": 0,
+      "aria": null,
+      "firstHeader": "Document",
+      "headerCount": 6,
+      "visibleHeaders": 5,
+      "scrollWidth": 587,
+      "clientWidth": 358,
+      "maxScroll": 229,
+      "reachedScrollLeft": 229
+    },
+    {
+      "page": "overview",
+      "viewport": "360x800",
+      "index": 0,
+      "aria": null,
+      "firstHeader": "来源",
+      "headerCount": 5,
+      "visibleHeaders": 5,
+      "scrollWidth": 510,
+      "clientWidth": 328,
+      "maxScroll": 182,
+      "reachedScrollLeft": 182
+    },
+    {
+      "page": "overview",
+      "viewport": "360x800",
+      "index": 1,
+      "aria": null,
+      "firstHeader": "标题",
+      "headerCount": 4,
+      "visibleHeaders": 4,
+      "scrollWidth": 328,
+      "clientWidth": 328,
+      "maxScroll": 0,
+      "reachedScrollLeft": 0
+    },
+    {
+      "page": "overview",
+      "viewport": "360x800",
+      "index": 2,
+      "aria": null,
+      "firstHeader": "标题",
+      "headerCount": 4,
+      "visibleHeaders": 4,
+      "scrollWidth": 618,
+      "clientWidth": 328,
+      "maxScroll": 290,
+      "reachedScrollLeft": 290
+    },
+    {
+      "page": "sources",
+      "viewport": "360x800",
+      "index": 0,
+      "aria": null,
+      "firstHeader": "来源",
+      "headerCount": 9,
+      "visibleHeaders": 9,
+      "scrollWidth": 1037,
+      "clientWidth": 328,
+      "maxScroll": 709,
+      "reachedScrollLeft": 709
+    },
+    {
+      "page": "tasks",
+      "viewport": "360x800",
+      "index": 0,
+      "aria": null,
+      "firstHeader": "任务",
+      "headerCount": 6,
+      "visibleHeaders": 5,
+      "scrollWidth": 503,
+      "clientWidth": 328,
+      "maxScroll": 175,
+      "reachedScrollLeft": 175
+    },
+    {
+      "page": "intelligence",
+      "viewport": "360x800",
+      "index": 0,
+      "aria": null,
+      "firstHeader": "标题",
+      "headerCount": 5,
+      "visibleHeaders": 5,
+      "scrollWidth": 498,
+      "clientWidth": 328,
+      "maxScroll": 170,
+      "reachedScrollLeft": 170
+    },
+    {
+      "page": "research",
+      "viewport": "360x800",
+      "index": 0,
+      "aria": "报告列表",
+      "firstHeader": "报告标题",
+      "headerCount": 4,
+      "visibleHeaders": 4,
+      "scrollWidth": 537,
+      "clientWidth": 328,
+      "maxScroll": 209,
+      "reachedScrollLeft": 209
+    },
+    {
+      "page": "runs",
+      "viewport": "360x800",
+      "index": 0,
+      "aria": null,
+      "firstHeader": "任务",
+      "headerCount": 6,
+      "visibleHeaders": 6,
+      "scrollWidth": 553,
+      "clientWidth": 328,
+      "maxScroll": 225,
+      "reachedScrollLeft": 225
+    },
+    {
+      "page": "processing",
+      "viewport": "360x800",
+      "index": 0,
+      "aria": null,
+      "firstHeader": "Document",
+      "headerCount": 6,
+      "visibleHeaders": 5,
+      "scrollWidth": 587,
+      "clientWidth": 328,
+      "maxScroll": 259,
+      "reachedScrollLeft": 259
+    },
+    {
+      "page": "desktop-overview",
+      "viewport": "1280x800",
+      "index": 0,
+      "aria": null,
+      "firstHeader": "来源",
+      "headerCount": 5,
+      "visibleHeaders": 5,
+      "scrollWidth": 976,
+      "clientWidth": 976,
+      "maxScroll": 0,
+      "reachedScrollLeft": 0
+    },
+    {
+      "page": "desktop-overview",
+      "viewport": "1280x800",
+      "index": 1,
+      "aria": null,
+      "firstHeader": "标题",
+      "headerCount": 4,
+      "visibleHeaders": 4,
+      "scrollWidth": 976,
+      "clientWidth": 976,
+      "maxScroll": 0,
+      "reachedScrollLeft": 0
+    },
+    {
+      "page": "desktop-overview",
+      "viewport": "1280x800",
+      "index": 2,
+      "aria": null,
+      "firstHeader": "标题",
+      "headerCount": 4,
+      "visibleHeaders": 4,
+      "scrollWidth": 976,
+      "clientWidth": 976,
+      "maxScroll": 0,
+      "reachedScrollLeft": 0
+    }
+  ],
+  "consoleErrors": []
+}
