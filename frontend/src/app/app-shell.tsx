@@ -136,7 +136,12 @@ export function AppShell() {
           collapsed ? "px-2 py-4" : "p-4",
         )}
       >
-        <div className="group/brand relative flex items-center justify-between gap-2">
+        <div
+          className={cn(
+            "group/brand relative flex items-center",
+            collapsed ? "justify-center" : "justify-between gap-2",
+          )}
+        >
           <Brand collapsed={collapsed} />
           <Button
             type="button"
@@ -145,9 +150,9 @@ export function AppShell() {
             aria-label={collapsed ? "展开侧栏" : "折叠侧栏"}
             title={collapsed ? "展开侧栏" : "折叠侧栏"}
             className={cn(
-              "shrink-0 text-sidebar-foreground/60 transition-opacity duration-150 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+              "shrink-0 text-sidebar-foreground/60 transition-opacity duration-150 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:opacity-100",
               collapsed
-                ? "absolute inset-0 z-10 size-auto rounded-xl bg-sidebar-accent/90 opacity-0 backdrop-blur-sm group-hover/brand:opacity-100 group-focus-within/brand:opacity-100"
+                ? "pointer-events-none absolute inset-0 z-10 size-auto rounded-xl bg-sidebar-accent/90 opacity-0 backdrop-blur-sm group-hover/brand:pointer-events-auto group-hover/brand:opacity-100"
                 : "opacity-100",
             )}
             onClick={() => setCollapsed((value) => !value)}
