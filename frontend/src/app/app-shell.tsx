@@ -155,17 +155,18 @@ export function AppShell() {
           )}
         </div>
         {collapsed ? (
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon"
-            aria-label="展开侧栏"
-            title="展开侧栏"
-            className="mt-3 self-center text-sidebar-foreground/60 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
-            onClick={() => setCollapsed(false)}
-          >
-            <PanelLeftOpen aria-hidden="true" className="size-4" />
-          </Button>
+          <div className="mt-3 space-y-1">
+            <Button
+              type="button"
+              variant="ghost"
+              title="展开侧栏"
+              aria-label="展开侧栏"
+              className="min-h-10 w-full justify-center gap-0 rounded-lg px-2 text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+              onClick={() => setCollapsed(false)}
+            >
+              <PanelLeftOpen aria-hidden="true" className="size-4 shrink-0" />
+            </Button>
+          </div>
         ) : null}
         <div className={cn("flex-1", collapsed ? "mt-3" : "mt-8")}>
           {collapsed ? null : (
