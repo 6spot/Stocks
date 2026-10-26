@@ -6,11 +6,13 @@ import {
   LayoutDashboard,
   LogOut,
   Menu,
+  PanelLeftClose,
+  PanelLeftOpen,
   Rss,
   Search,
   X,
 } from "lucide-react";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import {
   NavLink,
   Outlet,
@@ -39,7 +41,15 @@ const navigation = [
   { to: "/runs", label: "运行", icon: Activity },
 ];
 
-function NavigationLinks({ onNavigate }: { onNavigate?: () => void }) {
+const SIDEBAR_COLLAPSED_KEY = "stocks.sidebar-collapsed";
+
+function NavigationLinks({
+  collapsed = false,
+  onNavigate,
+}: {
+  collapsed?: boolean;
+  onNavigate?: () => void;
+}) {
   return (
     <nav aria-label="主导航" className="space-y-1">
       {navigation.map(({ to, label, icon: Icon, end }) => (
@@ -47,35 +57,39 @@ function NavigationLinks({ onNavigate }: { onNavigate?: () => void }) {
           key={to}
           to={to}
           end={end}
+          title={label}
           onClick={onNavigate}
           className={({ isActive }) =>
             cn(
               "press flex min-h-10 items-center gap-3 rounded-lg px-3 text-sm font-medium text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
               isActive &&
                 "bg-sidebar-accent text-sidebar-accent-foreground shadow-sm",
+              collapsed && "justify-center gap-0 px-2",
             )
           }
         >
-          <Icon aria-hidden="true" className="size-4" />
-          {label}
+          <Icon aria-hidden="true" className="size-4 shrink-0" />
+          <span className={cn(collapsed && "sr-only")}>{label}</span>
         </NavLink>
       ))}
     </nav>
   );
 }
 
-function Brand() {
+function Brand({ collapsed = false }: { collapsed?: boolean }) {
   return (
     <div className="flex items-center gap-3">
-      <div className="grid size-9 place-items-center rounded-xl bg-sidebar-primary text-sidebar-primary-foreground">
+      <div className="grid size-9 shrink-0 place-items-center rounded-xl bg-sidebar-primary text-sidebar-primary-foreground">
         <Database aria-hidden="true" className="size-4" />
       </div>
-      <div>
-        <p className="text-lg leading-none font-semibold">Stocks</p>
-        <p className="mt-1 text-[0.68rem] text-sidebar-foreground/50">
-          Research desk
-        </p>
-      </div>
+      {collapsed ? null : (
+        <div>
+          <p className="text-lg leading-none font-semibold">Stocks</p>
+          <p className="mt-1 text-[0.68rem] text-sidebar-foreground/50">
+            Research desk
+          </p>
+        </div>
+      )}
     </div>
   );
 }
@@ -87,10 +101,17 @@ export function AppShell() {
   const notify = useNoticeStore((state) => state.notify);
   const open = useMobileNavigationStore((state) => state.open);
   const setOpen = useMobileNavigationStore((state) => state.setOpen);
+  const [collapsed, setCollapsed] = useState(
+    () => localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === "1",
+  );
 
   useEffect(() => {
     setOpen(false);
   }, [location.pathname, setOpen]);
+
+  useEffect(() => {
+    localStorage.setItem(SIDEBAR_COLLAPSED_KEY, collapsed ? "1" : "0");
+  }, [collapsed]);
 
   async function signOut() {
     try {
@@ -103,24 +124,63 @@ export function AppShell() {
   }
 
   return (
-    <div className="min-h-dvh lg:grid lg:grid-cols-[15rem_minmax(0,1fr)]">
-      <aside className="hidden min-h-dvh flex-col bg-sidebar p-4 text-sidebar-foreground lg:sticky lg:top-0 lg:flex lg:h-dvh">
-        <Brand />
+    <div
+      className={cn(
+        "min-h-dvh lg:grid",
+        collapsed
+          ? "lg:grid-cols-[4rem_minmax(0,1fr)]"
+          : "lg:grid-cols-[15rem_minmax(0,1fr)]",
+      )}
+    >
+      <aside
+        className={cn(
+          "hidden min-h-dvh flex-col bg-sidebar p-4 text-sidebar-foreground lg:sticky lg:top-0 lg:flex lg:h-dvh",
+          collapsed && "px-2",
+        )}
+      >
+        <div className={cn("flex", collapsed ? "justify-center" : "justify-start")}>
+          <Brand collapsed={collapsed} />
+        </div>
         <div className="mt-8 flex-1">
-          <p className="mb-2 px-3 text-[0.66rem] font-medium text-sidebar-foreground/40">
-            Workspace
-          </p>
-          <NavigationLinks />
+          {collapsed ? null : (
+            <p className="mb-2 px-3 text-[0.66rem] font-medium text-sidebar-foreground/40">
+              Workspace
+            </p>
+          )}
+          <NavigationLinks collapsed={collapsed} />
         </div>
         <div className="border-t border-sidebar-border pt-3">
           <Button
             type="button"
             variant="ghost"
-            className="w-full justify-start text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+            title="退出登录"
+            aria-label={collapsed ? "退出登录" : undefined}
+            className={cn(
+              "w-full justify-start text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+              collapsed && "justify-center",
+            )}
             onClick={signOut}
           >
-            <LogOut aria-hidden="true" />
-            退出登录
+            <LogOut aria-hidden="true" className="shrink-0" />
+            {collapsed ? null : "退出登录"}
+          </Button>
+          <Button
+            type="button"
+            variant="ghost"
+            aria-label={collapsed ? "展开侧栏" : "折叠侧栏"}
+            title={collapsed ? "展开侧栏" : "折叠侧栏"}
+            className={cn(
+              "mt-1 w-full justify-start text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+              collapsed && "justify-center",
+            )}
+            onClick={() => setCollapsed((value) => !value)}
+          >
+            {collapsed ? (
+              <PanelLeftOpen aria-hidden="true" className="shrink-0" />
+            ) : (
+              <PanelLeftClose aria-hidden="true" className="shrink-0" />
+            )}
+            {collapsed ? null : "折叠侧栏"}
           </Button>
         </div>
       </aside>
