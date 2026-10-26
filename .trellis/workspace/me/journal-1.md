@@ -972,3 +972,27 @@ V2 任务列表已全部交付归档后，处理跨任务待验收登记中的 P
 ### Status
 
 [OK] **Completed**
+
+
+## Session 32: 主题文章式研究报告与分层证据交付
+<!-- trellis-session: v=2 fp=a3c111e6f40df4eb -->
+
+**Date**: 2026-10-26
+**Task**: 主题文章式研究报告与分层证据交付
+**Branch**: `feat/research-article`
+
+### Summary
+
+完成中文主题文章协议、发现关联校验、持久化/API/Markdown 导出及分层证据阅读。修复独立审查发现的重复输入编号和前端关联校验缺口。100.120.14.84 隔离环境完成相关后端回归累计176用例、文章协议17用例、最终前端定向31用例、类型/构建、桌面/手机引用键盘与焦点预览；详细分批结果见归档 verification.md。未验证真实模型新报告质量；第二轮独立复审受429额度限制，主会话已定向源码复核。已保留本机截图并清理本任务远程资源，任务已归档，未推送。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `748c74a` | feat(research): produce a topic article with linked findings |
+| `47a5682` | feat(web): read the report as an article with layered evidence |
+| `31490de` | docs(research): define the article contract and record its verification |
+
+### Status
+
+[OK] **Completed**
