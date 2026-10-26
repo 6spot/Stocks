@@ -499,8 +499,20 @@ agents:
     output_schema:
       type: object
       additionalProperties: false
-      required: [summary, findings, open_questions, evidence_refs]
+      required: [title, summary, sections, findings, open_questions, evidence_refs]
       properties:
+        title: {type: string}
+        sections:
+          type: array
+          minItems: 1
+          items:
+            type: object
+            additionalProperties: false
+            required: [heading, body, finding_ids]
+            properties:
+              heading: {type: string}
+              body: {type: string}
+              finding_ids: {type: array, items: {type: string}}
         summary: {type: string}
         findings:
           type: array

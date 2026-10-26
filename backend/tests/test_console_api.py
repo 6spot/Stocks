@@ -1959,7 +1959,9 @@ def test_report_evidence_versions_and_fact_pages_are_bounded(
         analysis = Analysis(
             run_id=run.id,
             evidence_package_id=package.id,
+            title="研究资料与覆盖边界",
             summary="No selected evidence.",
+            sections=[{"heading": "资料覆盖", "body": "No selected evidence.", "finding_ids": []}],
             findings=[],
             open_questions=[],
             evidence_refs=[],

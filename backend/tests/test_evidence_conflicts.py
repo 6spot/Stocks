@@ -842,7 +842,9 @@ def test_report_states_independent_originals_and_conflicting_values():
         id=uuid4(),
         run_id=uuid4(),
         evidence_package_id=uuid4(),
+        title="研究资料与覆盖边界",
         summary="Two origins reported different CPI values.",
+        sections=[{"heading": "资料覆盖", "body": "Two origins reported different CPI values.", "finding_ids": []}],
         findings=[],
         open_questions=["Which CPI basis is comparable?"],
         evidence_refs=[],
@@ -912,13 +914,13 @@ def test_report_states_independent_originals_and_conflicting_values():
         ],
     )
 
-    assert "## Sources and Conflicts" in report
-    assert "Independent originals: 1 covering 2 document version(s)." in report
-    assert "Confirmed reprints of one original are counted once (1 group(s))" in report
-    assert "cpi_yoy (US CPI): values differ" in report
+    assert "## 附录：来源独立性与指标口径" in report
+    assert "独立原始来源：1，覆盖 2 个文档版本。" in report
+    assert "已确认转载自同一原始来源的文档仅计为一个来源（1 组）" in report
+    assert "cpi_yoy (US CPI): 数值不同" in report
     assert "2.4 percent" in report
     assert "3.1 percent" in report
-    assert "none of them is averaged, overwritten or marked verified." in report
+    assert "未取平均、未覆盖，也未标记为已核实。" in report
 
 
 def test_report_says_unknown_instead_of_implying_independence():
@@ -928,7 +930,9 @@ def test_report_says_unknown_instead_of_implying_independence():
         id=uuid4(),
         run_id=uuid4(),
         evidence_package_id=uuid4(),
+        title="研究资料与覆盖边界",
         summary="Nothing declared an original.",
+        sections=[{"heading": "资料覆盖", "body": "Nothing declared an original.", "finding_ids": []}],
         findings=[],
         open_questions=[],
         evidence_refs=[],
@@ -946,8 +950,8 @@ def test_report_says_unknown_instead_of_implying_independence():
         metric_comparisons=[],
     )
 
-    assert "number of independent originals is unknown" in report
-    assert "No two selected Facts describe the same metric" in report
+    assert "独立原始来源数量未知，不能以文档数量代替" in report
+    assert "所选事实中没有可进行同指标对照的两项记录，无法比较" in report
 
 
 def local_store(payload: bytes):

@@ -2680,12 +2680,18 @@ def _analysis_and_report(
             "EVIDENCE_PACKAGE_UNAVAILABLE",
             "Research output cannot be saved without an Evidence Package",
         )
+    title = output.get("title")
+    sections = output.get("sections")
     findings = output.get("findings")
     open_questions = output.get("open_questions")
     summary = output.get("summary")
     evidence_refs = output.get("evidence_refs")
     if (
-        not isinstance(summary, str)
+        not isinstance(title, str)
+        or not title.strip()
+        or not isinstance(sections, list)
+        or not sections
+        or not isinstance(summary, str)
         or not summary.strip()
         or not isinstance(findings, list)
         or not isinstance(open_questions, list)
@@ -2695,8 +2701,25 @@ def _analysis_and_report(
             "ANALYSIS_INVALID",
             "Research output cannot be converted into an Analysis",
         )
-    created_at = _now()
+    # Revalidate the saved step output as well as fresh model responses: a
+    # retry may reuse a completed step, but may only publish this Run's frozen
+    # initial/adopted evidence and valid article-to-finding associations.
     ledger = deepcopy(run.research_inputs or [])
+    try:
+        allowed_refs = {
+            (ref["chunk_id"], ref["document_id"]): ref
+            for ref in merged_research_refs(package, ledger)
+        }
+        output, evidence_refs = parse_agent_output(
+            json.dumps(output), {}, allowed_refs
+        )
+        findings, open_questions = validate_analysis_content(output, allowed_refs)
+    except (KeyError, TypeError, ValueError) as exc:
+        raise _StepFailure(
+            "ANALYSIS_INVALID",
+            "Research output cannot be converted into an Analysis",
+        ) from exc
+    created_at = _now()
     coverage = deepcopy(package.coverage)
     ledger_gaps = research_ledger_gaps(ledger)
     if ledger_gaps and isinstance(coverage, dict):
@@ -2718,7 +2741,9 @@ def _analysis_and_report(
     analysis = Analysis(
         run_id=run.id,
         evidence_package_id=package.id,
+        title=title,
         summary=summary,
+        sections=deepcopy(sections),
         findings=deepcopy(findings),
         open_questions=deepcopy(open_questions),
         evidence_refs=deepcopy(evidence_refs),
@@ -2734,13 +2759,14 @@ def _analysis_and_report(
         run_id=run.id,
         analysis_id=analysis.id,
         task_id=task.id,
-        title=task.name,
+        title=title,
         content=render_report(
-            title=task.name,
+            title=title,
             objective=run.objective,
             scope=run.scope,
             as_of=package.as_of,
             analysis=analysis,
+            evidence=merged_research_refs(package, ledger),
             # The frozen initial comparisons stay in the package; the report
             # states the same final material the Agent was given.
             metric_comparisons=final_metric_comparisons(package, ledger),

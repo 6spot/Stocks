@@ -309,9 +309,17 @@ def _handle_chat(
         "document_id": first["document_id"],
     }
     output = {
+        "title": "宏观证据与研究边界",
         "summary": "Seeded inflation evidence was reused after Owner recovery.",
+        "sections": [{
+            "heading": "研究观察",
+            "body": "Seeded inflation evidence was reused after Owner recovery.",
+            "finding_ids": ["finding-1"],
+        }],
         "findings": [
             {
+                "id": "finding-1",
+                "title": "已保存证据支持的观察",
                 "kind": "fact",
                 "statement": first.get("text", "Inflation declined to 2.4 percent."),
                 "rationale": "Directly quoted from the selected saved Chunk.",

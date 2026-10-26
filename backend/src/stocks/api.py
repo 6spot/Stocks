@@ -1948,7 +1948,9 @@ def report_detail(report_id: UUID) -> dict:
             },
             "run": _run_payload(run),
             "analysis": {
+                "title": analysis.title,
                 "summary": analysis.summary,
+                "sections": analysis.sections,
                 "findings": analysis.findings,
                 "open_questions": analysis.open_questions,
                 "evidence_refs": analysis.evidence_refs,
@@ -2049,7 +2051,9 @@ def _report_side(session: Session, config: Settings, report_id: UUID) -> dict:
         },
         "run_status": run.status if run is not None else None,
         "analysis": {
+            "title": analysis.title,
             "summary": analysis.summary,
+            "sections": deepcopy(analysis.sections),
             "findings": _safe_external_payload(analysis.findings),
             "open_questions": deepcopy(analysis.open_questions),
             "evidence_refs": _safe_external_payload(analysis.evidence_refs),

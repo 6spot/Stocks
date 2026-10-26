@@ -793,7 +793,9 @@ def test_completed_filtered_scan_can_advance_cursor(engine, monkeypatch):
             Analysis(
                 run_id=run.id,
                 evidence_package_id=package.id,
+                title="研究资料与覆盖边界",
                 summary="Coverage was insufficient.",
+                sections=[{"heading": "资料覆盖", "body": "Coverage was insufficient.", "finding_ids": []}],
                 findings=[],
                 open_questions=["Did the filtered material matter?"],
                 evidence_refs=[],

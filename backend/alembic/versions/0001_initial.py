@@ -277,7 +277,9 @@ def upgrade():
             sa.ForeignKey("evidence_packages.id"),
             nullable=False,
         ),
+        sa.Column("title", sa.Text(), nullable=False),
         sa.Column("summary", sa.Text(), nullable=False),
+        sa.Column("sections", JSONB(), nullable=False),
         sa.Column("findings", JSONB(), nullable=False),
         sa.Column("open_questions", JSONB(), nullable=False),
         sa.Column("evidence_refs", JSONB(), nullable=False),
@@ -289,6 +291,10 @@ def upgrade():
         ),
         sa.Column("coverage", JSONB(), nullable=False),
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
+        sa.CheckConstraint(
+            "jsonb_typeof(sections) = 'array'",
+            name="ck_analyses_sections_array",
+        ),
         sa.CheckConstraint(
             "jsonb_typeof(findings) = 'array'",
             name="ck_analyses_findings_array",

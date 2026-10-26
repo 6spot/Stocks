@@ -1100,6 +1100,7 @@ def parse_agent_output(
     if not isinstance(output, dict):
         raise ValueError("Research output must be an object")
     _validate_json_schema(output, schema)
+    normalized_findings, _ = validate_analysis_content(output, allowed_refs)
     raw_refs = output.get("evidence_refs", [])
     if not isinstance(raw_refs, list):
         raise ValueError("Research output evidence_refs must be a list")
@@ -1116,35 +1117,15 @@ def parse_agent_output(
         if key not in seen_refs:
             refs.append(durable_evidence_ref(allowed_refs[key]))
             seen_refs.add(key)
-    findings = output.get("findings")
-    if not isinstance(findings, list):
-        raise ValueError("Research output findings must be a list")
-    for finding in findings:
-        if not isinstance(finding, dict):
-            raise ValueError("Research output findings must be objects")
-        finding_refs = finding.get("evidence_refs")
-        if not isinstance(finding_refs, list) or not finding_refs:
-            raise ValueError(
-                "Each Research output finding must cite selected evidence"
-            )
-        for ref in finding_refs:
-            if not isinstance(ref, dict):
-                raise ValueError(
-                    "Research output contains an invalid finding evidence reference"
-                )
-            key = (ref.get("chunk_id"), ref.get("document_id"))
-            if key not in allowed_refs:
-                raise ValueError(
-                    "Research output finding references evidence outside "
-                    "the selected input"
-                )
-    if not refs:
-        for finding in findings:
-            for ref in finding["evidence_refs"]:
-                key = (ref.get("chunk_id"), ref.get("document_id"))
-                if key in allowed_refs and key not in seen_refs:
-                    refs.append(durable_evidence_ref(allowed_refs[key]))
-                    seen_refs.add(key)
+    # Top-level refs may cover the summary while findings support sections.
+    # Persist their union even when the model supplied a nonempty top-level list.
+    for finding in normalized_findings:
+        for ref in finding["evidence_refs"]:
+            key = (ref["chunk_id"], ref["document_id"])
+            if key not in seen_refs:
+                refs.append(ref)
+                seen_refs.add(key)
+    output["findings"] = normalized_findings
     return output, refs
 
 
@@ -1152,15 +1133,33 @@ def validate_analysis_content(
     output: dict,
     allowed_refs: dict[tuple[str, str], dict],
 ) -> tuple[list[dict], list[str]]:
-    """Return persisted findings and questions, or reject an invalid Analysis."""
+    """Validate article links and return persisted findings and questions."""
+    for field in ("title", "summary"):
+        if not isinstance(output.get(field), str) or not output[field].strip():
+            raise ValueError(f"Research output {field} must be a non-empty string")
+    sections = output.get("sections")
+    if not isinstance(sections, list) or not sections:
+        raise ValueError("Research output sections must be a non-empty list")
     raw_findings = output.get("findings")
     raw_questions = output.get("open_questions")
     if not isinstance(raw_findings, list) or not isinstance(raw_questions, list):
         raise ValueError("Research output has an invalid Analysis shape")
     normalized_findings: list[dict] = []
+    finding_ids: set[str] = set()
     for finding in raw_findings:
         if not isinstance(finding, dict):
             raise ValueError("Research output findings must be objects")
+        finding_id = finding.get("id")
+        title = finding.get("title")
+        if (
+            not isinstance(finding_id, str)
+            or not finding_id.strip()
+            or finding_id in finding_ids
+            or not isinstance(title, str)
+            or not title.strip()
+        ):
+            raise ValueError("Research output finding IDs must be unique and titles non-empty")
+        finding_ids.add(finding_id)
         kind = finding.get("kind")
         statement = finding.get("statement")
         rationale = finding.get("rationale")
@@ -1191,6 +1190,8 @@ def validate_analysis_content(
             normalized_refs.append(durable_evidence_ref(allowed_refs[key]))
         normalized_findings.append(
             {
+                "id": finding_id,
+                "title": title,
                 "kind": kind,
                 "statement": statement,
                 "rationale": rationale,
@@ -1198,6 +1199,28 @@ def validate_analysis_content(
                 "evidence_refs": normalized_refs,
             }
         )
+    used_finding_ids: set[str] = set()
+    for section in sections:
+        if (
+            not isinstance(section, dict)
+            or set(section) != {"heading", "body", "finding_ids"}
+            or any(
+                not isinstance(section.get(field), str) or not section[field].strip()
+                for field in ("heading", "body")
+            )
+            or not isinstance(section.get("finding_ids"), list)
+        ):
+            raise ValueError("Research output contains an invalid article section")
+        section_finding_ids: set[str] = set()
+        for finding_id in section["finding_ids"]:
+            if not isinstance(finding_id, str) or finding_id not in finding_ids:
+                raise ValueError("Research output section references an unknown finding")
+            if finding_id in section_finding_ids:
+                raise ValueError("Research output section repeats a finding ID")
+            section_finding_ids.add(finding_id)
+            used_finding_ids.add(finding_id)
+    if used_finding_ids != finding_ids:
+        raise ValueError("Every Research output finding must be used by an article section")
     if any(
         not isinstance(question, str) or not question.strip()
         for question in raw_questions
@@ -1228,79 +1251,77 @@ def _independence_section(
         for item in coverage.get("origin_groups") or []
         if isinstance(item, dict)
     ]
-    lines = ["", "## Sources and Conflicts", ""]
+    lines = ["", "## 附录：来源独立性与指标口径", ""]
     if not groups:
         lines.append(
-            "No origin declaration was recorded for this selection, so the "
-            "number of independent originals is unknown rather than equal to "
-            "the number of documents."
+            "本次选择未记录原始来源声明；独立原始来源数量未知，"
+            "不能以文档数量代替。"
         )
     else:
         merged = [item for item in groups if item.get("merged")]
         lines.append(
-            f"Independent originals: {len(groups)} covering "
+            f"独立原始来源：{len(groups)}，覆盖 "
             f"{sum(int(item.get('document_count') or 0) for item in groups)} "
-            "document version(s)."
+            "个文档版本。"
         )
         if merged:
             lines.append(
-                "Confirmed reprints of one original are counted once "
-                f"({len(merged)} group(s)); their copies stay open below."
+                "已确认转载自同一原始来源的文档仅计为一个来源"
+                f"（{len(merged)} 组）；各副本仍可追溯。"
             )
         for item in groups[:MAX_REPORT_ORIGIN_GROUPS]:
             if not item.get("merged"):
                 continue
             sources = ", ".join(str(value) for value in item.get("source_ids") or [])
             lines.append(
-                f"- {item.get('origin_id')}: {item.get('document_count')} "
-                f"document(s) from {sources or 'unknown sources'} — the same "
-                f"original by {item.get('kind')} {item.get('url') or ''}".rstrip()
+                f"- {item.get('document_count')} 个文档，来源："
+                f"{sources or '未知'}；通过 {item.get('kind')} "
+                f"确认同一原始来源 {item.get('url') or ''}".rstrip()
             )
         if len(groups) > MAX_REPORT_ORIGIN_GROUPS:
             lines.append(
-                f"- … {len(groups) - MAX_REPORT_ORIGIN_GROUPS} more origin "
-                "group(s) stay in the Evidence Package."
+                f"- 另有 {len(groups) - MAX_REPORT_ORIGIN_GROUPS} "
+                "组来源记录保存在证据包中。"
             )
-    lines.extend(["", "Same-metric values:"])
+    lines.extend(["", "同指标已发布值："])
     if not metric_comparisons:
         lines.append(
-            "No two selected Facts describe the same metric, so no comparison "
-            "was possible."
+            "所选事实中没有可进行同指标对照的两项记录，无法比较。"
         )
     for item in metric_comparisons[:MAX_REPORT_COMPARISONS]:
         flags = [
             label
             for label, flag in (
-                ("values differ", item.get("value_conflict")),
-                ("basis differs", item.get("basis_mismatch")),
-                ("periods differ", item.get("period_mismatch")),
+                ("数值不同", item.get("value_conflict")),
+                ("口径不同", item.get("basis_mismatch")),
+                ("观测期不同", item.get("period_mismatch")),
             )
             if flag
         ]
         lines.append(
             f"- {item.get('metric_id')} "
-            f"({item.get('symbol') or item.get('subject_name') or 'unlabelled'}): "
-            + ", ".join(flags or ["consistent"])
+            f"({item.get('symbol') or item.get('subject_name') or '未标注主体'}): "
+            + "、".join(flags or ["一致"])
         )
         for fact in item.get("facts") or []:
             lines.append(
                 "  - "
                 f"{fact.get('value')} {fact.get('unit') or ''}"
                 + (f" {fact['currency']}" if fact.get("currency") else "")
-                + f" · period {fact.get('period_start') or 'unknown'} – "
-                f"{fact.get('period_end') or 'unknown'}"
-                f" · available {fact.get('available_at') or 'unknown'}"
-                f" · document {fact.get('document_id')}"
+                + f" · 观测期 {fact.get('period_start') or '未知'} – "
+                f"{fact.get('period_end') or '未知'}"
+                f" · 可用时间 {fact.get('available_at') or '未知'}"
+                f" · 文档 {fact.get('document_id')}"
             )
     if len(metric_comparisons) > MAX_REPORT_COMPARISONS:
         lines.append(
-            f"- … {len(metric_comparisons) - MAX_REPORT_COMPARISONS} more "
-            "comparison(s) stay in the Evidence Package."
+            f"- 另有 {len(metric_comparisons) - MAX_REPORT_COMPARISONS} "
+            "项比较记录保存在证据包中。"
         )
     if metric_comparisons:
         lines.append(
-            "Conflicting or differently based values are listed as published; "
-            "none of them is averaged, overwritten or marked verified."
+            "冲突值及不同口径的数值按各自发布值并列保留；"
+            "未取平均、未覆盖，也未标记为已核实。"
         )
     return lines
 
@@ -1312,56 +1333,70 @@ def render_report(
     scope: dict,
     as_of: datetime,
     analysis: Analysis,
+    evidence: list[dict] | None = None,
     metric_comparisons: list[dict] | None = None,
 ) -> str:
-    """Render the readable Report deterministically from the saved Analysis."""
+    """Render the article with stable evidence numbers from the saved inputs."""
+    refs = list(evidence or [])
+    known = {(ref["chunk_id"], ref["document_id"]) for ref in refs}
+    for ref in [
+        *analysis.evidence_refs,
+        *(ref for finding in analysis.findings for ref in finding["evidence_refs"]),
+    ]:
+        key = (ref["chunk_id"], ref["document_id"])
+        if key not in known:
+            if evidence is not None:
+                raise ValueError("Report contains an unauthorized evidence reference")
+            refs.append(ref)
+            known.add(key)
+    numbers: dict[tuple[str, str], int] = {}
+    for ref in refs:
+        numbers.setdefault((ref["chunk_id"], ref["document_id"]), len(numbers) + 1)
+    findings = {finding["id"]: finding for finding in analysis.findings}
+    cited: set[tuple[str, str]] = {
+        (ref["chunk_id"], ref["document_id"]) for ref in analysis.evidence_refs
+    }
     lines = [
-        f"# {title}",
-        "",
-        f"Objective: {objective}",
-        f"Scope: {json.dumps(scope, ensure_ascii=False, sort_keys=True)}",
-        f"As of: {as_of.isoformat()}",
-        "",
-        "## Summary",
-        "",
-        analysis.summary,
-        "",
-        "## Findings",
-        "",
+        f"# {title}", "", f"研究时点：{as_of.isoformat()}",
+        "", "## 摘要", "", analysis.summary,
     ]
-    if not analysis.findings:
-        lines.extend(["No sufficiently supported findings were identified.", ""])
-    for index, finding in enumerate(analysis.findings, start=1):
-        lines.extend(
-            [
-                f"### Finding {index}: {finding['kind']}",
+    for section in analysis.sections:
+        lines.extend(["", f"## {section['heading']}", "", section["body"]])
+        section_refs = {
+            (ref["chunk_id"], ref["document_id"])
+            for finding_id in section["finding_ids"]
+            for ref in findings[finding_id]["evidence_refs"]
+        }
+        if section_refs:
+            cited.update(section_refs)
+            lines.extend([
                 "",
-                finding["statement"],
-                "",
-                f"Why it matters: {finding['rationale']}",
-                "",
-                f"Uncertainty: {finding['uncertainty']}",
-                "",
-                "Evidence: "
-                + ", ".join(
-                    f"{ref['document_id']}#{ref['chunk_id']}"
-                    for ref in finding["evidence_refs"]
+                "参考来源：" + " ".join(
+                    f"[E{numbers[key]}](/api/documents/{key[1]}/original)"
+                    for key in sorted(section_refs, key=numbers.__getitem__)
                 ),
-                "",
-            ]
-        )
-    lines.extend(["## Open Questions", ""])
+            ])
     if analysis.open_questions:
+        lines.extend(["", "## 待解问题", ""])
         lines.extend(f"- {question}" for question in analysis.open_questions)
-    else:
-        lines.append("None identified from the selected evidence.")
+    if cited:
+        lines.extend(["", "## 参考来源", ""])
+        for ref in refs:
+            key = (ref["chunk_id"], ref["document_id"])
+            if key not in cited:
+                continue
+            cited.remove(key)
+            label = str(ref.get("title") or ref["source_id"])
+            label = label.replace("\\", "\\\\").replace("[", "\\[").replace("]", "\\]")
+            label = " ".join(label.splitlines())
+            lines.append(
+                f"- [E{numbers[key]}] [{label}]"
+                f"(/api/documents/{ref['document_id']}/original)"
+                f"（来源：{ref['source_id']}；版本：{ref['document_version']}）"
+            )
     lines.extend(_independence_section(analysis, metric_comparisons or []))
     gaps = analysis.coverage.get("gaps", [])
-    lines.extend(["", "## Coverage", ""])
     if gaps:
+        lines.extend(["", "## 资料覆盖限制", ""])
         lines.extend(f"- {gap}" for gap in gaps)
-    else:
-        lines.append(
-            "No known gaps within the queries recorded by this Evidence Package."
-        )
     return "\n".join(lines).rstrip() + "\n"

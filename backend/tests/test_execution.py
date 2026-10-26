@@ -196,16 +196,30 @@ agents:
     output_schema:
       type: object
       additionalProperties: false
-      required: [summary, findings, open_questions, evidence_refs]
+      required: [title, summary, sections, findings, open_questions, evidence_refs]
       properties:
+        title: {{type: string}}
+        sections:
+          type: array
+          minItems: 1
+          items:
+            type: object
+            additionalProperties: false
+            required: [heading, body, finding_ids]
+            properties:
+              heading: {{type: string}}
+              body: {{type: string}}
+              finding_ids: {{type: array, items: {{type: string}}}}
         summary: {{type: string}}
         findings:
           type: array
           items:
             type: object
             additionalProperties: false
-            required: [kind, statement, rationale, uncertainty, evidence_refs]
+            required: [id, title, kind, statement, rationale, uncertainty, evidence_refs]
             properties:
+              id: {{type: string}}
+              title: {{type: string}}
               kind: {{type: string}}
               statement: {{type: string}}
               rationale: {{type: string}}
@@ -680,9 +694,17 @@ def _mock_transport(output_content: str | None = None, statuses=None):
         document_id = "00000000-0000-0000-0000-000000000002"
         content = output_content or json.dumps(
             {
+                "title": "宏观证据与研究边界",
                 "summary": "summary",
+                "sections": [{
+                    "heading": "研究观察",
+                    "body": "summary",
+                    "finding_ids": ["finding-1"],
+                }],
                 "findings": [
                     {
+                        "id": "finding-1",
+                        "title": "已保存证据支持的观察",
                         "kind": "fact",
                         "statement": "finding",
                         "rationale": "selected evidence supports it",
@@ -1223,9 +1245,14 @@ def test_successful_run_persists_snapshot_steps_and_never_overwrites_success(
         assert package is not None and analysis is not None and report is not None
         assert analysis.evidence_package_id == package.id
         assert report.analysis_id == analysis.id
-        assert report.content.startswith("# Brief\n")
+        assert analysis.title == report.title == "宏观证据与研究边界"
+        assert analysis.sections[0]["finding_ids"] == ["finding-1"]
+        assert analysis.findings[0]["id"] == "finding-1"
+        assert report.content.startswith(f"# {analysis.title}\n")
+        assert "## 研究观察" in report.content
+        assert "参考来源：[E1]" in report.content
         assert selected_chunk["document_id"] in report.content
-        assert selected_chunk["chunk_id"] in report.content
+        assert selected_chunk["chunk_id"] not in report.content
         assert completed.output["analysis_id"] == str(analysis.id)
         assert completed.output["report_id"] == str(report.id)
         assert completed.change_scan_completed is True
@@ -1328,7 +1355,13 @@ def test_empty_evidence_run_succeeds_with_explicit_gaps(engine, tmp_path):
                     model_transport=_mock_transport(
                         json.dumps(
                             {
+                                "title": "宏观证据与研究边界",
                                 "summary": "No citable evidence was saved.",
+                                "sections": [{
+                                    "heading": "研究观察",
+                                    "body": "No citable evidence was saved.",
+                                    "finding_ids": [],
+                                }],
                                 "findings": [],
                                 "open_questions": [
                                     "Was any primary release collected?"
@@ -1644,9 +1677,17 @@ def test_retry_keeps_the_ledger_and_appended_evidence_stays_citable(
         assert claim_run(session, retry_run_id, process_token=PROCESS_B)
         output_content = json.dumps(
             {
+                "title": "宏观证据与研究边界",
                 "summary": "supplemental",
+                "sections": [{
+                    "heading": "研究观察",
+                    "body": "supplemental",
+                    "finding_ids": ["finding-1"],
+                }],
                 "findings": [
                     {
+                        "id": "finding-1",
+                        "title": "已保存证据支持的观察",
                         "kind": "fact",
                         "statement": "supplemental finding",
                         "rationale": "appended evidence supports it",
@@ -1699,7 +1740,9 @@ def test_retry_keeps_the_ledger_and_appended_evidence_stays_citable(
             select(Report).where(Report.run_id == retry_run_id)
         )
         assert report is not None
-        assert appended_chunk_id in report.content
+        assert "参考来源：[E2]" in report.content
+        assert appended_chunk_id not in report.content
+        assert f"/api/documents/{EVIDENCE_DOCUMENT_ID}/original" in report.content
 
 
 def test_agent_receives_appended_facts_and_their_comparison(
@@ -1924,7 +1967,7 @@ def test_agent_receives_appended_facts_and_their_comparison(
         assert report is not None
         assert "2.4 percent" in report.content
         assert "3.1 percent" in report.content
-        assert "values differ" in report.content
+        assert "数值不同" in report.content
         # The initial Evidence Package keeps its own untouched comparison list.
         session.expire_all()
         saved_package = session.scalar(
@@ -2002,7 +2045,13 @@ def test_full_run_records_provider_and_provider_reported_cost(engine, tmp_path):
                         "message": {
                             "content": json.dumps(
                                 {
+                                    "title": "宏观证据与研究边界",
                                     "summary": "summary",
+                                    "sections": [{
+                                        "heading": "研究观察",
+                                        "body": "summary",
+                                        "finding_ids": [],
+                                    }],
                                     "findings": [],
                                     "open_questions": [],
                                     "evidence_refs": [],
@@ -2742,9 +2791,17 @@ def test_fabricated_citation_fails_and_keeps_package_and_previous_report(
     models_path = write_models_config(tmp_path)
     fabricated = json.dumps(
         {
+            "title": "宏观证据与研究边界",
             "summary": "invented",
+            "sections": [{
+                "heading": "研究观察",
+                "body": "invented",
+                "finding_ids": ["finding-1"],
+            }],
             "findings": [
                 {
+                    "id": "finding-1",
+                    "title": "已保存证据支持的观察",
                     "kind": "fact",
                     "statement": "an unsourced claim",
                     "rationale": "no selected evidence",
@@ -2795,7 +2852,9 @@ def test_fabricated_citation_fails_and_keeps_package_and_previous_report(
         earlier_analysis = Analysis(
             run_id=previous_id,
             evidence_package_id=earlier_package.id,
+            title="研究资料与覆盖边界",
             summary="earlier analysis",
+            sections=[{"heading": "资料覆盖", "body": "earlier analysis", "finding_ids": []}],
             findings=[],
             open_questions=[],
             evidence_refs=[],

@@ -342,11 +342,21 @@ def persist_report(
     )
     session.add(package)
     session.flush()
+    article_findings = [
+        {**deepcopy(item), "id": f"finding-{index}", "title": item["statement"]}
+        for index, item in enumerate(findings, start=1)
+    ]
     analysis = Analysis(
         run_id=run.id,
         evidence_package_id=package.id,
+        title="Saved Evidence Brief",
         summary="Saved macro summary.",
-        findings=deepcopy(findings),
+        sections=[{
+            "heading": "宏观观察",
+            "body": "Saved macro summary.",
+            "finding_ids": [item["id"] for item in article_findings],
+        }],
+        findings=article_findings,
         open_questions=list(open_questions),
         evidence_refs=[
             {

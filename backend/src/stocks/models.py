@@ -325,6 +325,10 @@ class Analysis(Base):
     __table_args__ = (
         UniqueConstraint("run_id", name="uq_analyses_run"),
         CheckConstraint(
+            "jsonb_typeof(sections) = 'array'",
+            name="ck_analyses_sections_array",
+        ),
+        CheckConstraint(
             "jsonb_typeof(findings) = 'array'",
             name="ck_analyses_findings_array",
         ),
@@ -344,7 +348,9 @@ class Analysis(Base):
     evidence_package_id: Mapped[UUID] = mapped_column(
         ForeignKey("evidence_packages.id"),
     )
+    title: Mapped[str] = mapped_column(Text)
     summary: Mapped[str] = mapped_column(Text)
+    sections: Mapped[list] = mapped_column(JSONB)
     findings: Mapped[list] = mapped_column(JSONB)
     open_questions: Mapped[list] = mapped_column(JSONB)
     evidence_refs: Mapped[list] = mapped_column(JSONB)

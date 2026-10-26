@@ -373,9 +373,17 @@ def persist_run(
         analysis = Analysis(
             run_id=run.id,
             evidence_package_id=package.id,
+            title="通胀变化与后续修订风险",
             summary="One saved release supports the statement.",
+            sections=[{
+                "heading": "通胀变化",
+                "body": "发布值为 2.4%，本次证据仅来自一个来源，后续修订仍需跟踪。",
+                "finding_ids": ["inflation"] if refs else [],
+            }],
             findings=[
                 {
+                    "id": "inflation",
+                    "title": "通胀回落",
                     "kind": "fact",
                     "statement": "Inflation eased to 2.4%.",
                     "rationale": "The only cited release reports this figure.",
@@ -489,6 +497,10 @@ def test_report_detail_reads_the_versions_it_cited_after_a_new_version(engine, c
     assert entry["embedding_state"]["status"] == "completed"
     assert str(first_id) in detail["report"]["content"]
     assert detail["run"]["status"] == "succeeded"
+    assert detail["analysis"]["title"] == "通胀变化与后续修订风险"
+    assert detail["analysis"]["sections"][0]["finding_ids"] == ["inflation"]
+    assert detail["analysis"]["findings"][0]["id"] == "inflation"
+    assert detail["analysis"]["findings"][0]["title"] == "通胀回落"
     assert detail["cited_chunk_ids"] == [entry["chunk_id"]]
     assert detail["coverage_gaps"] == []
     assert [item["latest_document_id"] for item in detail["latest_collection_states"]] == [

@@ -178,7 +178,9 @@ def persist_run(
         analysis = Analysis(
             run_id=run.id,
             evidence_package_id=package.id,
+            title="研究资料与覆盖边界",
             summary="Two selected groups support the statement.",
+            sections=[{"heading": "资料覆盖", "body": "Two selected groups support the statement.", "finding_ids": []}],
             findings=[],
             open_questions=[],
             evidence_refs=[],
