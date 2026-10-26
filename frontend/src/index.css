@@ -214,8 +214,12 @@
 /* Sidebar collapse: the grid track animates between the collapsed icon rail
    and the expanded panel, so labels and icons keep their positions instead of
    snapping. Layout-only properties, no paint-heavy effects. */
-@utility motion-sidebar {
-  transition-property: grid-template-columns;
+/* Sidebar collapse: only the rail changes size, and every icon sits in a fixed
+   slot so nothing inside moves horizontally. Animating the grid track or
+   re-centring the collapsed rail reflowed the labels and shifted icons on each
+   frame, which is what read as jitter. Labels cross-fade in place instead. */
+@utility sidebar-rail {
+  transition-property: width, padding-inline;
   transition-duration: var(--motion-ui);
   transition-timing-function: var(--ease-out);
 }

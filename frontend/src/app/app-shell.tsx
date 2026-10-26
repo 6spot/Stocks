@@ -12,7 +12,7 @@ import {
   Search,
   X,
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useState, type CSSProperties, type ReactNode } from "react";
 import {
   NavLink,
   Outlet,
@@ -42,6 +42,20 @@ const navigation = [
 ];
 
 const SIDEBAR_COLLAPSED_KEY = "stocks.sidebar-collapsed";
+const SIDEBAR_WIDTH = "15rem";
+const SIDEBAR_RAIL_WIDTH = "4rem";
+
+/**
+ * The sidebar animates its own width; every icon sits in a fixed 2rem slot that
+ * never moves, so a toggle only slides the right edge and cross-fades labels.
+ * Centring the collapsed rail instead would shift each icon horizontally mid
+ * transition, and animating the grid track would reflow both panes per frame.
+ */
+function IconSlot({ children }: { children: ReactNode }) {
+  return (
+    <span className="grid w-8 shrink-0 place-items-center">{children}</span>
+  );
+}
 
 function NavigationLinks({
   collapsed = false,
@@ -61,15 +75,23 @@ function NavigationLinks({
           onClick={onNavigate}
           className={({ isActive }) =>
             cn(
-              "press flex min-h-10 items-center gap-3 rounded-lg px-3 text-sm font-medium text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+              "press flex min-h-10 items-center rounded-lg text-sm font-medium text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
               isActive &&
                 "bg-sidebar-accent text-sidebar-accent-foreground shadow-sm",
-              collapsed && "justify-center gap-0 px-2",
             )
           }
         >
-          <Icon aria-hidden="true" className="size-4 shrink-0" />
-          <span className={cn("truncate", collapsed && "hidden")}>{label}</span>
+          <IconSlot>
+            <Icon aria-hidden="true" className="size-4" />
+          </IconSlot>
+          <span
+            className={cn(
+              "truncate text-left transition-opacity duration-150",
+              collapsed ? "opacity-0" : "opacity-100",
+            )}
+          >
+            {label}
+          </span>
         </NavLink>
       ))}
     </nav>
@@ -78,11 +100,18 @@ function NavigationLinks({
 
 function Brand({ collapsed = false }: { collapsed?: boolean }) {
   return (
-    <div className="flex items-center gap-3">
-      <div className="grid size-9 shrink-0 place-items-center rounded-xl bg-sidebar-primary text-sidebar-primary-foreground">
-        <Database aria-hidden="true" className="size-4" />
-      </div>
-      <div className={collapsed ? "hidden" : undefined}>
+    <div className="flex items-center">
+      <IconSlot>
+        <span className="grid size-8 place-items-center rounded-xl bg-sidebar-primary text-sidebar-primary-foreground">
+          <Database aria-hidden="true" className="size-4" />
+        </span>
+      </IconSlot>
+      <div
+        className={cn(
+          "transition-opacity duration-150",
+          collapsed ? "opacity-0" : "opacity-100",
+        )}
+      >
         <p className="text-lg leading-none font-semibold">Stocks</p>
         <p className="mt-1 text-[0.68rem] text-sidebar-foreground/50">
           Research desk
@@ -122,73 +151,84 @@ export function AppShell() {
   }
 
   return (
-    <div
-      className={cn(
-        "min-h-dvh lg:grid motion-sidebar",
-        collapsed
-          ? "lg:grid-cols-[4rem_minmax(0,1fr)]"
-          : "lg:grid-cols-[15rem_minmax(0,1fr)]",
-      )}
-    >
+    <div className="min-h-dvh lg:flex">
       <aside
+        data-collapsed={collapsed ? "true" : "false"}
+        style={
+          {
+            "--sidebar-expanded": SIDEBAR_WIDTH,
+            "--sidebar-rail": SIDEBAR_RAIL_WIDTH,
+          } as CSSProperties
+        }
         className={cn(
-          "hidden min-h-dvh flex-col overflow-hidden bg-sidebar text-sidebar-foreground lg:sticky lg:top-0 lg:flex lg:h-dvh",
-          collapsed ? "px-2 py-4" : "p-4",
+          "sidebar-rail hidden min-h-dvh shrink-0 flex-col overflow-hidden bg-sidebar text-sidebar-foreground lg:sticky lg:top-0 lg:flex lg:h-dvh",
+          collapsed
+            ? "w-[var(--sidebar-rail)] px-2"
+            : "w-[var(--sidebar-expanded)] px-3",
         )}
       >
-        <div
-          className={cn(
-            "group/brand relative flex items-center",
-            collapsed ? "justify-center" : "justify-between gap-2",
-          )}
-        >
-          <Brand collapsed={collapsed} />
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon"
-            aria-label={collapsed ? "展开侧栏" : "折叠侧栏"}
-            title={collapsed ? "展开侧栏" : "折叠侧栏"}
+        <div className="flex w-full flex-1 flex-col">
+          <div className="group/brand relative flex h-9 items-center">
+            <Brand collapsed={collapsed} />
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              aria-label={collapsed ? "展开侧栏" : "折叠侧栏"}
+              title={collapsed ? "展开侧栏" : "折叠侧栏"}
+              className={cn(
+                "text-sidebar-foreground/60 transition-opacity duration-150 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+                collapsed
+                  ? "pointer-events-none absolute inset-y-0 left-0 z-10 w-8 rounded-xl bg-sidebar-accent/90 opacity-0 backdrop-blur-sm group-hover/brand:pointer-events-auto group-hover/brand:opacity-100 focus-visible:pointer-events-auto focus-visible:opacity-100"
+                  : "ml-auto opacity-100",
+              )}
+              onClick={() => setCollapsed((value) => !value)}
+            >
+              {collapsed ? (
+                <PanelLeftOpen aria-hidden="true" className="size-4" />
+              ) : (
+                <PanelLeftClose aria-hidden="true" className="size-4" />
+              )}
+            </Button>
+          </div>
+          <div
             className={cn(
-              "shrink-0 text-sidebar-foreground/60 transition-opacity duration-150 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:opacity-100",
-              collapsed
-                ? "pointer-events-none absolute inset-0 z-10 size-auto rounded-xl bg-sidebar-accent/90 opacity-0 backdrop-blur-sm group-hover/brand:pointer-events-auto group-hover/brand:opacity-100"
-                : "opacity-100",
+              "flex-1 transition-[margin] duration-[var(--motion-ui)] ease-[var(--ease-out)]",
+              collapsed ? "mt-3" : "mt-8",
             )}
-            onClick={() => setCollapsed((value) => !value)}
           >
-            {collapsed ? (
-              <PanelLeftOpen aria-hidden="true" className="size-4" />
-            ) : (
-              <PanelLeftClose aria-hidden="true" className="size-4" />
-            )}
-          </Button>
-        </div>
-        <div className={cn("flex-1", collapsed ? "mt-3" : "mt-8")}>
-          {collapsed ? null : (
-            <p className="mb-2 px-3 text-[0.66rem] font-medium text-sidebar-foreground/40">
+            <p
+              className={cn(
+                "mb-2 px-3 text-[0.66rem] font-medium whitespace-nowrap text-sidebar-foreground/40 transition-opacity duration-150",
+                collapsed ? "opacity-0" : "opacity-100",
+              )}
+            >
               Workspace
             </p>
-          )}
-          <NavigationLinks collapsed={collapsed} />
-        </div>
-        <div className="border-t border-sidebar-border pt-3">
-          <Button
-            type="button"
-            variant="ghost"
-            title="退出登录"
-            aria-label={collapsed ? "退出登录" : undefined}
-            className={cn(
-              "w-full justify-start text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
-              collapsed && "justify-center",
-            )}
-            onClick={signOut}
-          >
-            <LogOut aria-hidden="true" className="shrink-0" />
-            <span className={cn("truncate", collapsed && "hidden")}>
-              退出登录
-            </span>
-          </Button>
+            <NavigationLinks collapsed={collapsed} />
+          </div>
+          <div className="border-t border-sidebar-border pt-3">
+            <Button
+              type="button"
+              variant="ghost"
+              title="退出登录"
+              aria-label={collapsed ? "退出登录" : undefined}
+              className="w-full text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+              onClick={signOut}
+            >
+              <IconSlot>
+                <LogOut aria-hidden="true" className="size-4" />
+              </IconSlot>
+              <span
+                className={cn(
+                  "truncate transition-opacity duration-150",
+                  collapsed ? "opacity-0" : "opacity-100",
+                )}
+              >
+                退出登录
+              </span>
+            </Button>
+          </div>
         </div>
       </aside>
 
