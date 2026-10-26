@@ -211,6 +211,15 @@
   transition-timing-function: var(--ease-out);
 }
 
+/* Sidebar collapse: the grid track animates between the collapsed icon rail
+   and the expanded panel, so labels and icons keep their positions instead of
+   snapping. Layout-only properties, no paint-heavy effects. */
+@utility motion-sidebar {
+  transition-property: grid-template-columns;
+  transition-duration: var(--motion-ui);
+  transition-timing-function: var(--ease-out);
+}
+
 @keyframes rise-in {
   from {
     opacity: 0;

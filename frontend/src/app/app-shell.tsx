@@ -69,7 +69,7 @@ function NavigationLinks({
           }
         >
           <Icon aria-hidden="true" className="size-4 shrink-0" />
-          <span className={cn(collapsed && "sr-only")}>{label}</span>
+          <span className={cn("truncate", collapsed && "hidden")}>{label}</span>
         </NavLink>
       ))}
     </nav>
@@ -82,14 +82,12 @@ function Brand({ collapsed = false }: { collapsed?: boolean }) {
       <div className="grid size-9 shrink-0 place-items-center rounded-xl bg-sidebar-primary text-sidebar-primary-foreground">
         <Database aria-hidden="true" className="size-4" />
       </div>
-      {collapsed ? null : (
-        <div>
-          <p className="text-lg leading-none font-semibold">Stocks</p>
-          <p className="mt-1 text-[0.68rem] text-sidebar-foreground/50">
-            Research desk
-          </p>
-        </div>
-      )}
+      <div className={collapsed ? "hidden" : undefined}>
+        <p className="text-lg leading-none font-semibold">Stocks</p>
+        <p className="mt-1 text-[0.68rem] text-sidebar-foreground/50">
+          Research desk
+        </p>
+      </div>
     </div>
   );
 }
@@ -126,7 +124,7 @@ export function AppShell() {
   return (
     <div
       className={cn(
-        "min-h-dvh lg:grid",
+        "min-h-dvh lg:grid motion-sidebar",
         collapsed
           ? "lg:grid-cols-[4rem_minmax(0,1fr)]"
           : "lg:grid-cols-[15rem_minmax(0,1fr)]",
@@ -134,40 +132,33 @@ export function AppShell() {
     >
       <aside
         className={cn(
-          "hidden min-h-dvh flex-col bg-sidebar p-4 text-sidebar-foreground lg:sticky lg:top-0 lg:flex lg:h-dvh",
-          collapsed && "px-2",
+          "hidden min-h-dvh flex-col overflow-hidden bg-sidebar text-sidebar-foreground lg:sticky lg:top-0 lg:flex lg:h-dvh",
+          collapsed ? "px-2 py-4" : "p-4",
         )}
       >
-        <div className="flex items-center justify-between gap-2">
+        <div className="group/brand relative flex items-center justify-between gap-2">
           <Brand collapsed={collapsed} />
-          {collapsed ? null : (
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              aria-label="折叠侧栏"
-              title="折叠侧栏"
-              className="shrink-0 text-sidebar-foreground/60 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
-              onClick={() => setCollapsed(true)}
-            >
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            aria-label={collapsed ? "展开侧栏" : "折叠侧栏"}
+            title={collapsed ? "展开侧栏" : "折叠侧栏"}
+            className={cn(
+              "shrink-0 text-sidebar-foreground/60 transition-opacity duration-150 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+              collapsed
+                ? "absolute inset-0 z-10 size-auto rounded-xl bg-sidebar-accent/90 opacity-0 backdrop-blur-sm group-hover/brand:opacity-100 group-focus-within/brand:opacity-100"
+                : "opacity-100",
+            )}
+            onClick={() => setCollapsed((value) => !value)}
+          >
+            {collapsed ? (
+              <PanelLeftOpen aria-hidden="true" className="size-4" />
+            ) : (
               <PanelLeftClose aria-hidden="true" className="size-4" />
-            </Button>
-          )}
+            )}
+          </Button>
         </div>
-        {collapsed ? (
-          <div className="mt-3 space-y-1">
-            <Button
-              type="button"
-              variant="ghost"
-              title="展开侧栏"
-              aria-label="展开侧栏"
-              className="min-h-10 w-full justify-center gap-0 rounded-lg px-2 text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
-              onClick={() => setCollapsed(false)}
-            >
-              <PanelLeftOpen aria-hidden="true" className="size-4 shrink-0" />
-            </Button>
-          </div>
-        ) : null}
         <div className={cn("flex-1", collapsed ? "mt-3" : "mt-8")}>
           {collapsed ? null : (
             <p className="mb-2 px-3 text-[0.66rem] font-medium text-sidebar-foreground/40">
@@ -189,7 +180,9 @@ export function AppShell() {
             onClick={signOut}
           >
             <LogOut aria-hidden="true" className="shrink-0" />
-            {collapsed ? null : "退出登录"}
+            <span className={cn("truncate", collapsed && "hidden")}>
+              退出登录
+            </span>
           </Button>
         </div>
       </aside>
