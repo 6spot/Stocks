@@ -2,8 +2,9 @@ import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { createMemoryRouter, RouterProvider } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type {
-  ComparisonSide,
+import {
+  reportDetailSchema,
+  type ComparisonSide,
   ReportComparison,
   ReportListItem,
 } from "@/api/schemas";
@@ -33,16 +34,57 @@ const report = {
     run_id: "run1",
     analysis_id: "a1",
     task_id: "research",
-    title: "Saved Evidence Brief",
-    content: "The report body is shown as text.",
+    title: "营收增长仍需现金流验证",
+    content: "# 仅用于下载的 Markdown 导出\n\n页面应阅读结构化文章。",
     created_at: "2026-10-20T05:00:00Z",
   },
   run: { status: "succeeded" },
   analysis: {
-    summary: "",
-    findings: [],
-    open_questions: [],
-    evidence_refs: [],
+    title: "营收增长仍需现金流验证",
+    summary: "收入恢复增长，但回款速度决定这轮改善能否持续。现有资料支持经营回暖的初步判断，尚不足以确认利润质量同步改善。",
+    sections: [
+      {
+        heading: "增长恢复，现金转化仍是关键",
+        body: "营收的改善需要与回款表现一起观察。\n\n本期收入增长说明需求有所恢复，但应收账款增加可能延后现金流入。因此，营收增速只能支持经营回暖的初步判断，不能单独证明盈利质量提高。",
+        finding_ids: ["revenue-growth", "cash-conversion"],
+      },
+      {
+        heading: "管理层预期仍待订单验证",
+        body: "管理层认为客户需求具有韧性，这提供了观察后续订单的线索。由于缺少分客户订单和续约数据，目前不能将这一预期视为已实现的增长；下一期回款与订单兑现情况将决定判断是否需要调整。",
+        finding_ids: ["management-outlook"],
+      },
+    ],
+    findings: [
+      {
+        id: "revenue-growth",
+        title: "收入增长支持需求恢复的初步判断",
+        kind: "fact",
+        statement: "本期披露的收入高于上年同期。",
+        rationale: "同比口径下的收入变化提供了经营回暖的直接线索。",
+        uncertainty: "单期增长无法说明后续增长持续性，也不等于利润质量改善。",
+        evidence_refs: [{ document_id: "d1", chunk_id: "c1" }],
+      },
+      {
+        id: "cash-conversion",
+        title: "回款速度决定增长的现金含量",
+        kind: "model_inference",
+        statement: "回款仍是判断本轮增长质量的关键。",
+        rationale: "收入与应收账款需结合观察，避免把账面增长直接等同于现金创造。",
+        uncertainty: "目前缺少完整的账龄拆分，尚不能确认回款风险扩大。",
+        evidence_refs: [{ document_id: "d1", chunk_id: "c1" }],
+      },
+      {
+        id: "management-outlook",
+        title: "管理层对需求韧性的判断尚待兑现",
+        kind: "source_opinion",
+        statement: "管理层认为客户需求仍有韧性。",
+        rationale: "这一来源观点有助于界定后续应观察的订单变化。",
+        uncertainty: "尚无分客户订单和续约数据来独立验证管理层预期。",
+        evidence_refs: [{ document_id: "d1", chunk_id: "c1" }],
+      },
+    ],
+    open_questions: ["应收账款增长主要来自账期变化，还是客户付款放缓？"],
+    evidence_refs: [{ document_id: "d1", chunk_id: "c1" }],
     created_at: "2026-10-20T05:00:00Z",
   },
   usage: {
@@ -73,7 +115,7 @@ const report = {
     evidence_package_id: "p1",
     run_id: "run1",
     objective: "test",
-    scope: {},
+    scope: { regions: ["US"], symbols: ["ACME"] },
     as_of: "2026-10-20T04:00:00Z",
     selection_policy_version: "v1",
     selection_budget: {},
@@ -96,6 +138,7 @@ const report = {
       cited_document_version: 1,
       version_matches: true,
       role: "direct",
+      evidence_role: "direct",
       reason: "quoted",
       similarity: null,
       query_rank: 1,
@@ -307,7 +350,7 @@ describe("ResearchPage list", () => {
       ),
     );
     expect(
-      await screen.findByText("The report body is shown as text."),
+      await screen.findByText("营收的改善需要与回款表现一起观察。"),
     ).toBeVisible();
   });
 
@@ -333,7 +376,7 @@ describe("ResearchPage list", () => {
       ),
     );
     expect(
-      await screen.findByText("The report body is shown as text."),
+      await screen.findByText("营收的改善需要与回款表现一起观察。"),
     ).toBeVisible();
   });
 
@@ -355,6 +398,29 @@ describe("ResearchPage list", () => {
   });
 });
 
+describe("report article API contract", () => {
+  it("accepts the current article and requires structured sections and finding identities", () => {
+    expect(reportDetailSchema.parse(report).analysis.sections[0].finding_ids).toEqual([
+      "revenue-growth", "cash-conversion",
+    ]);
+    for (const field of ["title", "sections"]) {
+      expect(reportDetailSchema.safeParse({
+        ...report,
+        analysis: { ...report.analysis, [field]: undefined },
+      }).success).toBe(false);
+    }
+    for (const field of ["id", "title"]) {
+      expect(reportDetailSchema.safeParse({
+        ...report,
+        analysis: {
+          ...report.analysis,
+          findings: [{ ...report.analysis.findings[0], [field]: undefined }],
+        },
+      }).success).toBe(false);
+    }
+  });
+});
+
 describe("ResearchDetailPage", () => {
   it("shows the single trust line and keeps the body as the first content", async () => {
     reportsMock.mockResolvedValue(
@@ -365,7 +431,7 @@ describe("ResearchDetailPage", () => {
     renderAppRouter("/research/r1");
 
     expect(
-      await screen.findByText("The report body is shown as text."),
+      await screen.findByText("营收的改善需要与回款表现一起观察。"),
     ).toBeVisible();
     expect(reportMock).toHaveBeenCalledWith("r1", expect.anything());
 
@@ -383,6 +449,185 @@ describe("ResearchDetailPage", () => {
     // 返回列表回到列表页。
     await userEvent.click(screen.getByRole("button", { name: "返回列表" }));
     expect(await screen.findByRole("table", { name: "报告列表" })).toBeVisible();
+  });
+
+  it("reads thematic prose first and reveals only the findings associated with a section", async () => {
+    const user = userEvent.setup();
+    reportsMock.mockResolvedValue(reportsPage([]));
+    renderAppRouter("/research/r1");
+
+    expect(await screen.findByRole("heading", { level: 1, name: report.report.title })).toBeVisible();
+    expect(screen.getAllByText(report.analysis.summary)).toHaveLength(1);
+    expect(screen.queryByText("页面应阅读结构化文章。")).not.toBeInTheDocument();
+    expect(screen.getByText(/研究参考时间.*股票：ACME/)).toBeVisible();
+    expect(screen.getByRole("heading", { name: "待解问题" })).toBeVisible();
+    expect(screen.getByText(report.analysis.open_questions[0])).toBeVisible();
+    expect(screen.getByText(report.analysis.findings[0].title)).not.toBeVisible();
+    expect(screen.getByText(report.analysis.findings[1].title)).not.toBeVisible();
+    expect(screen.getByText(report.analysis.findings[2].title)).not.toBeVisible();
+    expect(screen.queryByRole("tab")).not.toBeInTheDocument();
+    expect(screen.queryByText(/Finding [0-9]|Why it matters|Evidence/)).not.toBeInTheDocument();
+
+    const firstSection = screen.getByRole("region", { name: report.analysis.sections[0].heading });
+    await user.click(within(firstSection).getByText("查看分析依据 · 2 项发现"));
+    expect(within(firstSection).getByRole("heading", { name: report.analysis.findings[0].title })).toBeVisible();
+    expect(within(firstSection).getByText("事实")).toBeVisible();
+    expect(within(firstSection).getByText("模型推断")).toBeVisible();
+    expect(within(firstSection).getByText(report.analysis.findings[1].rationale)).toBeVisible();
+    expect(within(firstSection).getByText(report.analysis.findings[1].uncertainty)).toBeVisible();
+    expect(within(firstSection).getAllByText("分析依据")).toHaveLength(2);
+    expect(within(firstSection).getAllByText("判断边界")).toHaveLength(2);
+    expect(screen.getByText(report.analysis.findings[2].title)).not.toBeVisible();
+    expect(screen.queryByRole("tab")).not.toBeInTheDocument();
+
+    const secondSection = screen.getByRole("region", { name: report.analysis.sections[1].heading });
+    await user.click(within(secondSection).getByText("查看分析依据 · 1 项发现"));
+    expect(within(secondSection).getByText("来源观点")).toBeVisible();
+    expect(within(secondSection).getByRole("heading", { name: report.analysis.findings[2].title })).toBeVisible();
+  });
+
+  it("opens saved evidence from article citations without expanding support information", async () => {
+    const user = userEvent.setup();
+    reportsMock.mockResolvedValue(reportsPage([]));
+    renderAppRouter("/research/r1");
+    const firstSection = await screen.findByRole("region", { name: report.analysis.sections[0].heading });
+    const chapterSources = within(firstSection).getByLabelText("章节来源");
+    const citation = within(chapterSources).getByRole("button", { name: "查看来源 1：Original filing" });
+    // Two findings share this source; the chapter presents one source opener.
+    expect(within(chapterSources).getAllByRole("button", { name: /查看来源/ })).toHaveLength(1);
+    citation.focus();
+    await user.keyboard("{Enter}");
+    const dialog = await screen.findByRole("dialog", { name: "来源 [E1]" });
+    expect(within(dialog).getByText("ACTUAL SAVED EVIDENCE TEXT")).toBeVisible();
+    expect(within(dialog).getByText("Original filing")).toBeVisible();
+    expect(within(dialog).getByText("发布时间：")).toBeVisible();
+    expect(within(dialog).getByText("来源更新时间：").parentElement).toHaveTextContent("未记录");
+    expect(within(dialog).getByText("采集时间：")).toBeVisible();
+    expect(within(dialog).getByRole("link", { name: /查看安全原件/ })).toHaveAttribute("href", "/api/documents/d1/original");
+    expect(screen.queryByRole("tab")).not.toBeInTheDocument();
+    await user.keyboard("{Escape}");
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    expect(citation).toHaveFocus();
+
+    await user.click(within(firstSection).getByText("查看分析依据 · 2 项发现"));
+    const findingCitation = within(firstSection).getAllByRole("button", { name: "查看来源 1：Original filing" })[1];
+    await user.click(findingCitation);
+    expect(await screen.findByRole("dialog", { name: "来源 [E1]" })).toBeVisible();
+    expect(screen.getByText("ACTUAL SAVED EVIDENCE TEXT")).toBeVisible();
+  });
+
+  it("deduplicates [A, A, B] in frozen order across article, dialog and evidence list", async () => {
+    const user = userEvent.setup();
+    reportsMock.mockResolvedValue(reportsPage([]));
+    reportMock.mockResolvedValue({
+      ...report,
+      analysis: {
+        ...report.analysis,
+        evidence_refs: [{ document_id: "d2", chunk_id: "c2" }, ...report.analysis.evidence_refs],
+        findings: report.analysis.findings.map((finding) => finding.id === "management-outlook" ? {
+          ...finding, evidence_refs: [{ document_id: "d2", chunk_id: "c2" }],
+        } : finding),
+      },
+      evidence: [...report.evidence, ...report.evidence, {
+        ...report.evidence[0],
+        document_id: "d2",
+        chunk_id: "c2",
+        document: { ...report.evidence[0].document, id: "d2", title: "Management outlook" },
+        text: "SAVED MANAGEMENT OUTLOOK",
+      }],
+    });
+    renderAppRouter("/research/r1");
+    const firstSection = await screen.findByRole("region", { name: report.analysis.sections[0].heading });
+    const secondSection = screen.getByRole("region", { name: report.analysis.sections[1].heading });
+    expect(within(within(firstSection).getByLabelText("章节来源")).getByRole("button", { name: "查看来源 1：Original filing" })).toHaveTextContent("[E1]");
+    const secondCitation = within(within(secondSection).getByLabelText("章节来源")).getByRole("button", { name: "查看来源 2：Management outlook" });
+    expect(secondCitation).toHaveTextContent("[E2]");
+    expect(screen.getByText(/独立原件 未知 · 引用 2 条/)).toBeVisible();
+    await user.click(secondCitation);
+    const dialog = await screen.findByRole("dialog", { name: "来源 [E2]" });
+    expect(within(dialog).getByText("[E2]")).toBeVisible();
+    expect(within(dialog).getByText("Management outlook")).toBeVisible();
+    expect(within(dialog).getByText("SAVED MANAGEMENT OUTLOOK")).toBeVisible();
+    await user.keyboard("{Escape}");
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    await userEvent.click(within(firstSection).getByText("查看分析依据 · 2 项发现"));
+    expect(within(firstSection).getAllByRole("button", { name: "查看来源 1：Original filing" })).toHaveLength(3);
+    await userEvent.click(screen.getByText("研究资料与生成信息"));
+    const evidencePanel = await screen.findByRole("tabpanel", { name: "证据包" });
+    const rows = within(evidencePanel).getAllByRole("listitem");
+    expect(rows).toHaveLength(2);
+    expect(within(evidencePanel).getByText("2 个引用")).toBeVisible();
+    expect(rows[0]).toHaveTextContent("[E1]");
+    expect(rows[0]).toHaveTextContent("Original filing");
+    expect(rows[1]).toHaveTextContent("[E2]");
+    expect(rows[1]).toHaveTextContent("Management outlook");
+    expect(within(evidencePanel).queryByText("[E3]")).not.toBeInTheDocument();
+  });
+
+  it("explains an unavailable citation without inventing a source or an original link", async () => {
+    const user = userEvent.setup();
+    reportsMock.mockResolvedValue(reportsPage([]));
+    reportMock.mockResolvedValue({ ...report, evidence: [] });
+    renderAppRouter("/research/r1");
+
+    const chapter = await screen.findByRole("region", { name: report.analysis.sections[0].heading });
+    await user.click(within(within(chapter).getByLabelText("章节来源")).getByRole("button", { name: "查看来源 1：引用片段不可用" }));
+    const dialog = await screen.findByRole("dialog", { name: "来源 [E1]" });
+    expect(within(dialog).getByText("这条引用的保存片段当前无法读取，不能据此判断原始资料不存在。")).toBeVisible();
+    expect(within(dialog).queryByRole("link")).not.toBeInTheDocument();
+    expect(screen.queryByRole("tab")).not.toBeInTheDocument();
+  });
+
+  it("retains saved source identity when a cited chunk cannot be read", async () => {
+    const user = userEvent.setup();
+    reportsMock.mockResolvedValue(reportsPage([]));
+    reportMock.mockResolvedValue({
+      ...report,
+      evidence: [{
+        ...report.evidence[0],
+        chunk_available: false,
+        text: null,
+        document_version: null,
+        version_matches: false,
+      }],
+      coverage_gaps: ["chunk_unavailable"],
+    });
+    renderAppRouter("/research/r1");
+
+    const chapter = await screen.findByRole("region", { name: report.analysis.sections[0].heading });
+    expect(screen.getByText(/资料缺口：报告引用的 Chunk 无法读取/)).toBeVisible();
+    await user.click(within(within(chapter).getByLabelText("章节来源")).getByRole("button", { name: "查看来源 1：Original filing" }));
+    const dialog = await screen.findByRole("dialog", { name: "来源 [E1]" });
+    expect(within(dialog).getByText("片段缺失")).toBeVisible();
+    expect(within(dialog).getByText("报告保存的片段无法从当前仓库读取。仍然保留其来源、版本和时间信息。")).toBeVisible();
+    expect(within(dialog).getByText("sec")).toBeVisible();
+    expect(within(dialog).getByText("引用版本：").parentElement).toHaveTextContent("v1");
+    expect(within(dialog).getByRole("link", { name: /查看安全原件/ })).toHaveAttribute("href", "/api/documents/d1/original");
+    expect(within(dialog).queryByText("ACTUAL SAVED EVIDENCE TEXT")).not.toBeInTheDocument();
+  });
+
+  it("renders an honest article without findings or unresolved questions when evidence is absent", async () => {
+    reportsMock.mockResolvedValue(reportsPage([]));
+    reportMock.mockResolvedValue({
+      ...report,
+      report: { ...report.report, title: "资料不足，暂无法判断增长质量" },
+      analysis: {
+        ...report.analysis,
+        title: "资料不足，暂无法判断增长质量",
+        summary: "本次研究未取得可引用的资料，无法确认营收或回款变化。",
+        sections: [{ heading: "资料限制", body: "现有资料不足以形成结论。", finding_ids: [] }],
+        findings: [], evidence_refs: [], open_questions: [],
+      },
+      evidence: [],
+      cited_chunk_ids: [],
+    });
+    renderAppRouter("/research/r1");
+    expect(await screen.findByText("现有资料不足以形成结论。")).toBeVisible();
+    expect(screen.getByText(/本次研究没有可引用证据/)).toBeVisible();
+    expect(screen.queryByText(/查看分析依据/)).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /查看来源/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "待解问题" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("tab")).not.toBeInTheDocument();
   });
 
   it("renders the retrieval-truncated warning inline together with gaps", async () => {
@@ -409,10 +654,13 @@ describe("ResearchDetailPage", () => {
     reportsMock.mockResolvedValue(reportsPage([]));
     reportMock.mockResolvedValue({
       ...report,
-      report: {
-        ...report.report,
-        content:
-          "## 结论\n\n- 要点一\n\n<script>window.alert('unsafe')</script>",
+      analysis: {
+        ...report.analysis,
+        sections: [{
+          heading: "主题章节",
+          body: "### 结论\n\n- 要点一\n\n<script>window.alert('unsafe')</script>",
+          finding_ids: [],
+        }],
       },
     });
     renderAppRouter("/research/r1");
@@ -428,9 +676,16 @@ describe("ResearchDetailPage", () => {
     reportsMock.mockResolvedValue(reportsPage([]));
     renderAppRouter("/research/r1");
 
+    await screen.findByText("营收的改善需要与回款表现一起观察。");
+    expect(screen.queryByRole("tab")).not.toBeInTheDocument();
+    expect(screen.queryByText("ACTUAL SAVED EVIDENCE TEXT")).not.toBeInTheDocument();
+    expect(screen.queryByText("本次研究用量")).not.toBeInTheDocument();
+    expect(screen.queryByText("研究范围与覆盖限制")).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByText("研究资料与生成信息"));
     expect(await screen.findByText("ACTUAL SAVED EVIDENCE TEXT")).toBeVisible();
 
-    // Evidence pack is the default tab; usage stays hidden until requested.
+    // Evidence pack mounts only when support information is requested.
     expect(screen.getByRole("tab", { name: "证据包" })).toBeVisible();
     expect(screen.getByText("1 个引用")).toBeVisible();
     expect(screen.queryByText("本次研究用量")).not.toBeInTheDocument();
@@ -453,6 +708,12 @@ describe("ResearchDetailPage", () => {
     await userEvent.click(screen.getByRole("tab", { name: "证据包" }));
     expect(await screen.findByText("ACTUAL SAVED EVIDENCE TEXT")).toBeVisible();
     expect(screen.queryByText("本次研究用量")).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("tab", { name: "覆盖限制" }));
+    expect(await screen.findByText("研究范围与覆盖限制")).toBeVisible();
+    expect(screen.getByText("未检查候选")).toBeVisible();
+    await userEvent.click(screen.getByText("研究资料与生成信息"));
+    await waitFor(() => expect(screen.queryByRole("tab")).not.toBeInTheDocument());
+    expect(screen.queryByText("研究范围与覆盖限制")).not.toBeInTheDocument();
     expect(reportComparisonMock).not.toHaveBeenCalled();
   });
 
@@ -538,6 +799,7 @@ describe("ResearchDetailPage", () => {
     renderAppRouter("/research/r1");
 
     await screen.findByText(/独立原件 1 · 引用 2 条/);
+    await userEvent.click(screen.getByText("研究资料与生成信息"));
     await userEvent.click(screen.getByRole("tab", { name: "来源与指标" }));
     expect(await screen.findByText("来源独立性")).toBeVisible();
     expect(screen.getByText("1 个独立原件")).toBeVisible();
@@ -580,7 +842,7 @@ describe("ResearchDetailPage", () => {
     renderAppRouter("/research/r1");
 
     expect(
-      await screen.findByText("The report body is shown as text."),
+      await screen.findByText("营收的改善需要与回款表现一起观察。"),
     ).toBeVisible();
     await userEvent.click(
       screen.getByRole("button", { name: "对照其他报告" }),
@@ -595,7 +857,7 @@ describe("ResearchDetailPage", () => {
       expect.anything(),
     );
     expect(
-      screen.queryByText("The report body is shown as text."),
+      screen.queryByText("营收的改善需要与回款表现一起观察。"),
     ).not.toBeInTheDocument();
     // Only the open report's detail is fetched; the compared side comes from
     // the comparison API. The preferred target is the same-task report, not
@@ -606,7 +868,7 @@ describe("ResearchDetailPage", () => {
     // 返回报告退出对照模式并恢复正文，不重新拉取详情或对照。
     await userEvent.click(screen.getByRole("button", { name: "返回报告" }));
     expect(
-      await screen.findByText("The report body is shown as text."),
+      await screen.findByText("营收的改善需要与回款表现一起观察。"),
     ).toBeVisible();
     expect(
       screen.queryByRole("heading", { name: "历史报告对照" }),
@@ -634,7 +896,7 @@ describe("ResearchDetailPage", () => {
       expect.anything(),
     );
     expect(
-      screen.queryByText("The report body is shown as text."),
+      screen.queryByText("营收的改善需要与回款表现一起观察。"),
     ).not.toBeInTheDocument();
   });
 
@@ -660,7 +922,7 @@ describe("ResearchDetailPage", () => {
       expect(reportMock).toHaveBeenCalledWith("r2", expect.anything()),
     );
     expect(
-      await screen.findByText("The report body is shown as text."),
+      await screen.findByText("营收的改善需要与回款表现一起观察。"),
     ).toBeVisible();
   });
 
@@ -689,7 +951,7 @@ describe("legacy ?report= redirect", () => {
     render(<RouterProvider router={router} />);
 
     expect(
-      await screen.findByText("The report body is shown as text."),
+      await screen.findByText("营收的改善需要与回款表现一起观察。"),
     ).toBeVisible();
     expect(reportMock).toHaveBeenCalledWith("r1", expect.anything());
     expect(router.state.location.pathname).toBe("/research/r1");

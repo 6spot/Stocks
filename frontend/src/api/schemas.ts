@@ -889,6 +889,95 @@ export const reportEvidenceSchema = z
 
 export type ReportEvidence = z.infer<typeof reportEvidenceSchema>;
 
+export const analysisEvidenceRefSchema = z
+  .object({
+    chunk_id: z.string(),
+    document_id: z.string(),
+  })
+  .passthrough();
+
+export type AnalysisEvidenceRef = z.infer<typeof analysisEvidenceRefSchema>;
+
+const analysisTextSchema = z.string().refine((value) => value.trim().length > 0, {
+  message: "Analysis text must be non-empty",
+});
+
+export const reportFindingSchema = z
+  .object({
+    id: analysisTextSchema,
+    title: analysisTextSchema,
+    kind: z.enum(["fact", "source_opinion", "model_inference"]),
+    statement: analysisTextSchema,
+    rationale: analysisTextSchema,
+    uncertainty: analysisTextSchema,
+    evidence_refs: z.array(analysisEvidenceRefSchema).min(1),
+  })
+  .passthrough();
+
+export const reportSectionSchema = z
+  .object({
+    heading: analysisTextSchema,
+    body: analysisTextSchema,
+    finding_ids: z.array(z.string()),
+  })
+  .passthrough();
+
+export const reportAnalysisSchema = z
+  .object({
+    title: analysisTextSchema,
+    summary: analysisTextSchema,
+    sections: z.array(reportSectionSchema).min(1),
+    findings: z.array(reportFindingSchema),
+    open_questions: z.array(analysisTextSchema),
+    evidence_refs: z.array(analysisEvidenceRefSchema),
+    created_at: z.string(),
+  })
+  .passthrough()
+  .superRefine((analysis, context) => {
+    const findingIds = new Set<string>();
+    analysis.findings.forEach((finding, index) => {
+      if (findingIds.has(finding.id)) {
+        context.addIssue({
+          code: "custom",
+          path: ["findings", index, "id"],
+          message: "Finding IDs must be unique",
+        });
+      }
+      findingIds.add(finding.id);
+    });
+    const usedIds = new Set<string>();
+    analysis.sections.forEach((section, sectionIndex) => {
+      const sectionIds = new Set<string>();
+      section.finding_ids.forEach((id, index) => {
+        if (!findingIds.has(id)) {
+          context.addIssue({
+            code: "custom",
+            path: ["sections", sectionIndex, "finding_ids", index],
+            message: "Section references an unknown finding",
+          });
+        }
+        if (sectionIds.has(id)) {
+          context.addIssue({
+            code: "custom",
+            path: ["sections", sectionIndex, "finding_ids", index],
+            message: "Section repeats a finding ID",
+          });
+        }
+        sectionIds.add(id);
+        usedIds.add(id);
+      });
+    });
+    analysis.findings.forEach((finding, index) => {
+      if (!usedIds.has(finding.id)) {
+        context.addIssue({
+          code: "custom",
+          path: ["findings", index, "id"],
+          message: "Every finding must be used by an article section",
+        });
+      }
+    });
+  });
+
 export const reportDetailSchema = z
   .object({
     report: z
@@ -903,15 +992,7 @@ export const reportDetailSchema = z
       })
       .passthrough(),
     run: z.unknown(),
-    analysis: z
-      .object({
-        summary: z.string(),
-        findings: z.array(z.unknown()),
-        open_questions: z.array(z.unknown()),
-        evidence_refs: z.array(z.unknown()),
-        created_at: z.string(),
-      })
-      .passthrough(),
+    analysis: reportAnalysisSchema,
     evidence_package: z
       .object({
         evidence_package_id: z.string(),

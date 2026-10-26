@@ -45,15 +45,38 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useResource } from "@/hooks/use-resource";
 import { formatDateTime, formatValue } from "@/lib/format";
 import { gapLabel, statusLabel } from "@/lib/labels";
-import { renderMarkdown } from "@/lib/markdown";
+import { ResearchArticle } from "./research-article";
+import { referenceKey, uniqueEvidenceReferences } from "./research-evidence";
 
-const SUPPORT_TABS = ["evidence", "sources", "usage"] as const;
+const SUPPORT_TABS = ["evidence", "sources", "coverage", "usage"] as const;
 type SupportTab = (typeof SUPPORT_TABS)[number];
 
 function parseSupportTab(value: string): SupportTab {
   return SUPPORT_TABS.includes(value as SupportTab)
     ? (value as SupportTab)
     : "evidence";
+}
+
+function formatResearchScope(scope: unknown): string {
+  if (typeof scope === "string") return scope;
+  if (!scope || typeof scope !== "object" || Array.isArray(scope)) return "";
+  const labels: Record<string, string> = {
+    market: "市场",
+    regions: "地区",
+    symbols: "股票",
+    companies: "公司",
+    company_names: "公司",
+    subject_names: "研究对象",
+    sectors: "行业",
+    industries: "行业",
+    topics: "主题",
+  };
+  return Object.entries(scope).flatMap(([key, value]) => {
+    if (!labels[key]) return [];
+    const values = Array.isArray(value) ? value : [value];
+    const text = values.filter((item): item is string => typeof item === "string").join("、");
+    return text ? [`${labels[key]}：${text}`] : [];
+  }).join(" · ");
 }
 
 function reportPath(reportId: string): string {
@@ -274,6 +297,9 @@ function ReportBody({
   // Inactive tab panels render null so only the visible section mounts and
   // no hidden section can trigger requests.
   const [supportTab, setSupportTab] = useState<SupportTab>("evidence");
+  const [supportOpen, setSupportOpen] = useState(false);
+  const evidence = uniqueEvidenceReferences(data.evidence);
+  const scope = formatResearchScope(data.evidence_package.scope);
   const cited = new Set(data.cited_chunk_ids);
   const coverage = evidenceCoverageSchema.safeParse(
     data.evidence_package.coverage,
@@ -299,6 +325,12 @@ function ReportBody({
       ?.report_id ?? otherReports[0]?.report_id;
   // 截断与资料缺口合并成一句内联提醒，避免在正文前堆叠大块警告。
   const warnings: string[] = [];
+  if (
+    !data.analysis.evidence_refs.length &&
+    !data.analysis.findings.some((finding) => finding.evidence_refs.length)
+  ) {
+    warnings.push("本次研究没有可引用证据，不能据此确认研究结论");
+  }
   if (data.evidence_package.retrieval_truncated) {
     warnings.push("证据检索已截断，报告未读取所有候选资料");
   }
@@ -323,7 +355,11 @@ function ReportBody({
         </div>
         <p className="mt-1 text-xs text-muted-foreground tabular-nums">
           独立原件 {originGroups.length ? originGroups.length : "未知"} · 引用{" "}
-          {data.evidence.length} 条
+          {evidence.length} 条
+        </p>
+        <p className="mt-2 text-xs text-muted-foreground">
+          研究参考时间 {formatDateTime(data.evidence_package.as_of)}
+          {scope ? ` · ${scope}` : ""}
         </p>
         {warnings.length ? (
           <p className="mt-2 flex items-start gap-1.5 text-xs text-muted-foreground">
@@ -334,27 +370,39 @@ function ReportBody({
             <span>{warnings.join("；")}。</span>
           </p>
         ) : null}
-        <div
-          className="report-prose mt-4 max-w-none"
-          dangerouslySetInnerHTML={{
-            __html: renderMarkdown(data.report.content),
-          }}
-        />
       </header>
 
-      <div className="mt-8">
-        <h2 className="text-sm font-semibold text-foreground">支撑信息</h2>
-        <p className="mt-1 text-sm text-muted-foreground">
-          报告引用的证据、来源质量与本次研究用量；按需展开。
-        </p>
-      </div>
+      <ResearchArticle
+        analysis={data.analysis}
+        evidence={evidence}
+        renderEvidence={(evidence, index) => (
+          <EvidenceRow
+            evidence={evidence}
+            cited={cited.has(evidence.chunk_id)}
+            originGroup={evidence.origin_id ? originById.get(evidence.origin_id) : undefined}
+            index={index}
+          />
+        )}
+      />
+
+      <details
+        className="border-t border-border pt-4"
+        open={supportOpen}
+        onToggle={(event) => setSupportOpen(event.currentTarget.open)}
+      >
+        <summary className="w-fit cursor-pointer rounded-sm text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+          研究资料与生成信息
+        </summary>
+        {supportOpen ? (
       <Tabs
+        className="mt-4"
         value={supportTab}
         onValueChange={(value) => setSupportTab(parseSupportTab(String(value)))}
       >
         <TabsList aria-label="报告支撑信息">
           <TabsTrigger value="evidence">证据包</TabsTrigger>
           <TabsTrigger value="sources">来源与指标</TabsTrigger>
+          <TabsTrigger value="coverage">覆盖限制</TabsTrigger>
           <TabsTrigger value="usage">研究用量</TabsTrigger>
         </TabsList>
         <TabsContent value="evidence">
@@ -363,14 +411,14 @@ function ReportBody({
               title="证据包"
               description="先显示报告保存时实际引用的片段或 Fact，再提供 Document 原件入口。"
               actions={
-                <Badge variant="outline">{data.evidence.length} 个引用</Badge>
+                <Badge variant="outline">{evidence.length} 个引用</Badge>
               }
             >
-              {data.evidence.length ? (
+              {evidence.length ? (
                 <ol className="divide-y divide-border">
-                  {data.evidence.map((evidence, index) => (
+                  {evidence.map((evidence, index) => (
                     <li
-                      key={`${evidence.document_id}-${evidence.chunk_id}`}
+                      key={referenceKey(evidence)}
                       className="py-4 first:pt-0 last:pb-0"
                     >
                       <EvidenceRow
@@ -401,10 +449,39 @@ function ReportBody({
               <SourceIndependenceSection
                 groups={originGroups}
                 evidenceGroupCount={evidenceGroupCount}
-                referenceCount={data.evidence.length}
+                referenceCount={evidence.length}
               />
               <MetricComparisonsSection comparisons={comparisons} />
             </div>
+          ) : null}
+        </TabsContent>
+        <TabsContent value="coverage">
+          {supportTab === "coverage" ? (
+            <Section title="研究范围与覆盖限制">
+              <dl className="grid gap-3 text-sm sm:grid-cols-2">
+                <div><dt className="text-xs text-muted-foreground">研究目标</dt><dd>{data.evidence_package.objective}</dd></div>
+                <div><dt className="text-xs text-muted-foreground">研究参考时间</dt><dd>{formatDateTime(data.evidence_package.as_of)}</dd></div>
+                <div><dt className="text-xs text-muted-foreground">发现候选</dt><dd>{data.evidence_package.candidates_discovered ?? "未知"}</dd></div>
+                <div><dt className="text-xs text-muted-foreground">已筛选候选</dt><dd>{data.evidence_package.candidates_screened ?? "未知"}</dd></div>
+                <div><dt className="text-xs text-muted-foreground">入选资料</dt><dd>{data.evidence_package.selected_count}</dd></div>
+                <div><dt className="text-xs text-muted-foreground">未检查候选</dt><dd>{data.evidence_package.unexamined_count ?? "未知"}</dd></div>
+                <div><dt className="text-xs text-muted-foreground">候选检索</dt><dd>{data.evidence_package.retrieval_truncated ? "已截断" : "未截断"}</dd></div>
+              </dl>
+              {data.coverage_gaps.length ? (
+                <ul className="mt-4 list-disc space-y-1 pl-5 text-sm text-muted-foreground">
+                  {data.coverage_gaps.map((gap) => <li key={gap}>{gapLabel(gap)}</li>)}
+                </ul>
+              ) : <p className="mt-4 text-sm text-muted-foreground">未记录覆盖缺口，不代表资料已穷尽或结论已核实。</p>}
+              <details className="mt-4 text-xs text-muted-foreground">
+                <summary className="cursor-pointer">查看范围与选择配置</summary>
+                <pre className="mt-2 whitespace-pre-wrap break-all font-code">{formatValue({
+                  scope: data.evidence_package.scope,
+                  selection_policy_version: data.evidence_package.selection_policy_version,
+                  selection_budget: data.evidence_package.selection_budget,
+                  coverage: data.evidence_package.coverage,
+                })}</pre>
+              </details>
+            </Section>
           ) : null}
         </TabsContent>
         <TabsContent value="usage">
@@ -425,6 +502,8 @@ function ReportBody({
           ) : null}
         </TabsContent>
       </Tabs>
+        ) : null}
+      </details>
 
       {preferredCompareId && onEnterCompare ? (
         <div className="border-t border-border pt-4">
@@ -473,9 +552,11 @@ function EvidenceRow({
   return (
     <section className="space-y-3">
       <div className="flex flex-wrap items-center gap-2">
-        <span className="font-code text-xs text-muted-foreground">
-          E{index + 1}
-        </span>
+        {index >= 0 ? (
+          <span className="font-code text-xs text-muted-foreground">
+            [E{index + 1}]
+          </span>
+        ) : null}
         <p className="min-w-0 flex-1 text-sm font-medium">
           {evidence.document.title}
         </p>
@@ -528,6 +609,10 @@ function EvidenceRow({
         <p>
           <span className="text-muted-foreground">发布时间：</span>
           {formatDateTime(evidence.document.published_at)}
+        </p>
+        <p>
+          <span className="text-muted-foreground">来源更新时间：</span>
+          {formatDateTime(evidence.document.source_updated_at)}
         </p>
         <p>
           <span className="text-muted-foreground">采集时间：</span>
