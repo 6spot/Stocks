@@ -1,0 +1,4 @@
+{"file":"docs/research.md","reason":"研究证据、生成与输出协议归属"}
+{"file":"docs/interface.md","reason":"文章、发现与证据展示归属"}
+{"file":".trellis/spec/backend/testing-guidelines.md","reason":"测试仅在指定远程隔离环境执行"}
+{"file":".trellis/spec/guides/agent-execution-guide.md","reason":"有界实施和阻塞交回"}

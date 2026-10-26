@@ -119,7 +119,7 @@ V0 当前实现使用每次 Run 一份持久 Evidence Package：保存 objective
 
 **补证 Fact 的最终视图（V2-01/V2-03）：** 初始 `evidence_groups[].fact_refs` 与本次 Run 实际采用的补证输入 `research_inputs[].fact_refs` 都保存完整冻结 Fact 投影。研究 Agent 的模型输入、确定性同指标比较、Report 与报告 API 使用同一个合并视图：按 `fact_id` 去重，初始组在前、追加输入在后，因此同一 Document 被两条路径命中只计一次，而该 Document 上新增的 Fact 仍会补入。每个 Document 的 Facts 只随它第一个可读 Chunk 出现一次；只有 Fact、没有可读 Chunk 的补证组仍只以结构化证据存在，不能作为 finding 引用。比较使用冻结投影中的值、单位、期间与可获知时间，不重新读取当前 Fact 行，也不改写初始 `Evidence Package.metric_comparisons[]`；报告 API 另返回由该视图计算的 `final_metric_comparisons[]`，`metric_comparisons[]` 继续只表示初始选择。
 
-**报告呈现（V2-03）：** `render_report()` 在 Coverage 之前确定性生成 `## Sources and Conflicts`：先写本次选中的独立原件数与覆盖的 Document 版本数、列出确认同源的合并组，再逐个列出同指标取值与差异类型，并明确说明这些值按发布原样并列、未平均、未标记已核实。该段落来自已保存的 Evidence Package 与 Analysis.coverage，不依赖模型输出；模型只负责解释影响与不确定性。段落在 20 个 origin group / 20 条对比处截断，其余仍保存在 Evidence Package 中。
+**报告呈现（V2-03）：** `render_report()` 在「资料覆盖限制」之前确定性生成 `## 附录：来源独立性与指标口径`：先写本次选中的独立原件数与覆盖的 Document 版本数、列出确认同源的合并组，再逐个列出同指标取值与差异类型，并明确说明这些值按发布原样并列、未平均、未标记已核实。该段落来自已保存的 Evidence Package 与 Analysis.coverage，不依赖模型输出；模型只负责解释影响与不确定性。段落在 20 个 origin group / 20 条对比处截断，其余仍保存在 Evidence Package 中。
 
 **历史报告比较（V2-04）：** `GET /api/reports/{report_id}/comparison?other_report_id=...` 只比较两份**已保存**报告各自的快照：Analysis 的 findings / open questions、Evidence Package 的 `scope`、`as_of` 与 coverage，以及各报告真实引用的 Document 版本与 Fact。比较集合由该报告已保存的 Analysis/Findings 引用确定，并与它自己的冻结输入相交；入选但未被引用的材料、或同 Document 上未被引用的其它 Fact 不进入比较。Document 身份与 Fact 原值来自冻结引用投影，不读取当前 Fact 行，也不因来源后来重处理、出新版本或新增 Fact 而改写旧侧。它**不重新研究、不调用 Tool、不读取当前最新数据、不改写旧报告**，响应 `notes[]` 也把这个边界写明。两侧按 `created_at`、`report_id` 排序，`ordering.requested_report_id` 与 `ordering.swapped` 说明请求的报告是否就是较早一侧；失败或未完成的 Run 不能充当成功历史报告（409），同一报告自比返回 400，未知报告返回 404。
 
@@ -173,7 +173,7 @@ Research Agent 设计为普通可配置的 Agent 角色，执行 Research Task �
 1. 从本次新增变化入手，结合历史资料识别与 Objective 相关的事实、指标修订、事件与政策变化，不逐篇按新闻顺序复述。区分“新公开的旧事实”“既有指标的修订”“当前发生的现实变化”和“不同来源的观点”。
 2. 根据相关性、变化程度、可能的影响路径、证据强弱、历史研究差异和待解决问题，判断哪些内容对**本次研究**重要。重要不等于利好、利空或确定性；没有显著新变化也是有效结论，不能为凑栏目发明新观点。
 3. 检查 Evidence Package 的关键缺口，主动追问重要判断最可能错在哪里、哪些证据可以推翻它、是否存在其他合理解释；必要时用已授权 Repository 只读 Tool 进行少量反证与背景补充检索。找不到反证不意味着已证明正确；缺少来源、反面证据或指标时可带不确定性结束，不能捏造数据。
-4. 将研究结果表示为统一的 Analysis：简要综合判断、`findings[]`、`open_questions[]`、引用证据和覆盖范围；向报告层提供可阅读的段落建议，但不把 Markdown 作为唯一资产。
+4. 将研究结果表示为统一的 Analysis：可独立阅读的文章标题、摘要与主题章节，以及关联的 `findings[]`、`open_questions[]`、引用证据和覆盖范围；文章与结构化发现由同一次生成完成，不把 Markdown 作为唯一资产。
 5. 可以引用历史报告比较变化，但不需要逐条 Finding 历史关系表；任何比较都以真正的来源变化为依据。
 
 **补充检索调用与终止条件：** Agent 只能提出已授权工具中的结构化请求，说明 `purpose`、允许的过滤条件及需要查证的问题；系统执行超时、调用次数、Token 预算及来源登记约束。未授权、未知、已停用或参数非法的请求在发出网络请求前即以显式缺口拒绝，不会因为模型要求就放宽权限。对同一检索无进展、重复查询或预算耗尽时停止，保留 `open_questions`；不会无限尝试，也不创建隐式 Agent 子任务。新的补充证据按“先入库、再处理、后追加”的顺序进入本 Run 的最终 `research_inputs`，保留初始 Evidence Package 原快照。
@@ -186,12 +186,17 @@ Research Agent 设计为普通可配置的 Agent 角色，执行 Research Task �
 
 Research Agent 从去重后的 Evidence Package 形成 Analysis，再生成 Report。**不要求逐条 Finding 主数据、长期 Finding 关系图、独立 Verifier、核查状态机或多轮聚合算法**。
 
-**Analysis 保存：** 本次 Run、目标与范围、`as_of`、增量窗口、实际 Document/Fact 证据引用及资料缺口；模型分析形成的摘要、主要变化、数据、理由、风险、不同解释和不确定性；按需附 `findings[]`、历史报告引用、模型与提示词信息。
+**Analysis 保存：** 本次 Run、目标与范围、`as_of`、增量窗口、实际 Document/Fact 证据引用及资料缺口；模型一次生成的文章标题、摘要、主题章节、结构化发现与待解问题。当前严格输出必须包含 `title`、`summary`、`sections`、`findings`、`open_questions`、`evidence_refs`，不接受旧的仅摘要与发现列表协议。
 
-`findings[]` 如有内容，每项在同一结构化结果中表达该项事实、来源观点或模型推断，关联实际采用的 Chunk/Fact 引用及必要理由、不确定性；不为每项新建主数据表。引用通过 Chunk/Fact 回到 Document 的内容版本与原件，具体定位以[数据契约](data.md#后台解析片段与索引)为准。既有 Analysis 可供比较，不能代替其原始证据来确认一个新事实。
+- `title` 与 `summary` 为非空文本；`sections` 至少一章，每章包含非空 `heading`、非空 Markdown `body` 和 `finding_ids[]`。主题章节按研究问题组织，正文自身表达重要理由和会改变结论的不确定性，不以内部编号或发现类型充当文章标题。
+- `findings[]` 每项包含本次结果内唯一且非空的 `id`、简明非空 `title`、`kind`、`statement`、`rationale`、`uncertainty`、`evidence_refs`。`kind` 为 `fact`、`source_opinion` 或 `model_inference`；每项至少引用一个本轮授权持久 Chunk，不为每项新建主数据表。
+- 章节的 `finding_ids` 只能引用本次 `findings`，同一章内不能重复；每个发现至少被一章采用，同一发现可以支持多个主题章节。章节无结构化发现时允许空关联数组。关联 ID 只在结构化结果和交互中使用，不写进面向读者的正文。
+- 顶层和发现内的引用均按 `(chunk_id, document_id)` 校验，只允许初始 Evidence Package 选择或 V2-01 授权补证追加的持久输入。保存时补全原有 `parse_batch_id`、`document_version`、`source_id`、`position`，并以两处引用的去重并集作为 Analysis 的实际引用。未授权引用或无效关联均拒绝，不能静默丢弃。
 
-**Report 保存：** 标题、研究范围、时间、可阅读正文/章节、真实数据引用和必要的来源/版本。市场、行业和个股共用报告契约，不强制固定栏目；无显著变化时可以如实说明。将原始数据、媒体观点与模型推断明确区分，资料缺失或冲突时直接说明，不能自动宣称“已核实”。
+引用通过 Chunk/Fact 回到 Document 的内容版本与原件，具体定位以[数据契约](data.md#后台解析片段与索引)为准。既有 Analysis 可供比较，不能代替其原始证据来确认一个新事实。后端只检查结构、引用授权和确定性边界，不用字数、关键词或固定段落配额判断文章质量。
+
+**Report 保存：** 使用 Analysis 的实际文章标题，按摘要和主题章节顺序确定性生成 Markdown 正文，保留待解问题、真实数据引用及必要来源/版本。章节来源由其关联发现的授权引用得到，按冻结研究输入的 `(document_id, chunk_id)` 首次出现顺序去重并分配一致编号；重复引用不增加编号，开合与筛选不改变编号；导出中的编号直接链接到所引用 Document 版本的原件端点，来源清单还包含仅在顶层声明的引用。来源独立性、原始值并列比较与资料缺口作为补充材料保留。市场、行业和个股共用报告契约，不强制固定栏目；无显著变化时可以如实说明。将原始数据、媒体观点与模型推断明确区分，资料缺失或冲突时直接说明，不能自动宣称“已核实”。详情 API 返回保存的 `analysis.title`、`analysis.sections` 和带 `id/title` 的发现供页面展示，不在读取时重新生成文章。
 
 报告在成功保存后可被后续 Task 参考，失败不覆盖最后成功报告；V2-04 的历史报告对照按本文契约实现，只比较两份已保存报告的自身快照，不建 Finding 主数据或长期关系表。图表如需生成，数字必须来自 Repository 实际记录，而非 LLM 虚构。
 
-当前实现要求每个 finding 明确标记为 `fact`、`source_opinion` 或 `model_inference`，至少引用一个本轮可用持久 Chunk（初始 Evidence Package 选择或 V2-01 授权补证追加的输入），并保存理由与不确定性；只有 Fact 或只有摘要的补充内容不可引用。输出结构和引用在模型调用内校验；非法引用按 Research Agent 路由有限重试或回退，最终仍非法则 Run/Step 失败，不静默写报告。初始选择与追加输入的合法引用都为空时 Run 仍可成功，但报告只能表达缺口与不确定性，不得出现裸 finding。Analysis 与由其确定性生成的 Markdown Report 在同一成功事务中保存；下游失败保留 Evidence Package 和此前成功的 Analysis/Report。新 Document 版本不会改变旧报告记录的 Document/Chunk 版本与原件。
+当前实现要求每个 finding 明确标记为 `fact`、`source_opinion` 或 `model_inference`，至少引用一个本轮可用持久 Chunk（初始 Evidence Package 选择或 V2-01 授权补证追加的输入），并保存理由与不确定性；只有 Fact 或只有摘要的补充内容不可引用。输出结构和引用在模型调用内校验；非法引用或文章关联按 Research Agent 路由有限重试或回退，最终仍非法则 Run/Step 失败，不静默写报告。保存边界复用相同校验，重试复用的成功步骤同样不能绕过引用授权和章节关联检查。初始选择与追加输入的合法引用都为空时 Run 仍可成功：保留标题、摘要和至少一个诚实说明限制的章节，`findings`、顶层引用和各章 `finding_ids` 必须为空，不得虚构结论或裸 finding。Analysis 与由其确定性生成的 Markdown Report 在同一成功事务中保存；下游失败保留 Evidence Package 和此前成功的 Analysis/Report。新 Document 版本不会改变旧报告记录的 Document/Chunk 版本与原件。模型与 `0001_initial.py` 同步定义标题、章节及 JSON 数组约束，只验证全新库初始化，不增加迁移、回填或旧协议兼容。
