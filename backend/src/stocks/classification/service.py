@@ -1,8 +1,9 @@
 """Lightweight Document classification on the existing processing stages.
 
 One classification attempt reads the current successful parse batch under a
-character budget, makes one Decision Model call, validates the answer against the
-Stocks-controlled vocabulary and writes the result into the Document's current
+character budget, obtains finite decisions and explicit entities through the
+configured roles, validates the merged answer against the Stocks-controlled
+vocabulary and writes it into the Document's current
 ``classification`` JSONB. It creates no Document, no classification history table
 and no Facts: ``should_extract`` is a decision consumed by the ``facts`` stage,
 which belongs to another task.
@@ -15,6 +16,7 @@ Document, its Chunks or its vectors.
 from __future__ import annotations
 
 import hashlib
+import json
 from collections.abc import Callable
 from copy import deepcopy
 from dataclasses import dataclass
@@ -51,7 +53,7 @@ from stocks.repository import list_parse_chunks
 from stocks.settings import Settings
 from stocks.taxonomy import Taxonomy, load_taxonomy
 
-CLASSIFIER_PROCESSOR_VERSION = "decision-model-v1"
+CLASSIFIER_PROCESSOR_VERSION = "decision-model-v2"
 METHOD = "decision_model"
 DEFAULT_TAXONOMY_PATH = "config/taxonomy.yaml"
 
@@ -93,13 +95,15 @@ class ClassificationSummary:
 def taxonomy_fingerprint(taxonomy: Taxonomy) -> str:
     """Identity of the vocabulary that produced a stored classification."""
 
-    payload = (
-        f"{taxonomy.version}:"
-        f"{','.join(taxonomy.category_ids)}:"
-        f"{','.join(taxonomy.event_type_ids)}:"
-        f"{','.join(taxonomy.topic_ids)}:"
-        f"{','.join(taxonomy.industry_ids)}:"
-        f"{','.join(taxonomy.region_ids)}"
+    payload = json.dumps(
+        {
+            "version": taxonomy.version,
+            "instructions": taxonomy.instructions,
+            "candidates": taxonomy.candidate_payload(),
+        },
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
     )
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
@@ -107,12 +111,13 @@ def taxonomy_fingerprint(taxonomy: Taxonomy) -> str:
 def classify_config_fingerprint(route: DecisionRoute, taxonomy: Taxonomy) -> str:
     """Processor identity: protocol, model route and vocabulary — no credential."""
 
-    value = (
-        f"{CLASSIFIER_PROCESSOR_VERSION}:"
-        f"{route.protocol}:"
-        f"{route.routing.primary}:"
-        f"{','.join(route.routing.fallbacks)}:"
-        f"{taxonomy_fingerprint(taxonomy)}"
+    value = json.dumps(
+        {
+            "processor": CLASSIFIER_PROCESSOR_VERSION,
+            "route": route.snapshot(),
+            "taxonomy": taxonomy_fingerprint(taxonomy),
+        },
+        sort_keys=True,
     )
     return hashlib.sha256(value.encode("utf-8")).hexdigest()
 
@@ -305,8 +310,11 @@ def classify_document_stage(
             "chunk_ids": list(classification_input.chunk_ids),
             "input_characters": len(classification_input.text),
             "truncated": classification_input.truncated,
+            "entity_evidence": list(decision.entity_evidence),
         },
         "usage": dict(decision.usage),
+        "attempts": list(decision.attempts),
+        "model_calls": list(decision.model_calls),
     }
     locked.classification = stored
     if claim is not None:

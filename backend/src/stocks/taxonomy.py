@@ -8,6 +8,7 @@ a label is a configuration change; changing an id or dropping one is a new
 """
 from __future__ import annotations
 
+import json
 import re
 from collections.abc import Iterable
 from dataclasses import dataclass
@@ -42,7 +43,21 @@ VOCABULARY_SECTIONS = (
 @dataclass(frozen=True)
 class Label:
     id: str
-    description: str | None = None
+    name: str
+    description: str
+    aliases: tuple[str, ...] = ()
+
+    def candidate_payload(self) -> dict:
+        """Shared model-facing semantics; only id is a valid output value."""
+        return {
+            "id": self.id,
+            "name": self.name,
+            "description": self.description,
+            "aliases": list(self.aliases),
+        }
+
+    def candidate_text(self) -> str:
+        return json.dumps(self.candidate_payload(), ensure_ascii=False)
 
 
 @dataclass(frozen=True)
@@ -76,6 +91,13 @@ class Taxonomy:
     @property
     def region_ids(self) -> tuple[str, ...]:
         return tuple(label.id for label in self.regions)
+
+    def candidate_payload(self) -> dict:
+        """Preserve candidate order for prompts and vocabulary identity."""
+        return {
+            section: [label.candidate_payload() for label in getattr(self, section)]
+            for section, _, _ in SECTIONS
+        }
 
     def schema(self) -> dict:
         """The JSON Schema the Decision Model answer must satisfy."""
@@ -312,32 +334,41 @@ def _labels(raw: object, section: str, *, required: bool) -> tuple[Label, ...]:
     labels: list[Label] = []
     seen: set[str] = set()
     for item in raw:
-        if isinstance(item, str):
-            label_id, description = item, None
-        elif isinstance(item, dict):
-            unknown = set(item) - {"id", "description"}
-            if unknown:
-                raise ValueError(
-                    f"Taxonomy section {section} has an unknown field: "
-                    f"{sorted(unknown)[0]}"
-                )
-            label_id = item.get("id")
-            description = item.get("description")
-            if description is not None and (
-                not isinstance(description, str) or not description.strip()
-            ):
-                raise ValueError(
-                    f"Taxonomy section {section} has an invalid description"
-                )
-        else:
+        if not isinstance(item, dict):
             raise ValueError(f"Taxonomy section {section} has an invalid entry")
+        unknown = set(item) - {"id", "name", "description", "aliases"}
+        if unknown:
+            raise ValueError(
+                f"Taxonomy section {section} has an unknown field: "
+                f"{sorted(unknown)[0]}"
+            )
+        label_id = item.get("id")
+        name = _label_text(item.get("name"), section, "name", 120)
+        description = _label_text(item.get("description"), section, "description", 2000)
+        aliases = item.get("aliases", [])
+        if not isinstance(aliases, list) or len(aliases) > 32:
+            raise ValueError(f"Taxonomy section {section} has invalid aliases")
+        aliases = tuple(_label_text(alias, section, "alias", 120) for alias in aliases)
+        if len({alias.casefold() for alias in aliases}) != len(aliases):
+            raise ValueError(f"Taxonomy section {section} has duplicate aliases")
         if not isinstance(label_id, str) or not IDENTIFIER.fullmatch(label_id):
             raise ValueError(f"Taxonomy section {section} has an invalid id")
         if label_id in seen:
             raise ValueError(f"Taxonomy section {section} has a duplicate id")
         seen.add(label_id)
-        labels.append(Label(id=label_id, description=description))
+        labels.append(Label(id=label_id, name=name, description=description, aliases=aliases))
     return tuple(labels)
+
+
+def _label_text(value: object, section: str, field: str, limit: int) -> str:
+    if (
+        not isinstance(value, str)
+        or not value.strip()
+        or value != value.strip()
+        or len(value) > limit
+    ):
+        raise ValueError(f"Taxonomy section {section} has an invalid {field}")
+    return value
 
 
 def parse_taxonomy(config: object) -> Taxonomy:

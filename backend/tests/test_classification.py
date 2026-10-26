@@ -10,7 +10,9 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+from dataclasses import replace
 from datetime import UTC, datetime
+from pathlib import Path
 
 import httpx
 import pytest
@@ -23,6 +25,7 @@ from stocks.classification.service import (
     classify_config_fingerprint,
     classify_document_stage,
     load_classifier_route,
+    taxonomy_fingerprint,
 )
 from stocks.decision import (
     ClassificationInput,
@@ -83,24 +86,24 @@ TAXONOMY_YAML = """\
 version: "test-1"
 instructions: "Label the document."
 categories:
-  - id: macro
-  - id: policy
-  - id: industry
-  - id: company
-  - id: other
+  - {id: macro, name: Macroeconomics, description: Economy-wide developments, aliases: [macro backdrop]}
+  - {id: policy, name: Policy, description: Government or central-bank action}
+  - {id: industry, name: Industry, description: Industry supply and demand}
+  - {id: company, name: Company, description: A specific company development}
+  - {id: other, name: Other, description: Other useful intelligence}
 event_types:
-  - id: monetary_policy
-  - id: earnings
+  - {id: monetary_policy, name: Monetary policy, description: Central-bank rate or liquidity action, aliases: [rate decision]}
+  - {id: earnings, name: Earnings, description: Company results and guidance}
 topics:
-  - id: interest_rates
-  - id: inflation
-  - id: liquidity
+  - {id: interest_rates, name: Interest rates, description: Rates and yields}
+  - {id: inflation, name: Inflation, description: Price developments, aliases: [consumer prices]}
+  - {id: liquidity, name: Liquidity, description: Funding conditions}
 industries:
-  - id: banking
-  - id: semiconductors
+  - {id: banking, name: Banking, description: Banks and banking services}
+  - {id: semiconductors, name: Semiconductors, description: Chip design and manufacturing, aliases: [chips]}
 regions:
-  - id: US
-  - id: EU
+  - {id: US, name: United States, description: US economic activity}
+  - {id: EU, name: European Union, description: EU economic activity}
 """
 
 MODELS_YAML = """\
@@ -226,6 +229,16 @@ def make_input(text: str = "The Fed held rates. Core inflation was 3.1%.") -> Cl
 # --------------------------------------------------------------------------- #
 
 
+def test_default_taxonomy_loads_full_candidate_semantics():
+    path = Path(__file__).resolve().parents[2] / "config" / "taxonomy.yaml"
+    taxonomy = load_taxonomy(str(path))
+    for candidates in taxonomy.candidate_payload().values():
+        assert candidates
+        assert all(candidate["name"] and candidate["description"] for candidate in candidates)
+    chips = next(label for label in taxonomy.industries if label.id == "semiconductors")
+    assert "chips" in chips.aliases
+
+
 def test_taxonomy_schema_is_derived_from_the_controlled_vocabulary(tmp_path):
     taxonomy = load_taxonomy(write_taxonomy(tmp_path))
     schema = taxonomy.schema()
@@ -250,10 +263,10 @@ def test_taxonomy_normalizes_a_valid_decision():
         {
             "version": "v1",
             "instructions": "Label it.",
-            "categories": [{"id": "macro"}],
-            "topics": [{"id": "inflation"}],
-            "industries": [{"id": "banking"}],
-            "regions": [{"id": "US"}],
+            "categories": [{"id": "macro", "name": "Macro", "description": "Economy-wide news"}],
+            "topics": [{"id": "inflation", "name": "Inflation", "description": "Price changes"}],
+            "industries": [{"id": "banking", "name": "Banking", "description": "Bank activity"}],
+            "regions": [{"id": "US", "name": "United States", "description": "US activity"}],
         }
     )
 
@@ -304,8 +317,11 @@ def test_taxonomy_rejects_anything_outside_the_controlled_contract(tmp_path, pay
 
 def test_taxonomy_rejects_a_duplicate_or_malformed_label_id():
     for section in (
-        {"categories": [{"id": "macro"}, {"id": "macro"}]},
-        {"categories": [{"id": "not a label"}]},
+        {"categories": [
+            {"id": "macro", "name": "Macro", "description": "Economy-wide news"},
+            {"id": "macro", "name": "Duplicate", "description": "Another meaning"},
+        ]},
+        {"categories": [{"id": "not a label", "name": "Bad", "description": "Invalid id"}]},
         {"categories": []},
     ):
         config = {
@@ -315,6 +331,71 @@ def test_taxonomy_rejects_a_duplicate_or_malformed_label_id():
         }
         with pytest.raises(ValueError):
             parse_taxonomy(config)
+
+
+@pytest.mark.parametrize("label", [
+    "macro", {"id": "macro"},
+    {"id": "macro", "name": "Macro"},
+    {"id": "macro", "description": "Economy-wide news"},
+    *[
+        {"id": "macro", "name": "Macro", "description": "Economy-wide news", **change}
+        for change in (
+            {"name": " "}, {"name": " padded "}, {"name": 12}, {"name": "x" * 121},
+            {"description": ""}, {"description": " padded "},
+            {"description": None}, {"description": "x" * 2001},
+            {"aliases": "macro"}, {"aliases": None}, {"aliases": [""]},
+            {"aliases": [False]}, {"aliases": [" padded"]},
+            {"aliases": ["chips", "Chips"]}, {"aliases": ["x" * 121]},
+            {"aliases": [f"alias{i}" for i in range(33)]}, {"keywords": ["macro"]},
+        )
+    ],
+])
+def test_taxonomy_rejects_noncanonical_label_semantics(label):
+    with pytest.raises(ValueError):
+        parse_taxonomy({"version": "v1", "instructions": "Label it.", "categories": [label]})
+
+
+@pytest.mark.parametrize("field", ["category", "topics", "related_industries", "regions", "event_type"])
+def test_names_and_aliases_are_not_output_ids(tmp_path, field):
+    taxonomy = load_taxonomy(write_taxonomy(tmp_path))
+    value = {
+        "category": "Macroeconomics", "topics": ["consumer prices"],
+        "related_industries": ["chips"], "regions": ["United States"],
+        "event_type": "rate decision",
+    }[field]
+    with pytest.raises(ClassificationInvalid):
+        taxonomy.normalize(decision_payload(**{field: value}))
+
+
+@pytest.mark.parametrize("section", ["categories", "event_types", "topics", "industries", "regions"])
+@pytest.mark.parametrize("change", ["name", "description", "aliases", "order"])
+def test_taxonomy_fingerprint_covers_candidate_semantics_and_order(tmp_path, section, change):
+    taxonomy = load_taxonomy(write_taxonomy(tmp_path))
+    labels = list(getattr(taxonomy, section))
+    if change == "order":
+        labels.reverse()
+    else:
+        value = ("new alias",) if change == "aliases" else "New meaning"
+        labels[0] = replace(labels[0], **{change: value})
+    changed = replace(taxonomy, **{section: tuple(labels)})
+    assert taxonomy_fingerprint(taxonomy) != taxonomy_fingerprint(changed)
+    assert classify_config_fingerprint(make_route(), taxonomy) != classify_config_fingerprint(make_route(), changed)
+
+
+def test_taxonomy_fingerprint_preserves_alias_order(tmp_path):
+    taxonomy = load_taxonomy(write_taxonomy(tmp_path))
+    labels = taxonomy.categories
+    first = replace(taxonomy, categories=(replace(labels[0], aliases=("first", "second")), *labels[1:]))
+    reordered = replace(taxonomy, categories=(replace(labels[0], aliases=("second", "first")), *labels[1:]))
+    assert taxonomy_fingerprint(first) != taxonomy_fingerprint(reordered)
+
+
+@pytest.mark.parametrize("field", ["version", "instructions"])
+def test_taxonomy_fingerprint_covers_global_contract(tmp_path, field):
+    taxonomy = load_taxonomy(write_taxonomy(tmp_path))
+    first = taxonomy_fingerprint(taxonomy)
+    assert first == taxonomy_fingerprint(load_taxonomy(write_taxonomy(tmp_path)))
+    assert first != taxonomy_fingerprint(replace(taxonomy, **{field: "Changed contract"}))
 
 
 # --------------------------------------------------------------------------- #
@@ -348,6 +429,10 @@ def test_one_call_returns_tags_and_the_extraction_decision(tmp_path):
     # The bounded excerpt, not a fabricated full text, is what the model reads.
     assert sent["messages"][0]["role"] == "system"
     assert "untrusted data" in sent["messages"][0]["content"]
+    candidate_text = sent["messages"][0]["content"].split(
+        "Candidate vocabulary (names and aliases explain meaning; return only ids):\n", 1
+    )[1].split("\n\n", 1)[0]
+    assert json.loads(candidate_text) == taxonomy.candidate_payload()
     document = json.loads(sent["messages"][1]["content"])
     assert document["excerpt"] == "The Fed held rates. Core inflation was 3.1%."
 

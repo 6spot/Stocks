@@ -22,6 +22,10 @@ services:
     platform: ${TARGET_PLATFORM:-linux/amd64}
     restart: unless-stopped
     env_file: .env
+    environment:
+      CLASSIFICATION_API_BASE_URL: ${CLASSIFICATION_API_BASE_URL-}
+      CLASSIFICATION_API_KEY: ${CLASSIFICATION_API_KEY-}
+      CLASSIFICATION_MODEL_NAME: ${CLASSIFICATION_MODEL_NAME-}
     volumes:
       - ./config:/app/config:ro
     depends_on:
@@ -42,6 +46,10 @@ services:
     platform: ${TARGET_PLATFORM:-linux/amd64}
     restart: unless-stopped
     env_file: .env
+    environment:
+      CLASSIFICATION_API_BASE_URL: ${CLASSIFICATION_API_BASE_URL-}
+      CLASSIFICATION_API_KEY: ${CLASSIFICATION_API_KEY-}
+      CLASSIFICATION_MODEL_NAME: ${CLASSIFICATION_MODEL_NAME-}
     volumes:
       - ./config:/app/config:ro
     depends_on:

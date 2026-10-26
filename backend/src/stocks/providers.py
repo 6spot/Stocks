@@ -88,6 +88,7 @@ class ModelTarget:
     timeout_seconds: float = 60
     retryable_statuses: tuple[int, ...] = tuple(sorted(RETRYABLE_STATUS))
     provider: str | None = None
+    protocol: str = "openai_compatible"
 
 
 @dataclass(frozen=True)
@@ -301,7 +302,7 @@ def _load_target(config: dict, alias: str) -> ModelTarget:
             f"Provider {provider_alias} is missing "
             f"{sorted(missing_provider_fields)[0]}"
         )
-    if provider["protocol"] != "openai_compatible":
+    if not isinstance(provider["protocol"], str) or provider["protocol"] not in {"openai_compatible", "typesafe"}:
         raise ValueError(f"Unsupported protocol for model {alias}")
     base_url = resolve_env(provider["base_url"]).rstrip("/")
     parsed_url = urlsplit(base_url)
@@ -377,6 +378,7 @@ def _load_target(config: dict, alias: str) -> ModelTarget:
         timeout_seconds=timeout_seconds,
         retryable_statuses=tuple(raw_statuses),
         provider=provider_alias,
+        protocol=provider["protocol"],
     )
 
 
@@ -396,7 +398,13 @@ def load_chat_routing(
     agent = agents.get(agent_alias) if isinstance(agents, dict) else None
     if not isinstance(agent, dict) or not isinstance(agent.get("routing"), dict):
         raise ValueError(f"Unknown Agent routing reference: {agent_alias}")
-    unknown_agent_fields = set(agent) - {"routing", "protocol"}
+    protocol = agent.get("protocol", "openai_compatible")
+    if not isinstance(protocol, str) or protocol not in {"openai_compatible", "typesafe"}:
+        raise ValueError("Decision Model protocol is not implemented by this deployment")
+    allowed_agent_fields = {"routing", "protocol"}
+    if protocol == "typesafe":
+        allowed_agent_fields.add("noul_threshold")
+    unknown_agent_fields = set(agent) - allowed_agent_fields
     if unknown_agent_fields:
         raise ValueError(
             f"Unknown Agent field for {agent_alias}: "
@@ -440,10 +448,11 @@ def load_chat_routing(
         raise ValueError(
             f"Agent {agent_alias} required capabilities must be a list"
         )
-    if not {"chat", "structured_output"}.issubset(required):
+    minimum = {"decision"} if protocol == "typesafe" else {"chat", "structured_output"}
+    if not minimum.issubset(required):
+        minimum_text = "decision" if protocol == "typesafe" else "chat and structured_output"
         raise ValueError(
-            f"Agent {agent_alias} routing must require chat and "
-            "structured_output capabilities"
+            f"Agent {agent_alias} routing must require {minimum_text} capabilities"
         )
     raw_timeout = route.get("timeout_seconds", 60)
     raw_backoff = route.get("retry_backoff_seconds", 0)
@@ -473,6 +482,7 @@ def load_chat_routing(
         "chat": "Chat-compatible JSON output",
         "text": "Text generation",
         "structured_output": "JSON Schema structured output",
+        "decision": "Finite choice and noul decisions",
     }
     missing_capability = set(required) - set(required_payloads)
     if missing_capability:
@@ -481,6 +491,8 @@ def load_chat_routing(
         )
     targets = {alias: _load_target(config, alias) for alias in aliases}
     for alias, target in targets.items():
+        if target.protocol != protocol:
+            raise ValueError(f"Model {alias} protocol does not match Agent {agent_alias}")
         missing = set(required) - set(target.capabilities)
         if missing:
             raise ValueError(
@@ -552,6 +564,8 @@ def load_embedding_targets(path: str) -> EmbeddingTargets:
         raise ValueError("Embedding model aliases must be unique")
 
     targets = tuple(_load_target(config, alias) for alias in aliases)
+    if any(target.protocol != "openai_compatible" for target in targets):
+        raise ValueError("Embedding requires the openai_compatible protocol")
     expected = (targets[0].name, targets[0].dimensions)
     if expected[1] is None:
         raise ValueError("Embedding model dimensions must be configured")
@@ -775,6 +789,38 @@ def _parse_chat_payload(payload: object, schema: dict) -> dict:
     }
 
 
+def _parse_typesafe_payload(payload: object) -> dict:
+    """Parse official Jev identity/usage; domain validation checks every answer."""
+    if not isinstance(payload, dict):
+        raise ValueError("invalid decision payload")
+    model = payload.get("model")
+    if not isinstance(model, str) or not model.strip() or len(model) > 255:
+        raise ValueError("invalid decision model")
+    answers = payload.get("answers")
+    if not isinstance(answers, dict) or not answers:
+        raise ValueError("missing decision answers")
+    usage = payload.get("usage")
+    if not isinstance(usage, dict):
+        raise ValueError("missing decision usage")
+    for key in ("input_tokens", "output_tokens"):
+        value = usage.get(key)
+        if type(value) is not int or not 0 <= value <= POSTGRES_INTEGER_MAX:
+            raise ValueError("invalid decision usage")
+    total = usage["input_tokens"] + usage["output_tokens"]
+    if total > POSTGRES_INTEGER_MAX:
+        raise ValueError("invalid decision usage")
+    return {
+        "reported_model_name": model,
+        "content": json.dumps(answers, allow_nan=False),
+        "usage": {
+            "prompt_tokens": usage["input_tokens"],
+            "completion_tokens": usage["output_tokens"],
+            "total_tokens": total,
+        },
+        "cost_usd": None,
+    }
+
+
 def _validate_json_schema(value: object, schema: dict) -> None:
     if "anyOf" in schema:
         for option in schema["anyOf"]:
@@ -884,6 +930,59 @@ class ModelClient:
         schema_name: str,
         schema: dict,
         validate_content: Callable[[str], object] | None = None,
+        require_reported_model: bool = False,
+    ) -> ChatResponse:
+        if (
+            not isinstance(schema, dict)
+            or schema.get("type") != "object"
+            or not isinstance(schema.get("properties"), dict)
+        ):
+            raise ValueError("Research output schema must be an object schema")
+        return await self._structured_call(
+            routing,
+            protocol="openai_compatible",
+            path="chat/completions",
+            body=lambda target: {
+                "model": target.name,
+                "messages": messages,
+                "response_format": {
+                    "type": "json_schema",
+                    "json_schema": {"name": schema_name, "strict": True, "schema": schema},
+                },
+            },
+            parse_payload=lambda payload: _parse_chat_payload(payload, schema),
+            validate_content=validate_content,
+            require_reported_model=require_reported_model,
+        )
+
+    async def typesafe_decision(
+        self,
+        routing: ChatRouting,
+        *,
+        state: dict,
+        questions: dict,
+        validate_content: Callable[[str], object],
+    ) -> ChatResponse:
+        """Native System One request, sharing the bounded attempt/error machinery."""
+        return await self._structured_call(
+            routing,
+            protocol="typesafe",
+            path="systemone",
+            body=lambda target: {"model": target.name, "state": state, "questions": questions},
+            parse_payload=_parse_typesafe_payload,
+            validate_content=validate_content,
+        )
+
+    async def _structured_call(
+        self,
+        routing: ChatRouting,
+        *,
+        protocol: str,
+        path: str,
+        body: Callable[[ModelTarget], dict],
+        parse_payload: Callable[[object], dict],
+        validate_content: Callable[[str], object] | None,
+        require_reported_model: bool = False,
     ) -> ChatResponse:
         if (
             not routing.primary
@@ -893,23 +992,19 @@ class ModelClient:
             or not 0 <= routing.retry_backoff_seconds <= 30
         ):
             raise ValueError("Research model routing is invalid")
-        if (
-            not isinstance(schema, dict)
-            or schema.get("type") != "object"
-            or not isinstance(schema.get("properties"), dict)
-        ):
-            raise ValueError("Research output schema must be an object schema")
         aliases = routing.aliases
         try:
             targets = [self.targets[alias] for alias in aliases]
         except KeyError as exc:
             raise ValueError("Configured model alias cannot be resolved") from exc
-        required_capabilities = {
-            "chat",
-            "structured_output",
-            *routing.required_capabilities,
-        }
+        required_capabilities = (
+            {"decision", *routing.required_capabilities}
+            if protocol == "typesafe"
+            else {"chat", "structured_output", *routing.required_capabilities}
+        )
         for target in targets:
+            if target.protocol != protocol:
+                raise ValueError("Configured model protocol does not match the operation")
             missing = required_capabilities - set(target.capabilities)
             if missing:
                 raise ValueError(
@@ -937,20 +1032,9 @@ class ModelClient:
                     parsed = None
                     try:
                         response = await client.post(
-                            f"{target.base_url.rstrip('/')}/chat/completions",
+                            f"{target.base_url.rstrip('/')}/{path}",
                             headers={"Authorization": f"Bearer {target.api_key}"},
-                            json={
-                                "model": target.name,
-                                "messages": messages,
-                                "response_format": {
-                                    "type": "json_schema",
-                                    "json_schema": {
-                                        "name": schema_name,
-                                        "strict": True,
-                                        "schema": schema,
-                                    },
-                                },
-                            },
+                            json=body(target),
                         )
                         duration_ms = int((time.monotonic() - started) * 1000)
                         if response.status_code in target.retryable_statuses:
@@ -995,7 +1079,9 @@ class ModelClient:
                                 attempts=tuple(attempts),
                             )
                         payload = response.json()
-                        parsed = _parse_chat_payload(payload, schema)
+                        parsed = parse_payload(payload)
+                        if require_reported_model and not parsed["reported_model_name"]:
+                            raise ValueError("missing reported model")
                         if validate_content is not None:
                             validate_content(parsed["content"])
                         attempts.append(

@@ -212,11 +212,29 @@ V1 起的分类是直接保存在 Document 版本中的轻量情报属性，不�
 | `classified_at`、`reason_or_evidence_ref` | 分类发生时间及可追溯依据；不能把模型分类标记成已经核实的事实 |
 | `should_extract` | 同一次低成本分类请求给出的布尔抽取决策；表示是否需要后续 LLM 结构化抽取，**不是保留/删除原文的开关** |
 
-标签及类别使用可配置的受控词表，前端与 Task 使用稳定标签 ID 查询。**V1 将当前分类、标签、`should_extract`、模型信息及分类状态保存在相应 Document 版本的 JSONB/必要状态字段中，不新建 `document_classifications` 或分类历史表。** 更换模型配置只影响后续待处理资料；Owner 可显式对已完成资料重新分类并回写当前结果，不自动重跑分类或已成功的 Fact 抽取。报告需要复查时由 Task Run 保存实际采用的输入快照，不为分类历史设计多套有效记录。结构化 API 响应不必强制走文本分类模型，直接由 Source Mapper 解析可用数据。
+标签及类别使用可配置的受控词表，分类输出使用稳定标签 ID；Task 可用这些 ID 描述关注范围，实际取材遵循研究语义查询契约。**V1 将当前分类、标签、`should_extract`、模型信息及分类状态保存在相应 Document 版本的 JSONB/必要状态字段中，不新建 `document_classifications` 或分类历史表。** 更换模型配置只影响后续待处理资料；Owner 可显式对已完成资料重新分类并回写当前结果，不自动重跑分类或已成功的 Fact 抽取。报告需要复查时由 Task Run 保存实际采用的输入快照，不为分类历史设计多套有效记录。结构化 API 响应不必强制走文本分类模型，直接由 Source Mapper 解析可用数据。
 
-**V1-03 当前实现：** 词表由 `config/taxonomy.yaml` 维护（`version` 加各节的稳定 `id`），Stocks 从它派生发给模型的 JSON Schema，因此词表外的类别、主题、行业或地域是契约违规而不是额外标签。`documents.classification` 保存当前结果，包含上述业务字段以及 `method`、`model_ref`、`model_alias`、`reported_model_name`、`taxonomy_version`、`taxonomy_fingerprint`、`classified_at`、`usage`，并在 `reason_or_evidence_ref` 中记录模型给出的理由、所用解析批次、`chunk_ids`、输入字符数与是否截断。分类状态沿用统一的 `document_processing_states` 中 `classify` 行，不另建 `classification_status` 列或分类历史表。分类输入是当前成功解析批次按 `CLASSIFICATION_MAX_CHARACTERS`（默认 6000，200–40000）截取的片段，不把任意长度全文交给模型。
+**词表配置契约：** `config/taxonomy.yaml` 的 `categories`、`event_types`、`topics`、`industries`、`regions` 中每个候选必须是 mapping，包含必填的 `id`、`name`、`description`；可选 `aliases` 是字符串数组，省略视为空数组。`id` 保留现有稳定标识规则；`name` 与单个 alias 最多 120 字符，`description` 最多 2000 字符，每个候选最多 32 个 alias。文本不得为空、只有空白或带首尾空白；拒绝未知字段、错误类型、同一候选中忽略大小写的重复 alias 及同节重复 ID。不接受裸字符串或只有 ID 的旧形状，不提供兼容转换。alias 可跨候选重复，不是另一组输出 ID。
 
-Decision Model 通过 `config/models.yaml` 的 `agents.classification` 配置，`protocol` 目前只实现 `openai_compatible`（其余协议在读取配置时即被拒绝，不假装兼容）；`primary`/`fallbacks` 只是模型别名，`retries` 与回退属于同一次业务分类，不构成第二次分类流程。`should_extract` 作为显式适用性写入 `classify` 阶段：`false` 让 `facts` 以 `NOT_APPLICABLE` 跳过，之后若显式重分类得到 `true`，被跳过的 `facts` 会重新回到 `pending`，而已完成的 Fact 不会被重开。分类失败（词表外结果、无效结构、超时、凭据或路由缺失）记录安全错误码并进入既有有限重试，不会写成 `should_extract=false`，也不改写上一次成功保存的分类结果、原件或已建索引。
+```yaml
+industries:
+  - id: semiconductors
+    name: 半导体
+    description: 芯片设计、制造、封装、设备及半导体产业需求；不包含其他语境的 chips。
+    aliases: [semiconductor, chips, 芯片, 集成电路]
+```
+
+名称、说明及同义/相关表达帮助模型理解候选，不能以词语出现代替上下文判断。Jev 的 choice key 仍是 ID、value 带完整候选语义，每个多标签 noul 问题也带同一语义；完整生成式分类使用相同结构作为可信提示，文档内容保持独立的不可信数据。独立实体生成角色不接收候选名单、Task 关注股票或聚合关键词，仍只按原文 quote 校验公司/代码。输出和持久化标签只接受 ID，不能返回 name/alias。
+
+`taxonomy_fingerprint` 使用稳定 JSON，覆盖 `version`、全局 `instructions` 及所有候选的 id/name/description/aliases，保留候选和 alias 顺序；仅修改说明、别名或顺序也会改变指纹。配置编辑不会自动重跑已完成文档；按需显式 `reprocess classify`，既有报告继续引用当次保存的输入快照。
+
+全局词表独立于 Task。新增公司研究任务复用已入库资料，不汇总全部 Task 关键词重新分类。当前研究使用语义查询；Scope 描述研究关注范围，并不是已实现的标签精确过滤器。显式 query 的 direct/background 角色只记录检索意图；原文是否明确提及公司/代码必须检查实际证据，行业背景可用于研究但不能据此添加股票标签。手动 NVIDIA 示例与端到端操作见[快速开始](quickstart.md#manual-company-research-from-collection-to-citations)。
+
+**当前分类实现：** 词表由 `config/taxonomy.yaml` 维护（`version` 加各节的稳定 `id`），Stocks 从它派生 Jev 的固定候选问题，因此词表外的类别、主题、行业或地域是契约违规而不是额外标签。`documents.classification` 保存当前结果，包含上述业务字段以及 `method`、`model_ref`、`model_alias`、`requested_model_name`、`reported_model_name`、`taxonomy_version`、`taxonomy_fingerprint`、`classified_at`、`usage`，并在 `reason_or_evidence_ref` 中记录模型给出的理由、所用解析批次、`chunk_ids`、输入字符数、是否截断及 `entity_evidence`（公司/代码、种类、原文 quote）。`model_calls` 分别保存分类和实体生成角色的 provider、protocol、请求/实际模型名、用量及 attempts；Jev 调用还保存原始概率答案和所用阈值。顶层 `usage` 汇总两个成功步骤，逐次重试用量保留在 attempts 中；未知用量不伪造为零。分类状态沿用统一的 `document_processing_states` 中 `classify` 行，不另建 `classification_status` 列或分类历史表。两个模型读取相同的当前成功解析批次有界输入，按 `CLASSIFICATION_MAX_CHARACTERS`（默认 6000，200–40000）截取，不把任意长度全文交给模型。
+
+原生 Jev 通过 `config/models.yaml` 的 `agents.classification`（`protocol: typesafe`）配置，仅负责有限词表：`doc_type`/`event_type` 用 `choice`，多标签及 `should_extract` 用 `noul`；无适用事件使用专门的无事件候选并存为 `event_type=null`。`noul` 返回 0..1 概率，按显式 `noul_threshold`（0 与 1 之间）决定 `>=` 阈值的标签，不能当成布尔值直接转换。Jev 无开放实体生成能力，故 `classification_entities` 生成角色读取同一输入，抽取明确提及的公司和股票代码并为每个实体返回包含该值的原文引用；引用必须能在输入标题/片段中精确定位，不以行业相关性推断公司、不猜代码或按 Watchlist 丢弃实体。保留能确认的公司名，代码不明确时只留空 `symbols`。只有两个角色均成功才合并为现有业务字段；实体生成是必需步骤，不能充当 Jev 故障回退。协议及凭据细节见[执行设计](execution.md)。
+
+`primary`/`fallbacks` 只是各角色的模型别名，有限 `retries` 与同协议回退属于同一次业务分类。`should_extract` 作为显式适用性写入 `classify` 阶段：`false` 让 `facts` 以 `NOT_APPLICABLE` 跳过，之后若显式重分类得到 `true`，被跳过的 `facts` 会重新回到 `pending`，而已完成的 Fact 不会被重开。分类失败（词表外结果、无效/缺失答案或概率、无效实体/引用、超时、凭据或路由缺失）记录安全错误码并进入既有有限重试，不会写成 `should_extract=false`，也不改写上一次成功保存的分类结果、原件或已建索引。若 Jev 已成功而实体生成失败，阶段错误仍保留两步已发生的调用身份与用量。
 
 **自动分类流程与失败边界：**
 

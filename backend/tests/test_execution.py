@@ -399,6 +399,24 @@ def _plan_transport(
     return httpx.MockTransport(handler)
 
 
+def test_config_loads_manual_nvidia_research_with_company_and_background_queries():
+    from stocks.research.service import _normalize_queries
+
+    path = Path(__file__).resolve().parents[2] / "config" / "tasks.yaml"
+    config = load_task_configuration(str(path))
+    task = next(task for task in config.tasks if task.id == "nvidia_research")
+    assert task.type == "research"
+    assert task.trigger.kind == "manual"
+    assert task.strategy == "evidence_first"
+    assert task.scope["companies"] == ["NVIDIA"]
+    assert task.scope["symbols"] == ["NVDA"]
+    selection = task.steps[0].select_evidence
+    roles, queries = _normalize_queries(task.objective, task.scope, selection.queries)
+    assert roles == ["direct", "background", "background"]
+    assert queries == selection.queries
+    assert task.steps[1].research_agent.agent == "research_writer"
+
+
 def test_config_accepts_whitelisted_condition(tmp_path):
     path = write_config(
         tmp_path,

@@ -188,42 +188,137 @@ implemented; see [Tasks, scheduling and the Worker](#tasks-scheduling-and-the-wo
 
 ## Lightweight classification
 
-The `classify` stage reads the current successful parse batch under a character budget
-and makes one Decision Model call that returns the controlled category, tags and
-`should_extract`. Configure the route in `config/models.yaml`:
+The `classify` stage reads the current successful parse batch under a character budget.
+Official TypeSafe Jev returns the finite category, tags and `should_extract`; a required
+`classification_entities` generation role extracts company names/tickers and source
+quotes from the same input. Configure the real server environment separately:
+
+```dotenv
+CLASSIFICATION_API_BASE_URL=https://api.typesafe.ai/v1
+CLASSIFICATION_API_KEY=<server-only-real-key>
+CLASSIFICATION_MODEL_NAME=jev-latest
+```
+
+Jev uses Bearer authentication and native `POST /systemone` with `model`, `state` and
+`questions`. It does not expose Chat Completions or generate unknown entity text.
+Configure both roles in `config/models.yaml` (the supplied configuration routes entity
+extraction to the existing research model and its `MODEL_*` credentials):
 
 ```yaml
 agents:
   classification:
-    protocol: openai_compatible   # the only adapter implemented today
+    protocol: typesafe
+    noul_threshold: 0.5
     routing:
-      primary: fast
+      primary: classification
+      fallbacks: []
+      required_capabilities: [decision]
+      timeout_seconds: 30
+      retries: 1
+  classification_entities:
+    protocol: openai_compatible
+    routing:
+      primary: research
       fallbacks: []
       required_capabilities: [chat, structured_output]
-      timeout_seconds: 30
+      timeout_seconds: 60
       retries: 1
 ```
 
-The vocabulary, its `version` and the derived output schema live in
-`config/taxonomy.yaml`; a category, topic, industry or region outside that file is
-rejected as a contract violation. `CLASSIFICATION_MAX_CHARACTERS` (default 6000, bounded
-to 200..40000) caps how much of the current batch one call may read. The result is stored
-in `documents.classification` on the same Document version — there is no classification
-history table, and the `classify` row in `document_processing_states` is the processing
-status.
+`config/taxonomy.yaml` owns the vocabulary and `version`. Document/event types become
+`choice` questions; each multi-label candidate and `should_extract` uses `noul`, a
+0..1 truth probability. `noul_threshold` must be explicitly set between zero and one;
+answers at or above it are selected. Missing answers, unknown candidates, invalid
+probabilities/types/model identities or missing usage fail validation. Entities require
+verbatim source quotes and are not restricted to a Watchlist; the generator cannot
+change Jev's finite decisions. Both steps must succeed. Entity generation is an
+explicit role, never a fallback for a failed Jev request.
 
-A Decision Model answer outside the vocabulary, an invalid structure, a timeout, or a
-missing/broken route is a recorded failure with a safe error code. It is never stored as
-`should_extract=false`, and the previously stored classification, the original Document
-and its index stay intact. `should_extract=false` marks the `facts` stage `NOT_APPLICABLE`;
-an explicit reclassification that returns `true` makes that skipped stage runnable again.
-Run a classification through the normal stage path:
+`CLASSIFICATION_MAX_CHARACTERS` (default 6000, bounded to 200..40000) caps the current
+batch excerpt both steps may read. The merged result is stored in
+`documents.classification` on the same Document version, including per-role provider,
+requested/actual model identity, usage, attempts, Jev probabilities/threshold and
+entity evidence. There is no classification history table; the `classify` row in
+`document_processing_states` is the processing status. Missing Jev environment values
+fail only classification route loading, leaving unrelated research and embedding
+routes usable. Compose passes these variables to API and Worker. Setting them requires
+recreating the affected backend containers through the normal deployment procedure;
+no real provider call is implied by configuration alone.
+
+An invalid decision or entity result, a timeout, or a missing/broken route is a recorded
+failure with a safe error code. It is never stored as `should_extract=false`, and the
+previously stored classification, original Document and index stay intact. A failed
+entity step preserves the successful Jev call's provenance in the stage error.
+`should_extract=false` marks `facts` as `NOT_APPLICABLE`; an explicit reclassification
+returning `true` makes that skipped stage runnable again. Run classification through
+the normal stage path on the designated test server when verifying this change:
 
 ```bash
 docker compose run --rm api python -m stocks.processing status --stage classify
 docker compose run --rm api python -m stocks.processing reprocess \
   --document-id <document-uuid> --stage classify --execute
 ```
+
+## Manual company research: from collection to citations
+
+`config/taxonomy.yaml` defines global classification candidates; `config/tasks.yaml`
+defines each research question. Edit the former to change label meanings, and the
+latter to change the company or subject being researched. Every label requires
+`id`, `name` and `description`; `aliases` is an optional array of non-empty strings.
+Only ids are valid classification outputs. See the exact validation and fingerprint
+contract in [Data design](data.md#自动分类标签与关联边界).
+
+The supplied manual `nvidia_research` Task uses NVIDIA/NVDA, semiconductor/hardware
+scope and the existing `evidence_first` / `research_writer` flow. Its first explicit
+string query names NVIDIA/NVDA; the other two ask about chip demand and export-control
+background without naming the company. The existing selector assigns direct/background
+retrieval roles from those query strings and the scoped company/symbols. Scope is
+research intent, not an exact label filter, and a query's role does not prove a source
+mentions NVIDIA. Neither this Task nor its scope supplies stock candidates to the
+classifier. Add another Task to reuse the saved repository without reclassifying it
+against an aggregate list of watched companies.
+
+For validation, run the following only on `100.120.14.84` in the current task's isolated
+deployment. Configure enabled Sources, storage and model routes first, including a real
+contact email where required. The default SEC/Fed feeds may contain no NVIDIA company
+material; add an appropriate supported Source if company coverage is required. Missing
+coverage must remain visible in the report.
+
+1. Queue `collect_enabled_sources` from the Tasks page, or run
+   `docker compose run --rm api python -m stocks.execution trigger --task collect_enabled_sources`.
+   The Worker executes the Run. Inspect its per-Source/item result with
+   `stocks.execution show --run-id <collection-run-id>` through the same Compose command.
+   Collection success alone does not mean classification or indexing is ready.
+2. Inspect each resulting Document with
+   `docker compose run --rm api python -m stocks.processing status --document-id <document-uuid>`.
+   Wait for parse, index and classify completion; inspect facts separately. A successful
+   `should_extract=false` classification makes facts `NOT_APPLICABLE`; pending, failed
+   or dependency skips do not prove facts were extracted. With an authenticated API
+   session, inspect `GET /api/documents/<document-uuid>`: `document.classification`
+   contains saved labels/entities, and
+   `document.classification.reason_or_evidence_ref.entity_evidence` contains Jev entity
+   quotes. These fields are not currently displayed in the Web evidence detail. A
+   company without a printed ticker keeps `symbols: []`; pure industry material keeps
+   both entity arrays empty.
+3. If label meanings changed, explicitly reclassify the selected completed Documents:
+   `docker compose run --rm api python -m stocks.processing reprocess --document-id <document-uuid> --stage classify --execute`.
+   This records the new semantic fingerprint; editing YAML alone does not rerun them.
+4. Queue the manual example with
+   `docker compose run --rm api python -m stocks.execution trigger --task nvidia_research`.
+   Inspect `stocks.execution show --run-id <research-run-id>` for the Evidence Package,
+   selected inputs, query roles, coverage and safe errors. A queued Run still needs
+   the Worker. Continued incremental scans are visible in `change_scan_completed`;
+   use `stocks.execution cursor --task nvidia_research` to inspect its checkpoint.
+5. Open the resulting report in the Reports page, follow a finding's saved citation to
+   its Document version and Chunk, then open the stored original. Check that company
+   findings cite company evidence and that industry/policy context is described as
+   background or inference. Query roles alone cannot establish that distinction.
+   Reports must say when company evidence is missing instead of inventing it. Keep the
+   collection Run, Document IDs, research Run and report IDs together for traceability.
+
+This procedure describes the implemented flow; it is not evidence that a particular
+external source, model or full batch has been exercised. Record controlled fixtures,
+real source acquisition and real model calls separately when validating it.
 
 ## Facts and structured API sources
 

@@ -1,7 +1,13 @@
-# Chat and embedding may come from different vendors: each model names its own
-# provider, so a chat-only API and an embedding API can be configured side by
-# side. Every provider still speaks the OpenAI-compatible protocol.
+# Native Jev decisions and OpenAI-compatible generation/embedding have separate
+# providers, credentials and model names. Missing classification credentials are
+# resolved only when the classify stage is claimed.
 providers:
+  typesafe:
+    protocol: typesafe
+    base_url: ${CLASSIFICATION_API_BASE_URL}
+    api_key: ${CLASSIFICATION_API_KEY}
+    capabilities: [decision]
+    timeout_seconds: 30
   chat:
     protocol: openai_compatible
     base_url: ${MODEL_API_BASE_URL}
@@ -14,10 +20,10 @@ providers:
     api_key: ${EMBEDDING_API_KEY}
     timeout_seconds: 60
 models:
-  fast:
-    provider: chat
-    name: ${MODEL_NAME}
-    capabilities: [chat, text, structured_output]
+  classification:
+    provider: typesafe
+    name: ${CLASSIFICATION_MODEL_NAME}
+    capabilities: [decision]
   research:
     provider: chat
     name: ${MODEL_NAME}
@@ -45,18 +51,28 @@ agents:
       timeout_seconds: 300
       retries: 1
       retry_backoff_seconds: 0
-  # Decision Model: a capability category, not a vendor. Point `primary` (and
-  # optional `fallbacks`) at a cheap model that can answer the bounded
-  # classification schema; `protocol` names the adapter, and this deployment only
-  # implements `openai_compatible`. Classification schema and vocabulary are owned
-  # by Stocks in config/taxonomy.yaml.
+  # Jev uses native /systemone choice/noul questions derived from the taxonomy.
+  # This threshold converts noul truth probabilities into labels/should_extract.
   classification:
+    protocol: typesafe
+    noul_threshold: 0.5
+    routing:
+      primary: classification
+      fallbacks: []
+      required_capabilities: [decision]
+      timeout_seconds: 30
+      retries: 1
+      retry_backoff_seconds: 0
+  # Jev cannot generate unknown company/ticker text. This is a required second
+  # role, not a fallback when Jev fails. It reads the same bounded excerpt and
+  # returns only explicit entities with verbatim source evidence.
+  classification_entities:
     protocol: openai_compatible
     routing:
-      primary: fast
+      primary: research
       fallbacks: []
       required_capabilities: [chat, structured_output]
-      timeout_seconds: 30
+      timeout_seconds: 60
       retries: 1
       retry_backoff_seconds: 0
   # Generation Model for on-demand Fact extraction. Only Documents whose

@@ -44,6 +44,44 @@ tasks:
           agent: research_writer
           input: evidence
 
+  - id: nvidia_research
+    name: NVIDIA 公司与行业背景研究（手动示例）
+    type: research
+    trigger: manual
+    enabled: true
+    objective: >-
+      Research NVIDIA (NVDA) using saved evidence. Separate explicit company
+      statements from semiconductor demand, export controls and data-center
+      infrastructure background. Query roles express retrieval intent only:
+      verify the actual source before calling anything a direct company mention.
+      Do not infer NVDA from a company name or from industry relevance. Cite
+      saved evidence for every finding and report missing company coverage.
+    strategy: evidence_first
+    # Scope describes research intent; it is not an exact taxonomy-label filter.
+    scope:
+      companies: [NVIDIA]
+      symbols: [NVDA]
+      industries: [semiconductors, hardware]
+      topics: [growth, trade, geopolitics]
+      regions: [US, China, Global]
+    steps:
+      - id: evidence
+        select_evidence:
+          kind: select_evidence
+          queries:
+            # Existing string-query schema: company tokens make the first query
+            # direct; the others receive background retrieval roles.
+            - NVIDIA NVDA earnings revenue guidance data-center products company statements
+            - semiconductor chips AI accelerator demand supply advanced packaging industry outlook
+            - semiconductor export controls tariffs China trade policy data-center infrastructure
+          limit_per_query: 8
+          max_tokens: 30000
+      - id: research
+        research_agent:
+          kind: research_agent
+          agent: research_writer
+          input: evidence
+
   - id: saved_evidence_brief
     name: Saved Evidence Brief
     type: research
