@@ -138,10 +138,36 @@ export function AppShell() {
           collapsed && "px-2",
         )}
       >
-        <div className={cn("flex", collapsed ? "justify-center" : "justify-start")}>
+        <div className="flex items-center justify-between gap-2">
           <Brand collapsed={collapsed} />
+          {collapsed ? null : (
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              aria-label="折叠侧栏"
+              title="折叠侧栏"
+              className="shrink-0 text-sidebar-foreground/60 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+              onClick={() => setCollapsed(true)}
+            >
+              <PanelLeftClose aria-hidden="true" className="size-4" />
+            </Button>
+          )}
         </div>
-        <div className="mt-8 flex-1">
+        {collapsed ? (
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            aria-label="展开侧栏"
+            title="展开侧栏"
+            className="mt-3 self-center text-sidebar-foreground/60 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+            onClick={() => setCollapsed(false)}
+          >
+            <PanelLeftOpen aria-hidden="true" className="size-4" />
+          </Button>
+        ) : null}
+        <div className={cn("flex-1", collapsed ? "mt-3" : "mt-8")}>
           {collapsed ? null : (
             <p className="mb-2 px-3 text-[0.66rem] font-medium text-sidebar-foreground/40">
               Workspace
@@ -163,24 +189,6 @@ export function AppShell() {
           >
             <LogOut aria-hidden="true" className="shrink-0" />
             {collapsed ? null : "退出登录"}
-          </Button>
-          <Button
-            type="button"
-            variant="ghost"
-            aria-label={collapsed ? "展开侧栏" : "折叠侧栏"}
-            title={collapsed ? "展开侧栏" : "折叠侧栏"}
-            className={cn(
-              "mt-1 w-full justify-start text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
-              collapsed && "justify-center",
-            )}
-            onClick={() => setCollapsed((value) => !value)}
-          >
-            {collapsed ? (
-              <PanelLeftOpen aria-hidden="true" className="shrink-0" />
-            ) : (
-              <PanelLeftClose aria-hidden="true" className="shrink-0" />
-            )}
-            {collapsed ? null : "折叠侧栏"}
           </Button>
         </div>
       </aside>
