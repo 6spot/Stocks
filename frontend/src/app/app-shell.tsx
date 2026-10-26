@@ -232,7 +232,7 @@ export function AppShell() {
         </div>
       </aside>
 
-      <div className="min-w-0">
+      <div className="min-w-0 flex-1">
         <header className="sticky top-0 z-30 flex h-14 items-center justify-between border-b border-border/80 bg-background/90 px-4 backdrop-blur lg:hidden">
           <Brand />
           <Button
@@ -245,7 +245,7 @@ export function AppShell() {
             <Menu aria-hidden="true" />
           </Button>
         </header>
-        <main className="mx-auto w-full max-w-[92rem] px-4 py-6 sm:px-6 sm:py-8 lg:px-8">
+        <main className="w-full px-4 py-6 sm:px-6 sm:py-8 lg:px-8">
           <div key={location.pathname} className="motion-rise">
             <Outlet />
           </div>
