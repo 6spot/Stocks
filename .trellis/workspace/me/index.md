@@ -8,8 +8,8 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 32
-- **Last Active**: 2026-10-26
+- **Total Sessions**: 33
+- **Last Active**: 2026-10-27
 <!-- @@@/auto:current-status -->
 
 ---
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~998 | Active |
+| `journal-1.md` | ~1039 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 33 | 2026-10-27 | Jev 原生接入、全局标签语义与手动研究闭环验收 | `77c86ff`, `aeda3c5` | `feat/research-article` |
 | 32 | 2026-10-26 | 主题文章式研究报告与分层证据交付 | `748c74a`, `47a5682`, `31490de` | `feat/research-article` |
 | 31 | 2026-10-26 | 日常闭环可用性补齐：采集触发、研究超时修复与生产部署 | `300a223` | `main` |
 | 30 | 2026-10-24 | Embedding 请求携带 dimensions 参数 | `e10322c` | `main` |

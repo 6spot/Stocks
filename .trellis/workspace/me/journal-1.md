@@ -996,3 +996,44 @@ V2 任务列表已全部交付归档后，处理跨任务待验收登记中的 P
 ### Status
 
 [OK] **Completed**
+
+
+## Session 33: Jev 原生接入、全局标签语义与手动研究闭环验收
+<!-- trellis-session: v=2 fp=dc6c0f75383f735b -->
+
+**Date**: 2026-10-27
+**Task**: Jev 原生接入、全局标签语义与手动研究闭环验收
+**Branch**: `feat/research-article`
+
+### Summary
+
+完成应用手动链路审查与标签语义任务；真实 Jev 分别验证，其他受控依赖明确标注，证据、归档和清理完成。用户已确认两组工作提交及收尾，不推送、不部署。
+
+### Main Changes
+
+- 原生 /v1/systemone、独立分类供应商配置与显式实体角色；严格响应和原文依据校验。
+- 全局 id/name/description/aliases 经共享语义进入两协议；完整稳定指纹、规范 ID 输出、NVIDIA 手动任务和分阶段操作说明。
+- 两轮独立复核的 quickstart Web 字段和验收状态文字均已修正；两任务独立证据归档至 archive/2026-10，私有凭据及任务资源已清理。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `77c86ff` | feat(classification): add native Jev and semantic label candidates |
+| `aeda3c5` | docs(audit): record manual pipeline and taxonomy validation |
+
+### Testing
+
+- [OK] 指定服务器前任务：新库初始化/一致性检查成功；113 项分类/Provider/Worker 与 23 项共享路由/embedding 通过；受控同批闭环成功。
+- [OK] 前任务缺续行曾意外运行全套 642 passed、1 warning；随后七个 node ID 未独立执行，保留原始事故记录，不合计重叠计数。
+- [OK] 当前任务：新库初始化/一致性检查成功；128 passed；三文档全受控与仅 Jev 真实两种完整运行成功，三篇引用及原件字节/SHA-256核对通过。
+- [OK] 当前真实 Jev：3次36题、jev-1.14.0、各1attempt且无fallback，合计20890 tokens；公司名不补代码、纯行业无实体，两个 Fact NOT_APPLICABLE 已核实。实体/Fact/embedding/研究与来源受控，external_success=false。
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- MP-01 自定义 Worker 配置路径与 MP-02 历史语义文档漏带已有 Fact 已复现，按原范围保留，未修复。
+- 真实来源与全部生成/向量模型联合闭环、浏览器、长期 Worker 及部署未验证；报告保留 no_background_selected，未声称新增 Scope 精确标签过滤。
