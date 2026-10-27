@@ -17,7 +17,7 @@ from __future__ import annotations
 import json
 import re
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from typing import Any
 
 from stocks.facts import FactInput
@@ -364,16 +364,19 @@ _PERIOD_PATTERNS = (
 def _parse_time(value: str) -> datetime | None:
     """Parse an instant, a date, or a coarse period boundary.
 
-    A structured source commonly reports an observation period (`2026-08`) rather
-    than an instant. Storing it naively would let a caller silently compare it with
-    timezone-aware values, so a period is anchored at the start of that period in
-    UTC. Anything else that is not a full ISO 8601 timestamp is refused.
+    A structured source commonly reports an observation period (`2026-08`) or an
+    observation date (`2026-09-01`) rather than an instant. Storing them naively
+    would let a caller silently compare them with timezone-aware values, so a
+    period is anchored at the start of that period in UTC. Anything else that is
+    not a full ISO 8601 timestamp is refused.
     """
 
     try:
-        return datetime.fromisoformat(value)
+        parsed = datetime.fromisoformat(value)
+        if parsed.utcoffset() is not None:
+            return parsed
     except ValueError:
-        pass
+        parsed = None
     for kind, pattern in _PERIOD_PATTERNS:
         match = pattern.fullmatch(value)
         if match is None:
@@ -385,7 +388,13 @@ def _parse_time(value: str) -> datetime | None:
                 return None
             return datetime(year, month, 1, tzinfo=UTC)
         return datetime(parts[0], 1, 1, tzinfo=UTC)
-    return None
+    # A full calendar date is a daily observation period, not an instant: anchor
+    # it at midnight UTC like the coarser month and year boundaries above.
+    try:
+        parsed = date.fromisoformat(value)
+    except ValueError:
+        return None
+    return datetime(parsed.year, parsed.month, parsed.day, tzinfo=UTC)
 
 
 def parse_mapper(raw: object) -> SourceMapper:

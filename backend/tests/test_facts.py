@@ -334,6 +334,44 @@ def test_mapping_produces_facts_that_cite_their_fields():
     assert text.unit is None
 
 
+def test_mapping_anchors_a_full_observation_date_at_midnight_utc():
+    """A daily observation date is a period boundary, not a naive instant.
+
+    FRED reports daily and monthly series as ``2026-09-01`` / ``2026-09``; both
+    must produce timezone-aware boundaries instead of failing the Document.
+    """
+
+    from datetime import UTC, datetime
+
+    payload = json.dumps(
+        {
+            "observations": [
+                {"date": "2026-09-01", "value": "336.298"},
+            ],
+        }
+    ).encode("utf-8")
+    mapper = parse_mapper(
+        {
+            "id": "fred-daily",
+            "fields": [
+                {
+                    "kind": "numeric",
+                    "pointer": "/observations/0/value",
+                    "fact_type": "macro_indicator",
+                    "metric_id": "cpi_index_sa",
+                    "unit": "index_1982_84_100",
+                    "period_start_pointer": "/observations/0/date",
+                }
+            ],
+        }
+    )
+
+    facts = map_response(_Document(), payload, mapper, created_at=datetime.now(UTC))
+
+    assert facts[0].period_start == datetime(2026, 9, 1, tzinfo=UTC)
+    assert facts[0].value == 336.298
+
+
 def test_mapping_uses_the_configured_unit_instead_of_reading_one_from_the_body():
     """The unit is a reviewed configuration claim, not something the body chooses."""
 

@@ -1,0 +1,23 @@
+{"file": "AGENTS.md", "reason": "通用边界、初始开发不迁移不兼容、凭据安全与最小必要验证"}
+{"file": "docs/architecture.md", "reason": "architecture 领域契约及阶段边界，设计不等于实现"}
+{"file": "docs/data.md", "reason": "data 领域契约：Source/Connector/Document/Fact 与证据可追溯"}
+{"file": "docs/execution.md", "reason": "execution 领域契约：Task/Run 与手动采集入口"}
+{"file": "docs/validation.md", "reason": "原型范围与完成条件"}
+{"file": ".trellis/tasks/10-27-report-real-sources/prd.md", "reason": "本任务需求：候选清单、选型决定、凭据与申请"}
+{"file": ".trellis/tasks/10-27-report-real-sources/design.md", "reason": "本任务技术设计：占位注入契约与逐来源设计"}
+{"file": ".trellis/tasks/10-27-report-real-sources/implement.md", "reason": "本任务执行计划与验证命令形态"}
+{"file": "backend/src/stocks/collection/config.py", "reason": "SourceConfig 现状：rss/http_api 校验与字段边界"}
+{"file": "backend/src/stocks/collection/http.py", "reason": "SafeFetcher 现状：固定三头、重定向与大小限制"}
+{"file": "backend/src/stocks/collection/service.py", "reason": "collect_source 现状：rss 列表到详情与 http_api 原件入库"}
+{"file": "backend/src/stocks/source_mapper.py", "reason": "mapper 解析现状：字段指针、单位与时间字段"}
+{"file": "backend/src/stocks/tools/config.py", "reason": "QueryCredential 环境变量注入先例（语义复用，不依赖该模块）"}
+{"file": "config/sources.yaml", "reason": "现有来源配置：已启用 SEC/美联储，Tavily/EDGAR/BLS 示例"}
+{"file": ".trellis/spec/backend/index.md", "reason": "后端实现/数据库/错误与必要验证约定"}
+{"file": ".trellis/spec/backend/directory-structure.md", "reason": "后端实现/数据库/错误与必要验证约定"}
+{"file": ".trellis/spec/backend/database-guidelines.md", "reason": "后端实现/数据库/错误与必要验证约定"}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "外部请求失败诊断与错误码约定"}
+{"file": ".trellis/spec/backend/logging-guidelines.md", "reason": "外部请求日志与凭据/响应脱敏"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "后端实现/数据库/错误与必要验证约定"}
+{"file": ".trellis/spec/backend/testing-guidelines.md", "reason": "远程 Python 3.12、pgvector 隔离验证及清理"}
+{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "配置、外部 HTTP、Repository 与 CLI 边界"}
+{"file": ".trellis/spec/guides/code-reuse-thinking-guide.md", "reason": "复用配置、HTTP 与入库能力，避免复制流程"}

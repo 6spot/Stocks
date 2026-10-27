@@ -8,7 +8,7 @@ tasks:
     type: collection
     trigger: manual
     enabled: true
-    sources: [sec_press_releases, fed_press_releases]
+    sources: [sec_press_releases, fed_press_releases, cnbc_markets, fred_cpiaucsl]
     steps:
       - id: collect
         collect_sources:

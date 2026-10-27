@@ -92,6 +92,8 @@ The command prints one JSON summary with discovered, ingested, reused, skipped, 
 
 The standalone `stocks.collection` CLI is still available for a one-off manual collection. It does not create Task/Run records, a collection cursor, chunks, embeddings, classifications, or Facts; a scheduled collection Task does create a Run record. Neither includes a browser renderer for JavaScript-only article pages. A real SEC run still requires configured PostgreSQL and S3 services; the unit tests use fixed HTTP responses and injected storage and do not contact SEC or S3.
 
+An `http_api` source reads structured responses the same way. Query values may be `${ENV_NAME}` placeholders: the real request resolves them from the environment, the stored configuration keeps the placeholder, and a registered `Document` records the endpoint without the query string so a credential never enters provenance or a Run payload. A missing environment variable fails the source as `SOURCE_CREDENTIAL_UNAVAILABLE` before any request. After collection, run `stocks.processing facts --sources-config config/sources.yaml --document-id <id>` to map the stored response onto Facts through the source's `mapper`.
+
 ## Document processing backlog, manual parsing and indexing
 
 Documents enter a unified background-processing backlog automatically: the

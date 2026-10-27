@@ -9,6 +9,7 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_valida
 
 from stocks.collection.errors import CollectionError, ConfigurationError
 from stocks.collection.urls import validate_https_url
+from stocks.providers import resolve_env
 from stocks.source_mapper import MappingError, SourceMapper, parse_mapper
 
 MAX_CONFIG_BYTES = 1_000_000
@@ -90,6 +91,27 @@ class SourceConfig(BaseModel):
             if not isinstance(item, str) or len(item) > 500:
                 raise ValueError("query parameter values must be strings")
         return value
+
+    def resolved_query(self) -> dict[str, str]:
+        """Query parameters with ``${ENV_NAME}`` placeholders resolved.
+
+        A credential enters a structured request only through the environment,
+        so the stored Source configuration and the registered request URL never
+        carry the real value. An unset variable fails the source before any
+        request instead of sending a placeholder upstream.
+        """
+
+        resolved: dict[str, str] = {}
+        for key, item in self.query.items():
+            try:
+                resolved[key] = resolve_env(item)
+            except ValueError as exc:
+                raise ConfigurationError(
+                    "SOURCE_CREDENTIAL_UNAVAILABLE",
+                    "Configured source environment variable is not set",
+                    details={"source_id": self.source_id},
+                ) from exc
+        return resolved
 
     def model_post_init(self, __context: object, /) -> None:
         if self.expected_freshness is not None:

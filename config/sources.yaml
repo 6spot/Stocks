@@ -37,6 +37,8 @@ sources:
   # entry like any collected document; the search provider is not the publisher
   # of the retrieved pages. Trust stays T3: a search hit is a lead, not a
   # verified statement, and each result URL is cited as its own original.
+  # The mapper is an inert identity declaration: this Source never runs through
+  # the collection loop (enabled stays false), so nothing is fetched or mapped.
   - source_id: tavily_web
     name: Tavily Web Search Results
     connector: http_api
@@ -49,6 +51,13 @@ sources:
     max_redirects: 0
     max_items: 5
     user_agent: StocksIntelligence/0.1 (6spot07@gmail.com)
+    mapper:
+      id: tavily-web-identity
+      fields:
+        - kind: text
+          pointer: /query
+          fact_type: search_identity
+          metric_id: search_query
 
   # SEC EDGAR submissions API (disabled example). The endpoint needs no API key
   # but SEC requires a real contact address in the User-Agent and accepts only
@@ -120,3 +129,65 @@ sources:
           pointer: /series/id
           fact_type: series_identity
           metric_id: series_id
+
+  # FRED macro series (2026-10-27 verified from the test server through the
+  # standard collection entry): the monthly CPI index. The API key is a free
+  # registration value provided through FRED_API_KEY; the YAML keeps the
+  # ${FRED_API_KEY} placeholder and the registered Document records the endpoint
+  # without the query string. The mapper reads only the latest observation; the
+  # stored snapshot keeps the full bounded response (limit=13) for later widening.
+  - source_id: fred_cpiaucsl
+    name: FRED CPI (All Urban Consumers, seasonally adjusted index)
+    connector: http_api
+    enabled: true
+    publisher: Federal Reserve Bank of St. Louis
+    trust_tier: T1
+    api_url: https://api.stlouisfed.org/fred/series/observations
+    query:
+      series_id: CPIAUCSL
+      file_type: json
+      sort_order: desc
+      limit: "13"
+      api_key: ${FRED_API_KEY}
+    expected_freshness: 30d
+    timeout_seconds: 30
+    max_response_bytes: 2000000
+    max_redirects: 3
+    max_items: 1
+    user_agent: StocksIntelligence/0.1 (6spot07@gmail.com)
+    mapper:
+      id: fred-observations
+      fields:
+        - kind: numeric
+          pointer: /observations/0/value
+          fact_type: macro_indicator
+          metric_id: cpi_index_sa
+          unit: index_1982_84_100
+          period_start_pointer: /observations/0/date
+          attributes:
+            frequency: monthly
+            seasonal_adjustment: seasonally_adjusted
+
+  # CNBC Markets RSS (2026-10-27 verified end to end from the test server). The
+  # legacy search.cnbc.com endpoint returns an empty body; this feed URL serves
+  # the same markets wire with full item entries. Trust T2: a commercial news
+  # wire, cited as its own original like any collected article.
+  - source_id: cnbc_markets
+    name: CNBC Markets
+    connector: rss
+    enabled: true
+    publisher: CNBC
+    trust_tier: T2
+    feed_url: https://www.cnbc.com/id/100003114/device/rss/rss.html
+    expected_freshness: 1d
+    timeout_seconds: 30
+    max_response_bytes: 5000000
+    max_redirects: 3
+    max_items: 10
+    user_agent: StocksIntelligence/0.1 (6spot07@gmail.com)
+
+  # Reddit subreddit RSS is intentionally not configured: from the current test
+  # server network the local resolver returns poisoned answers for reddit hosts
+  # (a non-public Teredo AAAA plus a third-party A record), which the standard
+  # entry refuses as UNSAFE_ADDRESS. Revisit with a trusted resolver or a known
+  # egress before adding a discussion source.

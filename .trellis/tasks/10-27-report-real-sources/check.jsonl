@@ -1,0 +1,7 @@
+{"file": "AGENTS.md", "reason": "通用边界与最小必要验证；禁止以本机结果代替远程测试"}
+{"file": "docs/data.md", "reason": "采集契约：原件、时间、映射与证据可追溯"}
+{"file": ".trellis/tasks/10-27-report-real-sources/prd.md", "reason": "验收标准与受限项如实列明的要求"}
+{"file": ".trellis/tasks/10-27-report-real-sources/design.md", "reason": "占位注入与逐来源设计是否符合"}
+{"file": ".trellis/spec/backend/testing-guidelines.md", "reason": "远程隔离验证与清理要求"}
+{"file": ".trellis/spec/backend/logging-guidelines.md", "reason": "凭据与响应脱敏检查"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "质量门槛"}

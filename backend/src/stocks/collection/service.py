@@ -363,7 +363,8 @@ def _collect_structured_source(
     clock = clock or (lambda: datetime.now(timezone.utc))
     summary = CollectionSummary(source_id=source.source_id)
     sync_source(session, source)
-    url = _with_query(source.api_url or "", source.query)
+    url = _with_query(source.api_url or "", source.resolved_query())
+    safe_url = _safe_original_url(url)
     dedupe_key = source.source_id
     try:
         response = fetcher.fetch(
@@ -381,7 +382,7 @@ def _collect_structured_source(
         summary.items.append(
             CollectionItemResult(
                 title=source.name,
-                url=url,
+                url=safe_url,
                 status="failed",
                 dedupe_key=dedupe_key,
                 error=exc.to_dict(),
@@ -395,7 +396,7 @@ def _collect_structured_source(
         summary.items.append(
             CollectionItemResult(
                 title=source.name,
-                url=url,
+                url=safe_url,
                 status="failed",
                 dedupe_key=dedupe_key,
                 error={
@@ -413,7 +414,9 @@ def _collect_structured_source(
         payload=response.payload,
         content_type=response.content_type,
         collected_at=clock(),
-        original_url=url,
+        # The registered provenance keeps the endpoint but never the request
+        # query: a parameter such as an API key is a credential, not evidence.
+        original_url=_safe_original_url(url),
         completeness="complete",
     )
     try:
@@ -429,7 +432,7 @@ def _collect_structured_source(
         summary.items.append(
             CollectionItemResult(
                 title=source.name,
-                url=url,
+                url=safe_url,
                 status="failed",
                 dedupe_key=dedupe_key,
                 error={
@@ -449,7 +452,7 @@ def _collect_structured_source(
     summary.items.append(
         CollectionItemResult(
             title=source.name,
-            url=url,
+            url=safe_url,
             status=status,
             dedupe_key=dedupe_key,
             completeness="complete",
@@ -458,6 +461,13 @@ def _collect_structured_source(
         )
     )
     return summary
+
+
+def _safe_original_url(url: str) -> str:
+    """Endpoint without the query string, for stored provenance."""
+
+    parsed = urlsplit(url)
+    return urlunsplit((parsed.scheme, parsed.netloc, parsed.path, "", ""))
 
 
 def _with_query(url: str, query: dict[str, str]) -> str:

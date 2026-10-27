@@ -14,6 +14,12 @@ from stocks.collection.http import (
 )
 from stocks.collection.service import collect_source
 from stocks.collection.urls import validate_https_url
+from stocks.models import (
+    Document,
+    DocumentCollectionState,
+    Source,
+)
+from stocks.settings import Settings
 
 
 SOURCE_YAML = """\
@@ -1758,3 +1764,197 @@ def test_pubdate_change_triggers_recheck(tmp_path, monkeypatch):
         source.feed_url,
         "https://www.sec.gov/news/release-1",
     ]
+
+
+STRUCTURED_YAML = """\
+sources:
+  - source_id: fred_cpiaucsl
+    name: FRED CPI
+    connector: http_api
+    publisher: Federal Reserve Bank of St. Louis
+    trust_tier: T1
+    api_url: https://api.stlouisfed.org/fred/series/observations
+    query:
+      series_id: CPIAUCSL
+      file_type: json
+      api_key: ${FRED_API_KEY}
+    timeout_seconds: 30
+    max_response_bytes: 1000000
+    max_redirects: 3
+    max_items: 1
+    user_agent: StocksIntelligence/0.1 (owner@example.com)
+    mapper:
+      id: fred-observations
+      fields:
+        - kind: numeric
+          pointer: /observations/0/value
+          fact_type: macro_indicator
+          metric_id: cpi_index_sa
+          unit: index_1982_84_100
+"""
+
+CPI_OBSERVATIONS = b"""\
+{"observations": [{"date": "2026-09-01", "value": "322.3"}]}
+"""
+
+
+def make_structured_source(tmp_path):
+    path = tmp_path / "sources.yaml"
+    path.write_text(STRUCTURED_YAML, encoding="utf-8")
+    return load_sources(path)[0]
+
+
+def test_structured_query_resolves_environment_placeholder(monkeypatch, tmp_path):
+    """A credential enters the request only through the environment."""
+
+    source = make_structured_source(tmp_path)
+    monkeypatch.setenv("FRED_API_KEY", "32-char-lowercase-alphanumeric-key")
+
+    resolved = source.resolved_query()
+
+    assert resolved == {
+        "series_id": "CPIAUCSL",
+        "file_type": "json",
+        "api_key": "32-char-lowercase-alphanumeric-key",
+    }
+    # The stored configuration keeps the placeholder, never the value.
+    assert source.query["api_key"] == "${FRED_API_KEY}"
+
+
+def test_structured_query_without_environment_fails_closed(monkeypatch, tmp_path):
+    monkeypatch.delenv("FRED_API_KEY", raising=False)
+    source = make_structured_source(tmp_path)
+
+    with pytest.raises(ConfigurationError, match="environment"):
+        source.resolved_query()
+
+
+def test_structured_collection_never_stores_the_request_query(
+    monkeypatch, tmp_path
+):
+    """The credential stays out of Document provenance and Run payloads."""
+
+    from stocks.collection.http import FetchedResponse
+
+    monkeypatch.setenv("FRED_API_KEY", "32-char-lowercase-alphanumeric-key")
+    source = make_structured_source(tmp_path)
+    request_url = (
+        "https://api.stlouisfed.org/fred/series/observations"
+        "?api_key=32-char-lowercase-alphanumeric-key&file_type=json&series_id=CPIAUCSL"
+    )
+    fetcher = StubFetcher(
+        {
+            request_url: FetchedResponse(
+                url=request_url,
+                content_type="application/json",
+                payload=CPI_OBSERVATIONS,
+            )
+        }
+    )
+    stored: list[tuple[str, bytes]] = []
+
+    def store(config, source_id, payload, *, content_type):
+        from hashlib import sha256
+
+        digest = sha256(payload).hexdigest()
+        stored.append((f"sources/{source_id}/{digest}", payload))
+        return f"sources/{source_id}/{digest}", digest
+
+    class StubSession:
+        def __init__(self):
+            self.source = None
+            self.documents = []
+            self.states = {}
+
+        def get(self, model, key):
+            if model is Source:
+                return self.source
+            if model is DocumentCollectionState:
+                return self.states.get(key)
+            if model is Document:
+                return next(
+                    (item for item in self.documents if item.id == key), None
+                )
+            return None
+
+        def add(self, value):
+            if isinstance(value, Source):
+                self.source = value
+            elif isinstance(value, DocumentCollectionState):
+                self.states[(value.source_id, value.dedupe_key)] = value
+            elif isinstance(value, Document):
+                self.documents.append(value)
+
+        def rollback(self):
+            return None
+
+        def refresh(self, value):
+            return None
+
+        def is_modified(self, value):
+            return True
+
+        def flush(self):
+            from uuid import uuid4
+
+            for document in self.documents:
+                if getattr(document, "id", None) is None:
+                    document.id = uuid4()
+
+        def commit(self):
+            self.flush()
+
+        def add_all(self, values):
+            for value in values:
+                self.add(value)
+
+        def execute(self, statement, *args, **kwargs):
+            class Result:
+                def scalar_one(self):
+                    return 1
+
+                def scalar_one_or_none(self):
+                    return 1
+
+            return Result()
+
+        def scalar(self, statement):
+            return self.documents[-1] if self.documents else None
+
+        def scalars(self, statement):
+            class Rows:
+                def all(self):
+                    return list(self.documents)
+
+            return Rows()
+
+    monkeypatch.setattr(
+        "stocks.repository._document_rows",
+        lambda session, item: list(session.documents),
+    )
+    config = Settings(
+        _env_file=None,
+        database_url="postgresql+psycopg://unused/unused",
+        s3_endpoint_url="https://storage.example",
+    )
+    session = StubSession()
+
+    summary = collect_source(
+        session,
+        config,
+        source,
+        fetcher=fetcher,
+        store=store,
+        clock=lambda: datetime(2026, 10, 27, 12, tzinfo=timezone.utc),
+    )
+
+    assert summary.ingested == 1
+    # The request itself carried the key, but nothing registered does.
+    assert fetcher.requests == [request_url]
+    document = session.documents[-1]
+    assert document.original_url == (
+        "https://api.stlouisfed.org/fred/series/observations"
+    )
+    assert "api_key" not in document.original_url
+    for item in summary.items:
+        assert "api_key" not in (item.url or "")
