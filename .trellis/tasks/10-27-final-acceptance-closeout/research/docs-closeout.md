@@ -1,6 +1,6 @@
 # 文档收尾交接（2026-10-27）
 
-> 本文是文档子批次完成时的历史交接快照，以下“待补录”和预定归档路径不是当前状态。主会话随后已完成隔离 Magpie 重处理（jev-1.14.0，3.429 秒）、修正 PRD/implement 的 JSONB 契约、补齐验收证据并清理资源，见 [实际验收](../acceptance.md) 与 [独立复核](final-review.md)。三个父任务因剩余真实运行缺口保留活动；当前父任务到收尾结果的相对路径是 `../10-27-final-acceptance-closeout/acceptance.md`，叶任务使用实际 archive 路径。
+> 本文是文档子批次完成时的历史交接快照，以下“待补录”和预定归档路径不是当前状态。主会话随后已完成隔离 Magpie 重处理（jev-1.14.0，3.429 秒）、修正 PRD/implement 的 JSONB 契约、补齐验收证据并清理资源，见 [实际验收](../acceptance.md) 与 [独立复核](final-review.md)。三个父任务因剩余真实运行缺口保留活动；本文件与 `acceptance.md` 同处收尾任务目录，实际归档后路径为 `.trellis/tasks/archive/2026-10/10-27-final-acceptance-closeout/`。
 
 ## 本批次结论
 

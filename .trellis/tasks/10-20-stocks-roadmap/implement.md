@@ -71,7 +71,7 @@ Owner 要求修正任务记录并检查代码与设计的一致性。本次已�
 
 - [x] 六项 Owner 范围决定已同步到唯一验收文档与父任务，见 [范围决定](final-acceptance-scope.md)；两项 2026-10-24 成对样例移出继续有效。
 - [x] Tavily 真实 MCP 客户端独立验证已归档，不记为完整补证 Run。
-- [x] 已补录并核对 [隔离 Magpie 单文档重处理](../10-27-final-acceptance-closeout/acceptance.md)：实际 jev-1.14.0、3.429 秒、当前词表指纹与持久 completed 状态一致；分类不创建新 parse batch。
+- [x] 已补录并核对 [隔离 Magpie 单文档重处理](../archive/2026-10/10-27-final-acceptance-closeout/acceptance.md)：实际 jev-1.14.0、3.429 秒、当前词表指纹与持久 completed 状态一致；分类不创建新 parse batch。
 - [x] 已在 [PA-3](pending-acceptance.md) 登记完整真实补证 Run、长期调度/cron/时区、应用 429/预算终止与晚提交变化流入包的真实证据缺口；登记完成不代表这些验收通过。MP-01/MP-02 未修复且本轮不修复。
 - [x] 独立复核确认三个父任务暂不满足归档条件，保留活动状态；本轮结果由主会话提交推送。父任务与收尾任务使用活动路径，叶任务引用使用实际归档路径。
 

@@ -11,7 +11,7 @@
 九个实现子任务均已完成。Owner 于 2026-10-27 授权父阶段归档，并保留未验证缺口，不将归档写为全部退出条件通过。2026-10-23 补充的真实调度、游标与认证
 结果见 PRD 和 `docs/validation.md`；相关测试 111 passed。晚提交仅检查 SQL 可见性，
 三条引用的两 Chunk/一 Document 分布不单独证明取材去重；合并及提交水位另有集成测试覆盖。
-Owner 已确认六项范围收敛；当前词表/原生 Jev 的单文档隔离验证已通过，见 [收尾结果](../10-27-final-acceptance-closeout/acceptance.md)，不生成新 parse batch。MP-01/MP-02 不在本轮修复范围。统一项见
+Owner 已确认六项范围收敛；当前词表/原生 Jev 的单文档隔离验证已通过，见 [收尾结果](../archive/2026-10/10-27-final-acceptance-closeout/acceptance.md)，不生成新 parse batch。MP-01/MP-02 不在本轮修复范围。统一项见
 [PA-3](../10-20-stocks-roadmap/pending-acceptance.md)，V2 记录见
 [本轮验收](../10-20-stocks-v2/research/acceptance-2026-10-23.md)。
 

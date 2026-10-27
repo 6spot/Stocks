@@ -55,7 +55,7 @@
   未认证全 401；`/api/sources` 把 `status`/
   `request_success`/`no_update` 与 `processing_backlog` 分开返回。
 - **2026-10-27 范围收敛**：真机视觉与跨设备登录跳过，物理 ARM 和公网 HTTPS 不再作为本轮交付条件；qemu 是模拟环境证据。应用 HTTP、代理/CDN TLS，SeaweedFS 已满足使用，不额外要求第三方 S3。这些均不标为通过。
-- **保留缺口**：长期调度、cron/时区真实触发与应用限流/预算终止仍缺真实证据，36h uptime 不足以关闭。晚提交的应用变化流到证据包边界仍未实测；MP-01/MP-02 未修复且不在本轮修复范围。统一清单见 [PA-3](../10-20-stocks-roadmap/pending-acceptance.md)。当前词表/原生 Jev 单文档重处理已由主会话隔离验收通过，见 [实际结果](../10-27-final-acceptance-closeout/acceptance.md)。
+- **保留缺口**：长期调度、cron/时区真实触发与应用限流/预算终止仍缺真实证据，36h uptime 不足以关闭。晚提交的应用变化流到证据包边界仍未实测；MP-01/MP-02 未修复且不在本轮修复范围。统一清单见 [PA-3](../10-20-stocks-roadmap/pending-acceptance.md)。当前词表/原生 Jev 单文档重处理已由主会话隔离验收通过，见 [实际结果](../archive/2026-10/10-27-final-acceptance-closeout/acceptance.md)。
 
 
 ## 排除项

@@ -38,7 +38,7 @@
 
 - [x] 六项范围收敛已同步 `docs/validation.md`、V1/V2 PRD 与 [统一清单 PA-3](pending-acceptance.md)，均标为移出/跳过，未记为通过；2026-10-24 两项成对样例移出决定继续有效。
 - [x] 真实 Tavily MCP 客户端独立任务已归档，见 [验证记录](../archive/2026-10/10-27-v2-real-mcp-tavily/verification/README.md)，不冒充完整研究 Run。
-- [x] 隔离 Magpie 单文档分类重处理已通过（3.429 秒，实际 jev-1.14.0），见 [收尾验收记录](../10-27-final-acceptance-closeout/acceptance.md)；不凭 `decision_model` 宣称原生 Jev，不宣称生产 41 篇已运行当前原生协议。
+- [x] 隔离 Magpie 单文档分类重处理已通过（3.429 秒，实际 jev-1.14.0），见 [收尾验收记录](../archive/2026-10/10-27-final-acceptance-closeout/acceptance.md)；不凭 `decision_model` 宣称原生 Jev，不宣称生产 41 篇已运行当前原生协议。
 - [ ] 完整真实补证 Run、长期调度/cron/时区、应用 429/预算耗尽终止，以及晚提交经应用变化流入包仍缺真实证据；容器 uptime 不关闭这些要求。
 - [x] MP-01/MP-02 作为已确认未修复的范围外问题保留。本轮条件未满足，三个父任务不归档；提交推送由主会话执行，不将未勾选项改写为通过。
 

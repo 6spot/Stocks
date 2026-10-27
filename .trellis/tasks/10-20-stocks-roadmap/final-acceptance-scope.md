@@ -23,7 +23,7 @@
 
 ## 单文档验收结果与保留缺口
 
-- `method: decision_model` 不是 Jev 身份证明。本轮隔离 Magpie 单文档重处理已成功，actual `jev-1.14.0`，3.429 秒，新词表指纹 `023566a6…`；详见 [收尾验收记录](../10-27-final-acceptance-closeout/acceptance.md)，不代表部署库全部文档已经重处理。
+- `method: decision_model` 不是 Jev 身份证明。本轮隔离 Magpie 单文档重处理已成功，actual `jev-1.14.0`，3.429 秒，新词表指纹 `023566a6…`；详见 [收尾验收记录](../archive/2026-10/10-27-final-acceptance-closeout/acceptance.md)，不代表部署库全部文档已经重处理。
 - 分类为当前 JSONB 状态：成功重处理覆盖当前 classification，失败保留前次成功 classification；不会创建新的 parse batch。旧 parse/Chunk/报告证据保留的契约，不能写成旧 classification 自动另存新批次。
 - 容器 36 小时 uptime 只能说明容器运行时长。长期采集/研究调度、cron/时区真实触发、应用在 429 与预算耗尽下的有界终止仍缺相应运行证据，未被上述六项决定移出范围。
 - 完整真实 Tavily 补证 Run 仍未验证；V1 晚提交只验证 SQL 可见性，未证明经应用变化流进入后续证据包。保留受控测试与真实证据的区别。

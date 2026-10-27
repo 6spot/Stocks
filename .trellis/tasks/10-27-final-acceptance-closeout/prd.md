@@ -13,7 +13,7 @@ Owner 已授权核对、验证、写入范围收敛、归档满足条件的父�
 - [x] 在测试服务器任务隔离数据库，用当前词表和 Magpie，对已有真实 SEC 文档执行一次显式 classify reprocess；核对实际协议、模型、指纹和持久状态。
 - [x] 保存分类前/后证据及原件、Document 版本、parse batch、Chunk 身份；明确成功替换当前 classification JSONB，不创建新解析批次；失败保留前次成功分类。
 - [x] 六项决定同步到 docs/validation.md、路线图统一清单与父任务文档，已验证、范围移出、仍未验证分别如实记录。
-- [ ] 父任务通过最终归档核对后归档；仍有未完成要求则保留活动任务并写明问题。
+- [x] 已核对归档条件：三个父任务仍有未关闭的真实运行要求，按授权保留活动并登记于 [PA-3](.trellis/tasks/10-20-stocks-roadmap/pending-acceptance.md)；本收尾任务作为阶段返回归档。
 
 ## 实际结果
 

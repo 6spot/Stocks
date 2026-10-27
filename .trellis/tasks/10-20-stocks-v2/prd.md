@@ -43,7 +43,7 @@
 
 **2026-10-27 收尾状态**：真实 Tavily MCP 客户端已独立完成，见 [Tavily 验证记录](../archive/2026-10/10-27-v2-real-mcp-tavily/verification/README.md)，不代表完整补证 Run 已完成。Owner 已移出返回费用端点、SEC 完整 JSON/companyfacts 链路等六项条件；真实转载/冲突及跨报告修订/晚到成对样例沿用 2026-10-24 的移出决定。费用继续为未知；原 SEC 证据是 submissions JSON，不能写为 companyconcept 已实测。
 
-**真实运行退出条件仍未全部满足**：完整真实 Tavily 补证 Run、长期采集/研究调度、cron/时区实际触发、应用 429/预算耗尽的有界终止仍缺证据，36h 容器 uptime 不能关闭。V1 晚提交的应用变化流到证据包边界未实测；MP-01/MP-02 未修复且本轮不修复。单文档隔离 Magpie 重处理已通过，见 [收尾验收记录](../10-27-final-acceptance-closeout/acceptance.md)。详细历史证据见 [本轮验收记录](research/acceptance-2026-10-23.md)，统一现状见 [延后验收清单 PA-3](../10-20-stocks-roadmap/pending-acceptance.md)。
+**真实运行退出条件仍未全部满足**：完整真实 Tavily 补证 Run、长期采集/研究调度、cron/时区实际触发、应用 429/预算耗尽的有界终止仍缺证据，36h 容器 uptime 不能关闭。V1 晚提交的应用变化流到证据包边界未实测；MP-01/MP-02 未修复且本轮不修复。单文档隔离 Magpie 重处理已通过，见 [收尾验收记录](../archive/2026-10/10-27-final-acceptance-closeout/acceptance.md)。详细历史证据见 [本轮验收记录](research/acceptance-2026-10-23.md)，统一现状见 [延后验收清单 PA-3](../10-20-stocks-roadmap/pending-acceptance.md)。
 
 ## 排除项
 
