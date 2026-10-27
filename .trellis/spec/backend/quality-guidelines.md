@@ -29,6 +29,10 @@ ln -s /opt/stocks-test-runtime/tool-venvs/stock-tools .venv
 范围在测试服务器追加新库初始化、接口或 Compose 检查。仓库不在 GitHub Runner 或
 其他非指定机器上运行测试。交付时只报告测试服务器上的实际执行结果及尚未验证的部分。
 
+## 验收身份与完成判定
+
+真实模型验收核对持久阶段 `status`、`model_calls[].protocol`、请求/实际模型与配置指纹，不能以 `method=decision_model`、有 attempt 或 CLI 输出推断成功。HTTP 451 的失败仍须保留失败状态和前次成功分类；容器 uptime 也不能替代实际调度触发、应用限流和预算终止记录。分类的当前 JSONB 与解析批次是不同契约，重分类不创建新解析批次；需要前后对照时在隔离验收中显式导出 before/after。参见 `stocks.classification.service` 与 `tests/test_classification_jev.py` 的持久化断言，产品定义仍归领域文档。
+
 ## 阶段复用回归
 
 补证和后台处理共用阶段领取。回归应同时覆盖新执行、已完成而不可再次领取、显式不适用跳过、依赖跳过和真实等待/失败；不能只以新 Document 的顺序成功路径证明复用正确。`run_stage_now()` 返回 `None` 时读取持久状态，已完成只跳过当前阶段；`skipped` 需要检查其明确原因，不能将依赖未满足当作成功。参见 `tests/test_research_supplement.py` 的阶段复用测试，业务语义以 [研究设计](../../../docs/research.md) 和 [数据设计](../../../docs/data.md) 为准。

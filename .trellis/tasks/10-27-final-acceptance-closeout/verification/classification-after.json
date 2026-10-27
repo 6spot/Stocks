@@ -1,0 +1,296 @@
+{
+  "usage": {
+    "total_tokens": 7979,
+    "prompt_tokens": 7106,
+    "completion_tokens": 873
+  },
+  "method": "decision_model",
+  "reason": "The document is a regulatory press release announcing a supervisory MOU between the SEC and the French AMF; it names only government/regulatory authorities (SEC, AMF) and officials, with no company names or ticker symbols explicitly identified.",
+  "topics": [],
+  "regions": [
+    "US",
+    "EU",
+    "Global"
+  ],
+  "symbols": [],
+  "attempts": [
+    {
+      "role": "classification",
+      "error": null,
+      "status": "succeeded",
+      "cost_usd": null,
+      "duration_ms": 1523,
+      "total_tokens": 6856,
+      "attempt_alias": "classification",
+      "prompt_tokens": 6050,
+      "attempt_number": 1,
+      "fallback_reason": null,
+      "completion_tokens": 806,
+      "attempt_model_name": "typesafe/jev-latest",
+      "reported_model_name": "jev-1.14.0"
+    },
+    {
+      "role": "classification_entities",
+      "error": null,
+      "status": "succeeded",
+      "cost_usd": null,
+      "duration_ms": 1726,
+      "total_tokens": 1123,
+      "attempt_alias": "research",
+      "prompt_tokens": 1056,
+      "attempt_number": 1,
+      "fallback_reason": null,
+      "completion_tokens": 67,
+      "attempt_model_name": "workbuddy-ai/deepseek-v4.1-flash",
+      "reported_model_name": "deepseek-v4.1-flash"
+    }
+  ],
+  "category": "policy",
+  "companies": [],
+  "model_ref": "classification",
+  "event_type": "regulation",
+  "model_alias": "classification",
+  "model_calls": [
+    {
+      "role": "classification",
+      "usage": {
+        "total_tokens": 6856,
+        "prompt_tokens": 6050,
+        "completion_tokens": 806
+      },
+      "answers": {
+        "doc_type": {
+          "type": "choice",
+          "choice": "policy",
+          "confidence": 0.99,
+          "probabilities": {
+            "macro": 0.01,
+            "other": 0.0,
+            "policy": 0.99,
+            "company": 0.0,
+            "industry": 0.0
+          }
+        },
+        "event_type": {
+          "type": "choice",
+          "choice": "regulation",
+          "confidence": 0.99,
+          "probabilities": {
+            "__none__": 0.01,
+            "earnings": 0.0,
+            "regulation": 0.99,
+            "data_release": 0.0,
+            "fiscal_policy": 0.0,
+            "monetary_policy": 0.0,
+            "corporate_action": 0.0
+          }
+        },
+        "regions.EU": {
+          "noul": 0.78,
+          "type": "noul"
+        },
+        "regions.UK": {
+          "noul": 0.03,
+          "type": "noul"
+        },
+        "regions.US": {
+          "noul": 0.88,
+          "type": "noul"
+        },
+        "topics.trade": {
+          "noul": 0.4,
+          "type": "noul"
+        },
+        "regions.China": {
+          "noul": 0.02,
+          "type": "noul"
+        },
+        "regions.Japan": {
+          "noul": 0.03,
+          "type": "noul"
+        },
+        "topics.credit": {
+          "noul": 0.04,
+          "type": "noul"
+        },
+        "topics.energy": {
+          "noul": 0.02,
+          "type": "noul"
+        },
+        "topics.growth": {
+          "noul": 0.4,
+          "type": "noul"
+        },
+        "regions.Global": {
+          "noul": 0.64,
+          "type": "noul"
+        },
+        "should_extract": {
+          "noul": 0.8,
+          "type": "noul"
+        },
+        "topics.inflation": {
+          "noul": 0.06,
+          "type": "noul"
+        },
+        "topics.liquidity": {
+          "noul": 0.08,
+          "type": "noul"
+        },
+        "topics.employment": {
+          "noul": 0.03,
+          "type": "noul"
+        },
+        "topics.geopolitics": {
+          "noul": 0.49,
+          "type": "noul"
+        },
+        "regions.AsiaPacific": {
+          "noul": 0.07,
+          "type": "noul"
+        },
+        "topics.interest_rates": {
+          "noul": 0.04,
+          "type": "noul"
+        },
+        "regions.EmergingMarkets": {
+          "noul": 0.09,
+          "type": "noul"
+        },
+        "topics.market_sentiment": {
+          "noul": 0.07,
+          "type": "noul"
+        },
+        "related_industries.media": {
+          "noul": 0.04,
+          "type": "noul"
+        },
+        "related_industries.energy": {
+          "noul": 0.02,
+          "type": "noul"
+        },
+        "related_industries.retail": {
+          "noul": 0.04,
+          "type": "noul"
+        },
+        "related_industries.banking": {
+          "noul": 0.2,
+          "type": "noul"
+        },
+        "related_industries.telecom": {
+          "noul": 0.03,
+          "type": "noul"
+        },
+        "related_industries.consumer": {
+          "noul": 0.06,
+          "type": "noul"
+        },
+        "related_industries.hardware": {
+          "noul": 0.04,
+          "type": "noul"
+        },
+        "related_industries.software": {
+          "noul": 0.05,
+          "type": "noul"
+        },
+        "related_industries.materials": {
+          "noul": 0.04,
+          "type": "noul"
+        },
+        "related_industries.utilities": {
+          "noul": 0.11,
+          "type": "noul"
+        },
+        "related_industries.healthcare": {
+          "noul": 0.02,
+          "type": "noul"
+        },
+        "related_industries.industrials": {
+          "noul": 0.04,
+          "type": "noul"
+        },
+        "related_industries.real_estate": {
+          "noul": 0.04,
+          "type": "noul"
+        },
+        "related_industries.semiconductors": {
+          "noul": 0.03,
+          "type": "noul"
+        },
+        "related_industries.transportation": {
+          "noul": 0.02,
+          "type": "noul"
+        }
+      },
+      "attempts": [
+        {
+          "error": null,
+          "status": "succeeded",
+          "cost_usd": null,
+          "duration_ms": 1523,
+          "total_tokens": 6856,
+          "attempt_alias": "classification",
+          "prompt_tokens": 6050,
+          "attempt_number": 1,
+          "fallback_reason": null,
+          "completion_tokens": 806,
+          "attempt_model_name": "typesafe/jev-latest",
+          "reported_model_name": "jev-1.14.0"
+        }
+      ],
+      "protocol": "typesafe",
+      "provider": "typesafe",
+      "model_alias": "classification",
+      "noul_threshold": 0.5,
+      "reported_model_name": "jev-1.14.0",
+      "requested_model_name": "typesafe/jev-latest"
+    },
+    {
+      "role": "classification_entities",
+      "usage": {
+        "total_tokens": 1123,
+        "prompt_tokens": 1056,
+        "completion_tokens": 67
+      },
+      "attempts": [
+        {
+          "error": null,
+          "status": "succeeded",
+          "cost_usd": null,
+          "duration_ms": 1726,
+          "total_tokens": 1123,
+          "attempt_alias": "research",
+          "prompt_tokens": 1056,
+          "attempt_number": 1,
+          "fallback_reason": null,
+          "completion_tokens": 67,
+          "attempt_model_name": "workbuddy-ai/deepseek-v4.1-flash",
+          "reported_model_name": "deepseek-v4.1-flash"
+        }
+      ],
+      "protocol": "openai_compatible",
+      "provider": "chat",
+      "model_alias": "research",
+      "reported_model_name": "deepseek-v4.1-flash",
+      "requested_model_name": "workbuddy-ai/deepseek-v4.1-flash"
+    }
+  ],
+  "classified_at": "2026-10-27T07:34:29.971992+00:00",
+  "should_extract": true,
+  "taxonomy_version": "2026-10-27",
+  "related_industries": [],
+  "reported_model_name": "jev-1.14.0",
+  "requested_model_name": "typesafe/jev-latest",
+  "taxonomy_fingerprint": "023566a6ea4a236ae169774bcdff02334cfaf5e96746dfdd27d5e14a7af3c61e",
+  "reason_or_evidence_ref": {
+    "reason": "The document is a regulatory press release announcing a supervisory MOU between the SEC and the French AMF; it names only government/regulatory authorities (SEC, AMF) and officials, with no company names or ticker symbols explicitly identified.",
+    "chunk_ids": [
+      "ec52603a-228f-481f-b4bc-8ebae7e5d894",
+      "143597b7-bdf5-49b7-b012-48d19272224d"
+    ],
+    "truncated": false,
+    "parse_batch_id": "3b002e58-4541-477c-b7bb-fba98f92c342",
+    "entity_evidence": [],
+    "input_characters": 2148
+  }
+}

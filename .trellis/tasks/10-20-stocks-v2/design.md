@@ -11,3 +11,5 @@
 - [V2-05](../archive/2026-10/10-20-v2-05-coverage-cost-acceptance/prd.md)：覆盖费用与异常分析及 V2 验收
 
 阶段父任务不直接实施；各子任务写有建议落点、契约来源和风险。初始化结构直接修改当前定义，不迁移旧库；运行期原件和引用持续保留。更换已确认的阶段范围必须回到领域文档和阶段验收一起调整。
+
+2026-10-27 的 Owner 范围决定见 [最终范围决定](../10-20-stocks-roadmap/final-acceptance-scope.md) 和 `docs/validation.md`。不要求返回货币费用的真实端点、额外 S3 供应商或 SEC 完整 JSON/companyfacts 链路；费用保持未知，不用 submissions JSON 证据宣称 companyconcept 成功。真实 MCP 客户端接通与完整补证 Run 分别记录；长期调度/限流/预算终止保留缺口。

@@ -15,3 +15,5 @@
 - [V1-09](../archive/2026-10/10-20-v1-09-arm-deployment-acceptance/prd.md)：ARM Compose 部署与 V1 日常运行验收
 
 阶段父任务不直接实施；各子任务写有建议落点、契约来源和风险。初始化结构直接修改当前定义，不迁移旧库；运行期原件和引用持续保留。更换已确认的阶段范围必须回到领域文档和阶段验收一起调整。
+
+2026-10-27 的 Owner 范围决定见 [最终范围决定](../10-20-stocks-roadmap/final-acceptance-scope.md) 和 `docs/validation.md`。应用 HTTP、代理/CDN TLS；真机与物理 ARM 验收跳过，qemu 保持模拟证据，SeaweedFS 已满足使用。范围收敛与父任务归档均不关闭长期调度/限流等保留缺口。

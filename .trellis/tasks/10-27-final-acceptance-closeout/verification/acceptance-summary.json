@@ -1,0 +1,228 @@
+{
+  "status": "passed",
+  "environment": "isolated PostgreSQL snapshot on 100.120.14.84",
+  "production_endpoint_modified": false,
+  "production_classification_modified": false,
+  "source": {
+    "document_id": "08e03a1f-5282-48d2-a692-eb65c5db80cb",
+    "source_id": "sec_press_releases",
+    "title": "SEC and AMF Announce Supervisory MOU To Enhance Cooperation for Investment Advisers and Investment Service Providers",
+    "original_url": "https://www.sec.gov/newsroom/press-releases/2026-108-sec-amf-announce-supervisory-mou-enhance-cooperation-investment-advisers-investment-service",
+    "content_hash": "290efe3a1ef7f3f8e44385380456d68802e3709d3990bb862959739dd5834183",
+    "version": 1
+  },
+  "elapsed_seconds": 3.429,
+  "old_taxonomy_version": "2026-10-21",
+  "new_taxonomy_version": "2026-10-27",
+  "old_taxonomy_fingerprint": "dca6fef7060cbc359781d588d2791ef053f5248c84c9f2be4e20cf829d0df833",
+  "new_taxonomy_fingerprint": "023566a6ea4a236ae169774bcdff02334cfaf5e96746dfdd27d5e14a7af3c61e",
+  "stage_status": "completed",
+  "reprocess_requested": false,
+  "category": "policy",
+  "companies": [],
+  "symbols": [],
+  "native_call": {
+    "role": "classification",
+    "usage": {
+      "total_tokens": 6856,
+      "prompt_tokens": 6050,
+      "completion_tokens": 806
+    },
+    "answers": {
+      "doc_type": {
+        "type": "choice",
+        "choice": "policy",
+        "confidence": 0.99,
+        "probabilities": {
+          "macro": 0.01,
+          "other": 0.0,
+          "policy": 0.99,
+          "company": 0.0,
+          "industry": 0.0
+        }
+      },
+      "event_type": {
+        "type": "choice",
+        "choice": "regulation",
+        "confidence": 0.99,
+        "probabilities": {
+          "__none__": 0.01,
+          "earnings": 0.0,
+          "regulation": 0.99,
+          "data_release": 0.0,
+          "fiscal_policy": 0.0,
+          "monetary_policy": 0.0,
+          "corporate_action": 0.0
+        }
+      },
+      "regions.EU": {
+        "noul": 0.78,
+        "type": "noul"
+      },
+      "regions.UK": {
+        "noul": 0.03,
+        "type": "noul"
+      },
+      "regions.US": {
+        "noul": 0.88,
+        "type": "noul"
+      },
+      "topics.trade": {
+        "noul": 0.4,
+        "type": "noul"
+      },
+      "regions.China": {
+        "noul": 0.02,
+        "type": "noul"
+      },
+      "regions.Japan": {
+        "noul": 0.03,
+        "type": "noul"
+      },
+      "topics.credit": {
+        "noul": 0.04,
+        "type": "noul"
+      },
+      "topics.energy": {
+        "noul": 0.02,
+        "type": "noul"
+      },
+      "topics.growth": {
+        "noul": 0.4,
+        "type": "noul"
+      },
+      "regions.Global": {
+        "noul": 0.64,
+        "type": "noul"
+      },
+      "should_extract": {
+        "noul": 0.8,
+        "type": "noul"
+      },
+      "topics.inflation": {
+        "noul": 0.06,
+        "type": "noul"
+      },
+      "topics.liquidity": {
+        "noul": 0.08,
+        "type": "noul"
+      },
+      "topics.employment": {
+        "noul": 0.03,
+        "type": "noul"
+      },
+      "topics.geopolitics": {
+        "noul": 0.49,
+        "type": "noul"
+      },
+      "regions.AsiaPacific": {
+        "noul": 0.07,
+        "type": "noul"
+      },
+      "topics.interest_rates": {
+        "noul": 0.04,
+        "type": "noul"
+      },
+      "regions.EmergingMarkets": {
+        "noul": 0.09,
+        "type": "noul"
+      },
+      "topics.market_sentiment": {
+        "noul": 0.07,
+        "type": "noul"
+      },
+      "related_industries.media": {
+        "noul": 0.04,
+        "type": "noul"
+      },
+      "related_industries.energy": {
+        "noul": 0.02,
+        "type": "noul"
+      },
+      "related_industries.retail": {
+        "noul": 0.04,
+        "type": "noul"
+      },
+      "related_industries.banking": {
+        "noul": 0.2,
+        "type": "noul"
+      },
+      "related_industries.telecom": {
+        "noul": 0.03,
+        "type": "noul"
+      },
+      "related_industries.consumer": {
+        "noul": 0.06,
+        "type": "noul"
+      },
+      "related_industries.hardware": {
+        "noul": 0.04,
+        "type": "noul"
+      },
+      "related_industries.software": {
+        "noul": 0.05,
+        "type": "noul"
+      },
+      "related_industries.materials": {
+        "noul": 0.04,
+        "type": "noul"
+      },
+      "related_industries.utilities": {
+        "noul": 0.11,
+        "type": "noul"
+      },
+      "related_industries.healthcare": {
+        "noul": 0.02,
+        "type": "noul"
+      },
+      "related_industries.industrials": {
+        "noul": 0.04,
+        "type": "noul"
+      },
+      "related_industries.real_estate": {
+        "noul": 0.04,
+        "type": "noul"
+      },
+      "related_industries.semiconductors": {
+        "noul": 0.03,
+        "type": "noul"
+      },
+      "related_industries.transportation": {
+        "noul": 0.02,
+        "type": "noul"
+      }
+    },
+    "attempts": [
+      {
+        "error": null,
+        "status": "succeeded",
+        "cost_usd": null,
+        "duration_ms": 1523,
+        "total_tokens": 6856,
+        "attempt_alias": "classification",
+        "prompt_tokens": 6050,
+        "attempt_number": 1,
+        "fallback_reason": null,
+        "completion_tokens": 806,
+        "attempt_model_name": "typesafe/jev-latest",
+        "reported_model_name": "jev-1.14.0"
+      }
+    ],
+    "protocol": "typesafe",
+    "provider": "typesafe",
+    "model_alias": "classification",
+    "noul_threshold": 0.5,
+    "reported_model_name": "jev-1.14.0",
+    "requested_model_name": "typesafe/jev-latest"
+  },
+  "model_call_count": 2,
+  "usage": {
+    "total_tokens": 7979,
+    "prompt_tokens": 7106,
+    "completion_tokens": 873
+  },
+  "raw_document_and_chunks_unchanged": true,
+  "classification_history_boundary": "Current classification JSONB replaced in isolated copy; before/after exported. No new parse batch is created by classify.",
+  "external_success": true,
+  "scope": "Real Jev and real entity generation through Magpie; existing saved real SEC document. No new collection, extraction, embedding or research run."
+}

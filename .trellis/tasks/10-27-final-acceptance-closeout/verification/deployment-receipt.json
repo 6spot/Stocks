@@ -1,0 +1,42 @@
+{
+  "test_deployment_host": "100.120.14.84",
+  "location": "/opt/stocks",
+  "containers": [
+    {
+      "name": "stocks-api-1",
+      "image_id": "sha256:41c95da1be781155b2fc8116ebfe96b8e177cce7748ef5123c09aeb7b3d9c1f0",
+      "started_at": "2026-10-27T07:12:03.849668873Z",
+      "status": "running",
+      "health": "healthy"
+    },
+    {
+      "name": "stocks-worker-1",
+      "image_id": "sha256:872ab77d5116b2b9352b68ebaf25cb2e67fcaf4e6ee2c073785f51290ac4511b",
+      "started_at": "2026-10-27T07:12:03.686172306Z",
+      "status": "running",
+      "health": null
+    },
+    {
+      "name": "stocks-web-1",
+      "image_id": "sha256:da1a79a88581856152c05626386384ed8414fc5be39e2545a2694a5c7507afc8",
+      "started_at": "2026-10-26T06:20:43.950093902Z",
+      "status": "running",
+      "health": "healthy"
+    },
+    {
+      "name": "stocks-postgres-1",
+      "image_id": "sha256:ac08538c6f8b9904c33c8224c5e5706dbe760aca29db1d096972b4052c22a75d",
+      "started_at": "2026-10-24T13:51:31.136854314Z",
+      "status": "running",
+      "health": "healthy"
+    }
+  ],
+  "original_backend_dockerfile_restored": true,
+  "temporary_wheel_directories_removed": true,
+  "deployment_backup_paths": [
+    "/opt/stocks-backup-20261027-143658.tgz"
+  ],
+  "backup_permissions": "0600",
+  "production_jev_endpoint_changed": false,
+  "scope": "Prior approved test-server API/Worker rebuild; Web image was not rebuilt. Real production host is outside this verification."
+}

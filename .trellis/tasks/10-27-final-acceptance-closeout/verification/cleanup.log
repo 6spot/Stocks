@@ -1,0 +1,6 @@
+stocks-test-final-closeout-postgres
+Isolated PostgreSQL container and anonymous volume verified absent.
+Task directory, database snapshot and private gateway credentials deleted.
+Build temporary directories/files removed; original deployment Dockerfile restored.
+Official model environment, persistent test deployment, rollback backup and shared tool runtime retained.
+Exit request sent.

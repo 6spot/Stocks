@@ -1,0 +1,9 @@
+[
+  {
+    "id": "typesafe/jev-latest",
+    "kind": "decision",
+    "native_endpoints": [
+      "/v1/systemone"
+    ]
+  }
+]

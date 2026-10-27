@@ -1,0 +1,39 @@
+{
+  "usage": {
+    "total_tokens": 1793,
+    "prompt_tokens": 1347,
+    "completion_tokens": 446
+  },
+  "method": "decision_model",
+  "reason": "This is a regulatory/supervisory policy document: the SEC and the French AMF announced a Memorandum of Understanding on consultation and information-sharing for investment advisers, investment companies and investment service providers, and the SEC stated it will resume processing registration applications from AMF-supervised asset management companies. It names only government regulators (SEC, AMF), no companies or tickers, so companies and symbols are left empty; relevance is to financial-sector supervision in the US and EU.",
+  "topics": [],
+  "regions": [
+    "US",
+    "EU"
+  ],
+  "symbols": [],
+  "category": "policy",
+  "companies": [],
+  "model_ref": "classification",
+  "event_type": "regulation",
+  "model_alias": "fast",
+  "classified_at": "2026-10-24T15:30:55.169314+00:00",
+  "should_extract": true,
+  "taxonomy_version": "2026-10-21",
+  "related_industries": [
+    "banking"
+  ],
+  "reported_model_name": "deepseek-v4.1-flash",
+  "requested_model_name": "deepseek-v4.1-flash",
+  "taxonomy_fingerprint": "dca6fef7060cbc359781d588d2791ef053f5248c84c9f2be4e20cf829d0df833",
+  "reason_or_evidence_ref": {
+    "reason": "This is a regulatory/supervisory policy document: the SEC and the French AMF announced a Memorandum of Understanding on consultation and information-sharing for investment advisers, investment companies and investment service providers, and the SEC stated it will resume processing registration applications from AMF-supervised asset management companies. It names only government regulators (SEC, AMF), no companies or tickers, so companies and symbols are left empty; relevance is to financial-sector supervision in the US and EU.",
+    "chunk_ids": [
+      "ec52603a-228f-481f-b4bc-8ebae7e5d894",
+      "143597b7-bdf5-49b7-b012-48d19272224d"
+    ],
+    "truncated": false,
+    "parse_batch_id": "3b002e58-4541-477c-b7bb-fba98f92c342",
+    "input_characters": 2148
+  }
+}

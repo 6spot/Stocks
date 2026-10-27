@@ -47,9 +47,9 @@ V1 在 V0 的证据链上增加定时采集、定时研究、结构化 Fact、�
 - **运行恢复**：已有活跃 Run 时调度返回 `skipped_active_run`，不重复创建；活跃 Run 数始终 ≤1。`/api/processing?status=failed` 返回 200 且 `items: 0`，`counts` 给出分阶段积压。
 - **日常界面**：`/api/overview`、`/documents`、`/reports`、`/tasks`、`/runs`、`/processing`、`/sources` 认证后全部 200，未认证全部 401。`/api/sources` 把 `status`、`request_success`、`no_update` 作为独立字段返回，与 `processing_backlog` 分开，来源无更新、请求失败与处理积压可区分。
 
-**仍未完成**：真实移动设备视觉与跨设备登录、真实 ARM 实机、公网/HTTPS 发布（见「待最终验收」）。
+**2026-10-27 范围收敛**：Owner 已跳过真实移动设备与物理 ARM 验收，移出公网 HTTPS 发布验收；应用 HTTP、代理/CDN 终止 TLS。qemu 证据保留为模拟环境结果，不标为硬件通过（见「待最终验收」）。
 
-**已实现与待补的边界（截至 V1-09）：** 独立 API/Worker 进程、manual/schedule/retry 统一原子触发、`cron`+时区与 `every` 固定锚点的持久 due 调度、跨 Task 失败隔离、最小 `collection` Task 接入、Owner 显式确认停机后的结束/重试，Document 四阶段（parse/classify/facts/index）统一待办、独立有界文档处理槽位、有限自动重试、中断恢复与 `stocks.processing status|retry|reprocess`，轻量分类、通用 Fact 与 `http_api` Source Mapper 已在当前代码实现。可靠增量已实现提交可见水位、Task + Scope 独立游标、固定 `(start,end]` 窗口、按冻结窗口条件先过滤后分页的原始变化读取、TaskRun 版本化扫描检查点、正常 Run 恢复最新有效未完成检查点、retry 复制来源窗口与进度，以及最终 Research Agent Step/Analysis/Report/游标/Run 成功的原子提交。V1-06 已实现同一 Document 的增量与历史证据合并、Fact 与来源 Chunk 关联、`evidence_groups` 持久化以及 discovered/screened/selected/证据组/filtered-out/unexamined 的分项覆盖统计；跨 Document 转载识别与跨源冲突解释由 V2-03 实现，见下。V1-07 已实现环境凭据驱动的单 Owner 会话、受保护报告/原件/操作、稳定游标分页、Overview/Sources/Tasks/Runs/积压/检索接口，以及来源采集结果、更新预期和后处理积压的分离展示；自动化验收覆盖未认证、过期/损坏会话、CSRF、重复触发、确认结束、来源失败、安全原件和分页边界。V1-08 已实现受保护的 Overview、Intelligence、Tasks、Research、Runs 响应式 Web 控制台，包含运行时响应解码、内存 CSRF、统一会话恢复、URL 承载检索与详情、分段处理状态、历史引用证据优先阅读、受保护原件入口和 Owner 确认后的恢复操作；测试服务器上的类型检查、类型与行为测试、生产构建、生产依赖审计及桌面/手机浏览器 smoke 已通过。V1-09 已完成单机 Compose 生产形态：Nginx 提供前端并同源代理 `/api`、`/health`，生产容器不常驻 Node；API、Worker、PostgreSQL 不发布主机端口，只有 Web 入口可绑定；健康检查、SPA fallback、认证、CSRF、原件保护和模型配置缺失时的稳定错误已在实际服务栈验证。2026-10-23 补做 ARM：在测试服务器安装 qemu `binfmt` 后，`api` 与 `web` 镜像均构建为 `linux/arm64`，容器内 `aarch64` 可运行，全新库 `alembic upgrade head` 与 `alembic check` 无漂移，四服务全栈 `healthy`，入口、登录、受保护读取、处理筛选与 CSRF 边界均在该 arm64 栈上通过；同轮发现并修复 Nginx 只在启动时解析 `api` 上游、导致容器重建后 Web 持续 502 的缺陷（`deploy/nginx.conf`，提交 `7c334c4`）。ARM 实机、真实移动设备视觉验收、跨设备登录与公网/TLS 发布仍为 pending，模拟结果不等于目标硬件已通过；真实外网采集与 magpie chat/embedding 闭环已验证；外部 MCP/返回费用端点、第三方 S3（当前为自建 SeaweedFS）及 mapper 更多指标范围仍为 pending。
+**已实现与待补的边界（截至 V1-09）：** 独立 API/Worker 进程、manual/schedule/retry 统一原子触发、`cron`+时区与 `every` 固定锚点的持久 due 调度、跨 Task 失败隔离、最小 `collection` Task 接入、Owner 显式确认停机后的结束/重试，Document 四阶段（parse/classify/facts/index）统一待办、独立有界文档处理槽位、有限自动重试、中断恢复与 `stocks.processing status|retry|reprocess`，轻量分类、通用 Fact 与 `http_api` Source Mapper 已在当前代码实现。可靠增量已实现提交可见水位、Task + Scope 独立游标、固定 `(start,end]` 窗口、按冻结窗口条件先过滤后分页的原始变化读取、TaskRun 版本化扫描检查点、正常 Run 恢复最新有效未完成检查点、retry 复制来源窗口与进度，以及最终 Research Agent Step/Analysis/Report/游标/Run 成功的原子提交。V1-06 已实现同一 Document 的增量与历史证据合并、Fact 与来源 Chunk 关联、`evidence_groups` 持久化以及 discovered/screened/selected/证据组/filtered-out/unexamined 的分项覆盖统计；跨 Document 转载识别与跨源冲突解释由 V2-03 实现，见下。V1-07 已实现环境凭据驱动的单 Owner 会话、受保护报告/原件/操作、稳定游标分页、Overview/Sources/Tasks/Runs/积压/检索接口，以及来源采集结果、更新预期和后处理积压的分离展示；自动化验收覆盖未认证、过期/损坏会话、CSRF、重复触发、确认结束、来源失败、安全原件和分页边界。V1-08 已实现受保护的 Overview、Intelligence、Tasks、Research、Runs 响应式 Web 控制台，包含运行时响应解码、内存 CSRF、统一会话恢复、URL 承载检索与详情、分段处理状态、历史引用证据优先阅读、受保护原件入口和 Owner 确认后的恢复操作；测试服务器上的类型检查、类型与行为测试、生产构建、生产依赖审计及桌面/手机浏览器 smoke 已通过。V1-09 已完成单机 Compose 生产形态：Nginx 提供前端并同源代理 `/api`、`/health`，生产容器不常驻 Node；API、Worker、PostgreSQL 不发布主机端口，只有 Web 入口可绑定；健康检查、SPA fallback、认证、CSRF、原件保护和模型配置缺失时的稳定错误已在实际服务栈验证。2026-10-23 补做 ARM：在测试服务器安装 qemu `binfmt` 后，`api` 与 `web` 镜像均构建为 `linux/arm64`，容器内 `aarch64` 可运行，全新库 `alembic upgrade head` 与 `alembic check` 无漂移，四服务全栈 `healthy`，入口、登录、受保护读取、处理筛选与 CSRF 边界均在该 arm64 栈上通过；同轮发现并修复 Nginx 只在启动时解析 `api` 上游、导致容器重建后 Web 持续 502 的缺陷（`deploy/nginx.conf`，提交 `7c334c4`）。ARM 实机、真实移动设备视觉验收、跨设备登录与公网/TLS 发布已由 Owner 于 2026-10-27 移出本轮验收，模拟结果不等于目标硬件通过；真实外网采集与 magpie chat/embedding 闭环已验证；真实 MCP 客户端已有独立证据，完整补证 Run 仍缺真实证据。返回费用端点、第三方 S3 和 SEC 完整 JSON 链路按文末范围决定处理。
 
 ## V2：研究深化
 
@@ -61,7 +61,7 @@ V2 在日常运行稳定后改善资料缺口、来源冲突和历史比较的�
 - **来源独立性与冲突**：确定转载同一原文的资料按一组证据处理，保留各原件；仅标题或向量相似不能强制合并。独立相反观点及数值冲突并列呈现，热门公司的报道数量不能自动增加结论确定性。
 - **历史和覆盖**：报告比较基于实际原始证据变化，说明以前的判断与当前证据差异；提供更完整的候选扫描、来源可用性、模型费用和异常处理视图。未扫描候选数量未知时保持未知，不伪填零。
 
-**已实现与待补的边界（截至 V2-01）：** Tool 目录（`config/tools.yaml`，默认 `tools: []`）、授权解析与 Run 授权快照校验、远程 MCP Streamable HTTP 客户端（协议握手、会话、预算、SSE、结果映射、URL/DNS 安全与日志脱敏）、有界补证计划与执行（≤2 轮、每轮 ≤4 请求）、统一入库后追加 `research_inputs`、报告合并视图与重试保留已在当前代码实现，并在测试服务器以单元/集成测试与全新开发库的 `alembic upgrade head` + `alembic check` 验证。待补验收：真实远程 MCP 服务与凭据未提供，实际供应商接通、真实原件字节链路与第三方限流行为尚未验收。以上验证只在测试服务器 `100.120.14.84` 的隔离目录执行，无凭据时标记未验收，不回退到本机或模拟结果。
+**已实现与待补的边界（截至 V2-01）：** Tool 目录（`config/tools.yaml`，默认 `tools: []`）、授权解析与 Run 授权快照校验、远程 MCP Streamable HTTP 客户端（协议握手、会话、预算、SSE、结果映射、URL/DNS 安全与日志脱敏）、有界补证计划与执行（≤2 轮、每轮 ≤4 请求）、统一入库后追加 `research_inputs`、报告合并视图与重试保留已在当前代码实现，并在测试服务器以单元/集成测试与全新开发库的 `alembic upgrade head` + `alembic check` 验证。截至 2026-10-27，真实 Tavily 服务已通过生产 MCP 客户端调用并独立归档；完整研究 Run 的真实补证入库、引用与应用限流/预算终止尚未验证，见文末「待最终验收」。先前缺凭据的历史状态不再作为当前阻塞。以上验证只在测试服务器 `100.120.14.84` 的隔离目录执行，无凭据时标记未验收，不回退到本机或模拟结果。
 
 ### V2-02 更多真实来源与内容解析适配
 
@@ -107,7 +107,7 @@ V2 在日常运行稳定后改善资料缺口、来源冲突和历史比较的�
 - **SEC JSON 部分链路已补做**：只在隔离配置启用 Apple `CIK0000320193`，原件入库成功，4 个字段以 `source_mapping` 映射并保留 JSON Pointer、版本与原件哈希，重复采集复用 version 1。完整 JSON 的 parse 因超过 5,000 值上限而返回 `STRUCTURED_CONTENT_TOO_LARGE`，没有生成完整 Chunk/Embedding；字段映射成功不能当作全文解析成功。仓库样例仍为 `enabled: false`。
 - **真实 XML 与 PDF 边界**：Fed XML 实际获取 14,813 字节，parser 生成 125 segments/12 chunks 并保存 `xml_path`。本轮 Fed PDF 请求 25 秒超时，未记为通过；此前 V2-02 的真实 PDF 证据仍保留。
 
-详细命令、报告 ID、各项边界、旧记录校正和保留资源见 [本轮验收记录](../.trellis/tasks/10-20-stocks-v2/research/acceptance-2026-10-23.md)。V2 仍保持阶段未退出；真实远程 MCP、转载/冲突与跨报告修订成对样例、返回费用的端点和长期运行尚未完成。
+详细命令、报告 ID、各项边界、旧记录校正和保留资源见 [本轮验收记录](../.trellis/tasks/10-20-stocks-v2/research/acceptance-2026-10-23.md)。这段记录反映 2026-10-23 的证据；后续 Tavily 客户端成功与 Owner 范围收敛以文末为准，长期调度/限流及完整真实补证 Run 仍未关闭。
 
 ## 所有阶段共同遵守
 
@@ -118,15 +118,17 @@ V2 在日常运行稳定后改善资料缺口、来源冲突和历史比较的�
 
 ## 待最终验收
 
-按 Owner「按任务列表逐个实施，需要真人验收或第三方 API 的先留存」的安排，各阶段未完成的人工与外部依赖项集中列在此处，供最终验收逐条确认；每项的实际边界以前文各阶段「已实现与待补的边界」段落为准，操作细节与凭据要求见 `.trellis/tasks/10-20-stocks-roadmap/pending-acceptance.md`。
+按 Owner 已确认的范围决定，集中登记已验证、移出范围与仍缺证据的项目。范围收敛不算通过，父任务归档不等于所有真实运行验收完成。统一记录见 [pending-acceptance.md](../.trellis/tasks/10-20-stocks-roadmap/pending-acceptance.md)，六项决定见 [最终范围决定](../.trellis/tasks/10-20-stocks-roadmap/final-acceptance-scope.md)。
 
-- **真实模型闭环与真实外网采集**（V0-07 AC-1）：**已于 2026-10-23 执行并通过**，证据见 V0 章节「V0 端到端验收」段落。模型经本机 magpie 网关（chat=`group/openai`，embedding=`workbuddy/bge-m3` 1024 维），SEC 联系邮箱已换为真实地址。仍未完成：SEC EDGAR submissions 全文研究链路（本轮仅真实采集与四字段映射成功，全文解析超限）、调度长期运行与第三方限流。
-- **真实远程 MCP 与授权工具**（V2-01）：需要可用的远程 MCP 服务地址与凭据，才能验收真实供应商接通、真实原件字节链路与第三方限流行为。
-- **真实来源联系方式与 SEC 映射**（V2-02）：联系邮箱已配置，2026-10-23 已用 Apple CIK 验证真实 JSON 入库、四字段映射与重复采集。全文解析因 5,000 值上限失败；完整 JSON 的 Chunk/Embedding/报告链路和更多字段/CIK 范围仍未验收，样例保持 `enabled: false`。
+- **真实模型闭环与真实外网采集**（V0-07 AC-1）：**已于 2026-10-23 执行并通过**，证据见 V0 章节「V0 端到端验收」段落。模型经本机 magpie 网关（chat=`group/openai`，embedding=`workbuddy/bge-m3` 1024 维），SEC 联系邮箱已换为真实地址。仍缺调度长期运行、应用第三方限流与预算耗尽的观察；SEC 完整 JSON 研究链路已于 2026-10-27 移出范围，本轮真实 submissions JSON 采集与四字段映射不是 companyconcept 验证。
+- **真实远程 MCP 与授权工具**（V2-01）：**真实客户端接通已完成**，见 [Tavily 验证记录](../.trellis/tasks/archive/2026-10/10-27-v2-real-mcp-tavily/verification/README.md)。生产 `McpClient` initialize/list/call 成功（4.184 秒）；完整研究 Run 的真实补证入库、取材与报告引用尚未执行。Tavily 返回搜索摘要，不冒充完整网页；探测遇到 429 不证明应用持续运行时的恢复与有界终止。
+- **真实来源联系方式与 SEC 映射**（V2-02）：联系邮箱及 submissions JSON 入库、四字段映射与重复采集已有证据；完整 JSON 解析超过 5,000 值上限失败。Owner 于 2026-10-27 移出全量 companyfacts/完整 JSON 研究链路验收；companyconcept 单指标按需取数是可选方案，未在既有证据中实测，不把原 submissions 记录改名为 companyconcept 成功。
 - **真实同源转载与冲突样例**（V2-03）：**不在范围（2026-10-24 决定）**，不再作为待验收项。系统只按显式声明（`<link rel="canonical">`、文章 URL、Feed `<source>`）合并，不做跨站正文相似度推断，同源合并与数值/单位/期间冲突已有受控测试覆盖。2026-10-24 探测未找到任何显式声明指向他源同一原件的真实样本（Fed/SEC 官方 RSS 无 `<source>`；Google News 只给自身聚合跳转，且其条目需依赖未公开接口解跳转、多数目标站点返回 401/403，拿不到正文时只能存 `completeness=partial` 的标题/摘要，无法支撑 finding）；因此不把聚合跳转解析纳入采集。探测详情见 [probe-2026-10-24](../.trellis/tasks/archive/2026-10/10-24-v2-real-source-samples/research/probe-2026-10-24.md)。
 - **真实报告差异样例**（V2-04）：**不在范围（2026-10-24 决定）**，不再作为待验收项。跨版本对照、指标修订与晚到资料标注已有受控与接口级测试；同一 Task 两次真实成功报告的 Agent 内容与接口对照已于 2026-10-23 完成。该场景要求长期轮询同一批 URL 等待偶发改稿/勘误，对当前手板投入产出不成立，Owner 明确不纳入。2026-10-24 探测也确认无合格样本：库内 22 份真实 SEC 文档与线上字节 22/22 不同，但归一化正文 22/22 完全一致（唯一差异为尾部防爬脚本随机串，如 2026-107 为 680 词对 680 词、旧 63889 字节对新 63879 字节）；Apple CIK JSON 字节与库内一致；Treasury 逐日数值属不同 `record_date` 记录而非同文档修订。保留现有能力与测试，不得把模板噪声当作来源修订。
-- **真实返回费用的模型端点**（V2-05）：费用能否得到取决于供应商响应，当前配置的 OpenAI 兼容端点通常不返回 `cost`；需要 Owner 提供会返回费用的端点，确认费用落地与非零显示。
-- **调度与限流下的长期运行**（V2-02、V2-05）：调度触发的长期采集与研究、第三方限流与预算耗尽下的有界终止，需在真实持续运行中观察，不用模拟结果代替。
-- **真实移动设备与 ARM 实机**（V1-08、V1-09）：真实移动设备的视觉验收与跨设备登录尚未执行。ARM 侧已于 2026-10-23 在测试服务器安装 qemu `binfmt` 后补齐：`api` 与 `web` 镜像均构建为 `linux/arm64`、容器内 `aarch64` 可运行、全新库 `alembic upgrade head` 与 `alembic check` 无漂移、四服务全栈 `healthy`，入口/登录/受保护读取/处理筛选/CSRF 边界均通过；同轮修复了 Nginx 只在启动时解析 `api` 上游导致的 502 缺陷（提交 `7c334c4`）。仍缺真实 ARM 实机（模拟不等于硬件）与公网/HTTPS 入口。
-- **范围收敛说明**（2026-10-24）：上列 V2-03「真实同源转载与冲突样例」与 V2-04「真实报告差异样例」经 Owner 确认**移出验收范围**，不是「已验证通过」，而是主动缩小范围。理由：前者需要他站显式声明转载同一原件，探测未找到此类真实来源，且系统按设计不做跨站正文相似度推断；后者需要长期轮询同一批 URL 等待偶发改稿/勘误，对当前手板投入产出不成立。两项的现有能力（显式声明合并、跨版本对照、指标修订与晚到资料标注）继续由受控与接口级测试覆盖，不得因移出范围而删除测试或改写为真实来源证据。其余各条仍按原状态保留。
-- **真实第三方闭环与发布**（V1-09）：真实外网采集与 magpie chat/embedding 模型闭环已验证；外部 MCP/返回费用端点、第三方 S3（当前为自建 SeaweedFS）、mapper 更多指标范围及公网/TLS 发布仍为 pending。
+- **真实返回费用的模型端点**（V2-05）：**移出范围（2026-10-27）**。不再要求提供返回费用的真实端点；未返回费用保持 null/未知，不写 0，不按 token 估价，继续使用 token 预算。
+- **调度与限流下的长期运行**（V2-02、V2-05）：**仍缺真实证据，未移出范围**。保留调度触发的长期采集与研究、cron/时区真实触发、应用第三方 429 与预算耗尽下有界终止的观察要求。36 小时容器 uptime 只证明运行时长，不能关闭这些要求。V1 晚提交仅验证 SQL 可见性，未证明应用变化流进入后续证据包；已有受控测试不能改写为该真实场景通过。
+- **真实移动设备与 ARM 实机**（V1-08、V1-09）：**跳过硬件验收（2026-10-27）**。真实移动设备视觉与跨设备登录不再作为交付条件；2026-10-23 qemu `binfmt` 下 arm64 构建、全栈与新库无漂移证据保留，Nginx 上游地址更新缺陷已修复（`7c334c4`）。模拟不是物理 ARM 通过。
+- **范围收敛说明**（2026-10-24）：上列 V2-03「真实同源转载与冲突样例」与 V2-04「真实报告差异样例」经 Owner 确认**移出验收范围**，不是「已验证通过」，而是主动缩小范围。理由：前者需要他站显式声明转载同一原件，探测未找到此类真实来源，且系统按设计不做跨站正文相似度推断；后者需要长期轮询同一批 URL 等待偶发改稿/勘误，对当前手板投入产出不成立。两项的现有能力（显式声明合并、跨版本对照、指标修订与晚到资料标注）继续由受控与接口级测试覆盖，不得因移出范围而删除测试或改写为真实来源证据。上述两项范围决定继续有效；2026-10-27 的六项收敛另见下条，不自动关闭长期运行或完整补证 Run。
+- **发布与存储范围（2026-10-27）**（V1-09）：公网 HTTPS 验收移出；应用提供 HTTP，由代理/CDN 终止 TLS，公开发布仍遵守访问控制与 secure cookie 配置。自建 SeaweedFS 已满足使用，不再要求接入第三方 S3。两项均为范围收敛，不宣称额外供应商或公网入口通过。
+- **当前词表与 Jev 单文档重处理**：已在隔离环境经 Magpie 完成（实际 jev-1.14.0，3.429 秒），见 [收尾验收记录](../.trellis/tasks/10-27-final-acceptance-closeout/acceptance.md)。`decision_model` 不是原生 Jev 身份证据，不声称生产 41 篇均为原生 Jev；成功重处理覆盖当前 classification JSONB，失败保留上次结果，不生成新的 parse batch。测试代理不改变生产官方端点配置。
+- **既有实现缺陷**：MP-01（自定义 API/Worker 配置路径不一致）、MP-02（历史语义文档漏带已有 Fact）已确认未修复，不在本轮修复范围，见 [既有审查](../.trellis/tasks/archive/2026-10/10-26-application-pipeline-audit/audit.md)。
