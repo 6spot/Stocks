@@ -228,7 +228,7 @@ agents:
       term in parentheses, e.g. 美国证券交易委员会（SEC）. Numeric values, units and
       ISO timestamps stay in their original form.
     model_ref: research
-    tools: []
+    tools: [tavily_search]
     input_schema:
       type: object
       additionalProperties: false

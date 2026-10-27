@@ -4,6 +4,7 @@ import json
 import logging
 from collections.abc import Callable, Iterator
 from typing import Any
+from urllib.parse import quote
 
 import httpx
 import pytest
@@ -22,6 +23,7 @@ from stocks.tools import (
     ToolConfigurationError,
     authorize_tools,
     load_tool_configuration,
+    tool_snapshot_entry,
 )
 
 ENDPOINT = "https://mcp.example.test/rpc"
@@ -831,6 +833,221 @@ def test_credentials_are_required_from_environment_before_request():
 
     assert missing.value.code == "TOOL_CREDENTIAL_MISSING"
     assert server.requests == []
+
+
+def _query_tool(**overrides: Any) -> ToolConfig:
+    payload = _tool_payload()
+    payload.pop("bearer_token_env")
+    payload["query_credential"] = {
+        "env": "TAVILY_API_KEY",
+        "param": "tavilyApiKey",
+    }
+    payload.update(overrides)
+    return ToolConfig.model_validate(payload)
+
+
+def test_query_credential_is_injected_into_the_request_url_only():
+    server = _MockServer()
+    client = _client(
+        server,
+        tool=_query_tool(),
+        environment={"TAVILY_API_KEY": "tvly-test+value/with=chars"},
+    )
+
+    with client:
+        client.call_tool("search", {"query": "export controls"})
+
+    # Every request carries the credential in the URL and none in a header.
+    for item in server.requests:
+        assert "authorization" not in item["headers"]
+    assert [item["body"]["method"] for item in server.requests] == [
+        "initialize",
+        "notifications/initialized",
+        "tools/call",
+    ]
+
+
+def test_query_credential_url_is_quoted_and_never_snapshotted():
+    captured: list[str] = []
+
+    def on_request(request: httpx.Request) -> None:
+        captured.append(str(request.url))
+
+    server = _MockServer(on_request=on_request)
+    tool = _query_tool()
+    # Built at runtime so the expected quoting is computed, not written as a
+    # literal that could be mistaken for a real credential.
+    secret = "tvly-" + "abc+def/ghi=jkl"
+    quoted = quote(secret, safe="")
+    assert quoted != secret, "the credential must be percent-encoded"
+    client = _client(
+        server,
+        tool=tool,
+        environment={"TAVILY_API_KEY": secret},
+    )
+
+    with client:
+        client.list_tools()
+
+    assert captured
+    assert all(
+        url == f"{ENDPOINT}?tavilyApiKey={quoted}" for url in captured
+    )
+
+    snapshot = tool_snapshot_entry(tool)
+    assert snapshot["credential_required"] is True
+    assert snapshot["credential_injection"] == "query"
+    rendered = json.dumps(snapshot)
+    assert "tvly-" not in rendered
+    assert "TAVILY_API_KEY" not in rendered
+    assert "tavilyApiKey" not in rendered
+
+
+def test_query_credential_missing_or_malformed_fails_before_request():
+    server = _MockServer()
+
+    missing_client = _client(server, tool=_query_tool(), environment={})
+    with pytest.raises(McpTransportError) as missing:
+        missing_client.list_tools()
+    assert missing.value.code == "TOOL_CREDENTIAL_MISSING"
+
+    for bad in ("key with space", "key\twith\ttab", "k" * 8_193):
+        invalid_client = _client(
+            server,
+            tool=_query_tool(),
+            environment={"TAVILY_API_KEY": bad},
+        )
+        with pytest.raises(McpTransportError) as invalid:
+            invalid_client.list_tools()
+        assert invalid.value.code == "TOOL_CREDENTIAL_INVALID"
+
+    assert server.requests == []
+
+
+def test_query_credential_errors_never_echo_the_credential():
+    secret = "tvly-secret-should-not-leak"
+
+    def failing(request: httpx.Request) -> httpx.Response:
+        raise httpx.ConnectError(
+            f"cannot connect to {request.url}",
+            request=request,
+        )
+
+    client = _client(
+        failing,
+        tool=_query_tool(),
+        environment={"TAVILY_API_KEY": secret},
+    )
+
+    with pytest.raises(McpTransportError) as failure:
+        client.list_tools()
+
+    rendered = json.dumps(failure.value.to_dict())
+    assert secret not in rendered
+    assert secret not in str(failure.value)
+
+
+def test_query_credential_completes_a_stateless_sse_session():
+    """Tavily-style server: SSE everywhere, no MCP-Session-Id, query auth."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        body = json.loads(request.content)
+        method = body.get("method")
+        if method == "initialize":
+            message = _initialized_payload()
+            return _response(
+                b"event: message\ndata: "
+                + _json_body(message)
+                + b"\n\n",
+                content_type="text/event-stream",
+            )
+        if method == "notifications/initialized":
+            return _response(b"", status=202)
+        if method == "tools/list":
+            message = {
+                "jsonrpc": "2.0",
+                "id": body["id"],
+                "result": {
+                    "tools": [
+                        {
+                            "name": "search",
+                            "description": "Search",
+                            "inputSchema": {"type": "object"},
+                        }
+                    ]
+                },
+            }
+            return _response(
+                b"data: " + _json_body(message) + b"\n\n",
+                content_type="text/event-stream",
+            )
+        if method == "tools/call":
+            message = {
+                "jsonrpc": "2.0",
+                "id": body["id"],
+                "result": {
+                    "content": [{"type": "text", "text": "hit"}],
+                    "structuredContent": {
+                        "title": "A result",
+                        "url": "https://example.test/a",
+                        "content": "body",
+                    },
+                },
+            }
+            return _response(
+                b"data: " + _json_body(message) + b"\n\n",
+                content_type="text/event-stream",
+            )
+        raise AssertionError(f"unexpected method: {method}")
+
+    client = _client(
+        handler,
+        tool=_query_tool(),
+        environment={"TAVILY_API_KEY": "tvly-live"},
+    )
+
+    with client:
+        discovered = client.list_tools()
+        result = client.call_tool("search", {"query": "semiconductors"})
+
+    assert [item.id for item in discovered] == ["search"]
+    assert result.is_error is False
+    assert result.result["structuredContent"]["url"] == (
+        "https://example.test/a"
+    )
+
+
+def test_query_credential_conflicts_with_bearer_token():
+    payload = _tool_payload()
+    payload["query_credential"] = {
+        "env": "TAVILY_API_KEY",
+        "param": "tavilyApiKey",
+    }
+
+    with pytest.raises(ValidationError) as conflict:
+        ToolConfig.model_validate(payload)
+
+    assert "mutually exclusive" in str(conflict.value)
+
+
+@pytest.mark.parametrize(
+    "credential",
+    [
+        {"env": "lower-case", "param": "tavilyApiKey"},
+        {"env": "TAVILY_API_KEY"},
+        {"param": "tavilyApiKey"},
+        {"env": "TAVILY_API_KEY", "param": "bad param"},
+        {"env": "TAVILY_API_KEY", "param": "a" * 65},
+        {"env": "TAVILY_API_KEY", "param": "tavilyApiKey", "extra": 1},
+    ],
+)
+def test_query_credential_shape_is_strict(credential):
+    payload = _tool_payload()
+    payload.pop("bearer_token_env")
+    payload["query_credential"] = credential
+
+    with pytest.raises(ValidationError):
+        ToolConfig.model_validate(payload)
 
 
 def test_response_size_json_depth_and_request_size_are_strict():

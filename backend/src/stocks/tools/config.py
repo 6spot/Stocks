@@ -554,6 +554,39 @@ class ResultMappingConfig(BaseModel):
         return self
 
 
+class QueryCredential(BaseModel):
+    """A credential injected into the endpoint URL as a query parameter.
+
+    Some remote MCP servers accept the API key only as a query parameter
+    (``?tavilyApiKey=...``). The configuration names the environment variable
+    and the parameter; the value is read from the environment at request time
+    and never stored, logged or snapshotted.
+    """
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    env: str = Field(min_length=1, max_length=128)
+    param: str = Field(min_length=1, max_length=64)
+
+    @field_validator("env")
+    @classmethod
+    def validate_environment_name(cls, value: str) -> str:
+        if not ENVIRONMENT_NAME_PATTERN.fullmatch(value):
+            raise ValueError(
+                "query_credential.env must be an environment variable name"
+            )
+        return value
+
+    @field_validator("param")
+    @classmethod
+    def validate_parameter_name(cls, value: str) -> str:
+        if any(ord(char) < 0x21 or ord(char) > 0x7E for char in value):
+            raise ValueError(
+                "query_credential.param must contain visible ASCII characters"
+            )
+        return value
+
+
 class ToolConfig(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
@@ -566,6 +599,7 @@ class ToolConfig(BaseModel):
     # evidence, so the id is mandatory for every catalog entry.
     source_id: str
     bearer_token_env: str | None = Field(default=None, max_length=128)
+    query_credential: QueryCredential | None = None
     authorization_prefix: str = Field(
         default="Bearer ",
         min_length=1,
@@ -653,6 +687,10 @@ class ToolConfig(BaseModel):
 
     @model_validator(mode="after")
     def validate_tool(self) -> ToolConfig:
+        if self.bearer_token_env is not None and self.query_credential is not None:
+            raise ValueError(
+                "bearer_token_env and query_credential are mutually exclusive"
+            )
         try:
             parsed = validate_https_url(self.endpoint)
         except CollectionError as exc:
@@ -841,7 +879,20 @@ def tool_snapshot_entry(tool: ToolConfig) -> dict[str, Any]:
         "result_mapping_hash": _content_hash(
             tool.result_mapping.model_dump(mode="json")
         ),
-        "credential_required": tool.bearer_token_env is not None,
+        "credential_required": (
+            tool.bearer_token_env is not None
+            or tool.query_credential is not None
+        ),
+        # Injection form only. The environment variable name, parameter name and
+        # value are deliberately absent: a Run snapshot proves which credential
+        # shape was authorized, never the secret itself.
+        "credential_injection": (
+            "query"
+            if tool.query_credential is not None
+            else "header"
+            if tool.bearer_token_env is not None
+            else None
+        ),
         "timeout_seconds": tool.timeout_seconds,
         "max_json_depth": tool.max_json_depth,
         "max_sse_events": tool.max_sse_events,
@@ -857,6 +908,7 @@ def tool_authorization_snapshot(
 
 __all__ = [
     "MCP_PROTOCOL_VERSION",
+    "QueryCredential",
     "ResultMappingConfig",
     "ToolBudgets",
     "ToolConfig",

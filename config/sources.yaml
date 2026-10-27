@@ -32,6 +32,24 @@ sources:
     max_items: 20
     user_agent: StocksIntelligence/0.1 (6spot07@gmail.com)
 
+  # External web search results retrieved through a remote MCP Tool. The Tool
+  # registers retrieved originals under this Source so they keep a provenance
+  # entry like any collected document; the search provider is not the publisher
+  # of the retrieved pages. Trust stays T3: a search hit is a lead, not a
+  # verified statement, and each result URL is cited as its own original.
+  - source_id: tavily_web
+    name: Tavily Web Search Results
+    connector: http_api
+    enabled: false
+    publisher: Tavily
+    trust_tier: T3
+    api_url: https://mcp.tavily.com/mcp/
+    timeout_seconds: 60
+    max_response_bytes: 1000000
+    max_redirects: 0
+    max_items: 5
+    user_agent: StocksIntelligence/0.1 (6spot07@gmail.com)
+
   # SEC EDGAR submissions API (disabled example). The endpoint needs no API key
   # but SEC requires a real contact address in the User-Agent and accepts only
   # modest request rates, so the Owner replaces CIK/contact/query scope and

@@ -7,7 +7,7 @@ import time
 from collections.abc import Callable, Iterator, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any
-from urllib.parse import SplitResult
+from urllib.parse import SplitResult, quote
 
 import httpcore
 import httpx
@@ -278,6 +278,43 @@ class _EndpointClient:
         self.initialized = False
         self._next_request_id = 1
         self._http_client: httpx.Client | None = None
+        # A query-injected credential is resolved lazily, at the same point the
+        # bearer header is: the first request. A missing or malformed secret
+        # then fails with the same codes as the header form, and the assembled
+        # URL only ever lives in memory.
+        self._request_url: str | None = None
+
+    def _request_target(self) -> str:
+        if self._request_url is None:
+            self._request_url = self._build_request_url()
+        return self._request_url
+
+    def _build_request_url(self) -> str:
+        credential = self.tool.query_credential
+        if credential is None:
+            return self.tool.endpoint
+        value = self.environment.get(credential.env)
+        if not value:
+            raise McpTransportError(
+                "TOOL_CREDENTIAL_MISSING",
+                "Configured MCP credential is unavailable",
+            )
+        if (
+            len(value) > 8_192
+            or any(
+                ord(char) < 0x21 or ord(char) > 0x7E
+                for char in value
+            )
+        ):
+            raise McpTransportError(
+                "TOOL_CREDENTIAL_INVALID",
+                "Configured MCP credential is invalid",
+            )
+        separator = "&" if "?" in self.tool.endpoint else "?"
+        return (
+            f"{self.tool.endpoint}{separator}{credential.param}="
+            f"{quote(value, safe='')}"
+        )
 
     def operation_deadline(self) -> float:
         return self.clock() + self.tool.timeout_seconds
@@ -553,7 +590,7 @@ class _EndpointClient:
                 self._http_client = httpx.Client(**client_kwargs)
             request = self._http_client.build_request(
                 "POST",
-                self.tool.endpoint,
+                self._request_target(),
                 headers=headers,
                 content=body,
                 # httpx applies a per-request timeout through the request

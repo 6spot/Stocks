@@ -12,6 +12,9 @@
 #                     under, so evidence keeps a real Publisher and trust tier
 #   bearer_token_env    environment variable holding the credential; the value
 #                     never appears in configuration, snapshots, logs or records
+#   query_credential    alternative to bearer_token_env for servers that accept the
+#                     key only as a URL query parameter ({env, param}); mutually
+#                     exclusive with bearer_token_env, value never stored
 #   input_schema        bounded JSON Schema for the arguments the model may send
 #   output_schema       optional JSON Schema the mapped result must satisfy
 #   result_mapping      how to project the CallToolResult: `output_path` for one
@@ -55,4 +58,40 @@
 #       max_request_bytes: 100000
 #       max_result_bytes: 1000000
 
-tools: []
+tools:
+  # Tavily remote MCP (Streamable HTTP, stateless, SSE responses). The provider
+  # accepts its API key only as a query parameter, so the credential is injected
+  # into the request URL from TAVILY_API_KEY at request time. `output_path`
+  # selects the first search hit of `structuredContent` because the supplement
+  # contract consumes exactly one original per call; `content` is the provider's
+  # extracted page text, so a citation can point at the hit and that text.
+  - id: tavily_search
+    enabled: true
+    endpoint: https://mcp.tavily.com/mcp/
+    remote_name: tavily_search
+    source_id: tavily_web
+    query_credential:
+      env: TAVILY_API_KEY
+      param: tavilyApiKey
+    timeout_seconds: 60
+    max_sse_events: 200
+    input_schema:
+      type: object
+      additionalProperties: false
+      required: [query]
+      properties:
+        query:
+          type: string
+          minLength: 1
+          maxLength: 500
+        max_results:
+          type: integer
+          minimum: 1
+          maximum: 5
+    result_mapping:
+      output_path: [structuredContent, results, 0]
+    budgets:
+      max_calls: 2
+      max_tokens: 16000
+      max_request_bytes: 100000
+      max_result_bytes: 1000000
