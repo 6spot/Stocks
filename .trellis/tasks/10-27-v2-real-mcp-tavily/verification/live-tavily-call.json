@@ -1,0 +1,23 @@
+{
+  "tool_id": "tavily_search",
+  "remote_name": "tavily_search",
+  "source_id": "tavily_web",
+  "credential_injection": "query",
+  "elapsed_s": 4.184,
+  "is_error": false,
+  "content_type": "text/event-stream",
+  "discovered": [
+    "tavily_search"
+  ],
+  "mapped_title": "Collateral Damage: The Domestic Impact of U.S. Semiconductor Export Controls",
+  "mapped_url": "https://www.csis.org/analysis/collateral-damage-domestic-impact-us-semiconductor-export-controls",
+  "content_len": 1367,
+  "budgets": {
+    "max_calls": 2,
+    "max_tokens": 16000,
+    "max_request_bytes": 100000,
+    "max_result_bytes": 1000000
+  },
+  "external_success": true,
+  "note": "Real Tavily remote MCP call through the production Tool client (SSRF checks enabled; resolver returns the provider's real public addresses, TLS carried by the SSH reverse tunnel). Credential injected as a URL query parameter from TAVILY_API_KEY; the value is not recorded anywhere."
+}

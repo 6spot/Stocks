@@ -1,0 +1,3 @@
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "外部 Tool 与 MCP 契约、凭据脱敏与 SSE 完成条件的唯一工程规范"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "测试选择与最小回归范围"}
+{"file": ".trellis/spec/backend/testing-guidelines.md", "reason": "远程测试环境、传输与清理规范"}

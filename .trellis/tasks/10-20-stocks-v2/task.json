@@ -23,7 +23,8 @@
     "10-20-v2-02-source-parser-expansion",
     "10-20-v2-03-source-conflicts",
     "10-20-v2-04-report-comparison",
-    "10-20-v2-05-coverage-cost-acceptance"
+    "10-20-v2-05-coverage-cost-acceptance",
+    "10-27-v2-real-mcp-tavily"
   ],
   "parent": "10-20-stocks-roadmap",
   "relatedFiles": [

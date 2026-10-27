@@ -64,6 +64,20 @@ HTTPS 公网解析、禁重定向、响应字节/JSON 深度/SSE 事件数、凭
 转成上述错误码，不把远端原文放进异常、日志或快照。凭据只在准备请求头时从环境变量读取，
 缺失即失败（`TOOL_CREDENTIAL_MISSING`），不写入配置、Run 快照或 ModelCall。
 
+**凭据注入形态（`bearer_token_env` 与 `query_credential` 二选一）：** 只接受请求头认证的服务用
+`bearer_token_env`；只接受 URL 查询参数的服务（如 Tavily 远程 MCP 的 `?tavilyApiKey=`）用
+`query_credential: {env, param}`。两种形态的取值校验完全相同（非空、≤8192、可见 ASCII 0x21..0x7E），
+在首个请求构造时惰性解析，失败码同为 `TOOL_CREDENTIAL_MISSING` / `TOOL_CREDENTIAL_INVALID`。
+
+注入后的 URL **只存在于内存中的请求对象**：`endpoint` 配置本身仍禁止 query/fragment（基线校验不变，
+注入前完成 HTTPS/公网/结构校验），注入用 `quote(value, safe="")` 百分号编码，不做二次 URL 校验
+（`validate_https_url` 会拒绝 query，二次校验自相矛盾）。`_validate_destination` 只解析 host，不受影响。
+快照仅记 `credential_required` 与 `credential_injection: "query"|"header"`，不含变量名、参数名或值；
+错误 `details`、日志与 ModelCall 同样不得出现注入后的完整 URL。
+
+回归参考 `tests/test_tools.py`：注入到请求 URL 且无 Authorization 头、百分号编码、缺失/非法凭据在
+请求前失败、错误不回显凭据、快照无泄漏、两种形态互斥、无会话 SSE 全流程。
+
 **SSE 响应完成条件（`_EndpointClient._read_sse()`）：** 请求完成不取决于连接 EOF。客户端按
 字节收取经过 `_iter_body()` 同一字节预算与总截止时间检查的块，用 LF/CR/LF+CR（含跨块拆分的
 CRLF）切行，只对完整事件解码 UTF-8；事件内 `data:` 行以换行拼接、注释和 `event:`/`id:`/`retry:`

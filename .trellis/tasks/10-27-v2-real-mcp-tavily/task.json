@@ -1,0 +1,28 @@
+{
+  "id": "v2-real-mcp-tavily",
+  "name": "v2-real-mcp-tavily",
+  "title": "V2-01 真实远程 MCP 调试：Tavily Search",
+  "description": "用 Owner 提供的真实 Tavily 远程 MCP 端点完成 V2-01 的真实授权工具验收：配置凭据、诊断协议差异、接入真实搜索 Tool，并在隔离环境记录结果",
+  "status": "in_progress",
+  "dev_type": null,
+  "scope": null,
+  "package": null,
+  "priority": "P2",
+  "creator": "me",
+  "assignee": "me",
+  "createdAt": "2026-10-27",
+  "completedAt": null,
+  "branch": "feat/research-article",
+  "base_branch": "main",
+  "worktree_path": null,
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [],
+  "parent": "10-20-stocks-v2",
+  "relatedFiles": [],
+  "notes": "",
+  "meta": {
+    "priority": "P2"
+  }
+}
