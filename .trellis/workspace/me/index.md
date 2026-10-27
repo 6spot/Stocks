@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 34
+- **Total Sessions**: 35
 - **Last Active**: 2026-10-27
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~1080 | Active |
+| `journal-1.md` | ~1120 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 35 | 2026-10-27 | V1/V2 final acceptance closeout: isolated Jev verification and scope record | `52d5ae8`, `6b964f3`, `9572da8` | `feat/research-article` |
 | 34 | 2026-10-27 | Tavily 远程 MCP 真实接入与查询参数凭据 | `cd05fb5`, `8441541` | `feat/research-article` |
 | 33 | 2026-10-27 | Jev 原生接入、全局标签语义与手动研究闭环验收 | `77c86ff`, `aeda3c5` | `feat/research-article` |
 | 32 | 2026-10-26 | 主题文章式研究报告与分层证据交付 | `748c74a`, `47a5682`, `31490de` | `feat/research-article` |

@@ -1078,3 +1078,43 @@ V2 任务列表已全部交付归档后，处理跨任务待验收登记中的 P
 
 - 未验证：真实 Tavily 结果跑完整补证 Run 的入库/引用链路（既有受控测试覆盖）；Tavily content 是搜索结果摘要而非整页原文。
 - V2-01 真实远程 MCP 验收已完成；V1 剩余真机/ARM/公网 HTTPS 与 V2 费用端点等仍待 Owner 条件或范围收敛。
+
+
+## Session 35: V1/V2 final acceptance closeout: isolated Jev verification and scope record
+<!-- trellis-session: v=2 fp=b9873184153a2617 -->
+
+**Date**: 2026-10-27
+**Task**: V1/V2 final acceptance closeout: isolated Jev verification and scope record
+**Branch**: `feat/research-article`
+
+### Summary
+
+Completed isolated real-document Jev reprocess validation through existing Magpie gateway; recorded six Owner-approved scope reductions; kept V1/V2/roadmap active because long-running scheduling, live rate/budget termination, full Tavily research Run and late-commit flow evidence remain unverified.
+
+### Main Changes
+
+- Real SEC document reprocessed in isolated PostgreSQL snapshot: typesafe/jev-1.14.0, taxonomy 2026-10-27, 3.429s, completed; originals/chunks unchanged.
+- Recorded six scope decisions in validation and parent docs; corrected decision_model/Jev identity, JSONB overwrite, SEC evidence and uptime claims.
+- Cleaned isolated DB/snapshot/credentials/tunnel and restored Dockerfile; deployment backup retained private; user AGENTS.md edits left uncommitted.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `52d5ae8` | docs(acceptance): record isolated Jev reprocess and scope closeout |
+| `6b964f3` | docs(acceptance): link closeout evidence at archive path |
+| `9572da8` | chore(task): archive 10-27-final-acceptance-closeout |
+
+### Testing
+
+- [OK] Remote isolated reprocess: exit0, actual jev-1.14.0, 1 native attempt, 6856 Jev + 1123 entity tokens, total 7979 tokens; fingerprint 023566a6..., status completed.
+- [OK] Independent docs/evidence review found no evidence mismatch; wording conflicts corrected. No local tests or application code changes.
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- Close remaining real-run gaps: sustained scheduling/cron-timezone, live 429/budget termination, full Tavily supplement Run, late-commit application flow into evidence package.
+- MP-01/MP-02 remain known unfixed defects; do not treat parent archives as proof all real scenarios passed.
