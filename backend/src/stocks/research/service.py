@@ -390,6 +390,20 @@ def select_evidence(
                 gap_reasons.append("unindexed_chunks")
         if truncated:
             gap_reasons.append("retrieval_truncated")
+        # A historical Document carries the structured Facts already derived
+        # from it, exactly like the incremental page does. Only Documents that
+        # enter here through semantics are loaded, in one bounded query per
+        # query round; duplicates merge later on the collector's fact ids.
+        new_hit_document_ids = tuple(
+            dict.fromkeys(
+                hit.document_id
+                for hit in result.hits
+                if not collector.has_document(hit.document_id)
+            )
+        )
+        facts_by_hit_document: dict[UUID, list[Fact]] = {}
+        for fact in facts_for_documents(session, new_hit_document_ids):
+            facts_by_hit_document.setdefault(fact.document_id, []).append(fact)
         for hit_index, hit in enumerate(result.hits, start=1):
             examined_chunks.add(hit.chunk_id)
             examined_candidates.add((hit.document_id, hit.chunk_id))
@@ -414,6 +428,11 @@ def select_evidence(
                 role=HISTORICAL_CONTEXT,
                 reason=_background_reason(role),
                 match_role=role,
+                facts=mark_conflicting_facts(
+                    _unique_facts_by_signature(
+                        facts_by_hit_document.get(hit.document_id, [])
+                    )
+                ),
             )
             selected_tokens += tokens
             selected_in_query += 1

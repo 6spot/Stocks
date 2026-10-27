@@ -400,6 +400,217 @@ def semantic_result(*hits: SearchHit, truncated: bool = False):
     )()
 
 
+def test_semantic_only_document_carries_saved_facts(engine, monkeypatch):
+    """MP-02: a historical Document recalled only semantically keeps its Facts.
+
+    The change cursor has moved past this Document, so the incremental page
+    never sees it; the semantic path itself must attach the stored Facts,
+    otherwise research receives the article without its structured values.
+    """
+
+    import stocks.research.service as research_service
+
+    with Session(engine) as session:
+        run = create_run(session, "mp02-historical-facts")
+        document, chunks = add_document_with_chunks(
+            session,
+            dedupe_key="historical-facts",
+            chunk_texts=(
+                "Inflation was 2.4 percent.",
+                "Core prices rose 0.3 percent.",
+            ),
+        )
+        facts = add_facts(session, document, chunks[0])
+        add_change(session, document)
+        watermark = current_watermark(session)
+        window = ChangeWindow(
+            start=watermark,
+            end=watermark,
+            task_id=run.task_id,
+            fingerprint=scope_fingerprint(run.task_id, run.scope),
+            resume=False,
+        )
+        monkeypatch.setattr(
+            research_service,
+            "semantic_search",
+            lambda *args, **kwargs: semantic_result(
+                search_hit(document, chunks[0])
+            ),
+        )
+        result = select_evidence(
+            session,
+            make_config(),
+            embedding_targets(),
+            ModelClient({}),
+            run_id=run.id,
+            objective=run.objective,
+            scope=run.scope,
+            as_of=run.created_at,
+            queries=("inflation",),
+            limit_per_query=2,
+            max_tokens=30000,
+            change_window=window,
+            scan_query_snapshot=query_snapshot(),
+            embed=fake_embed,
+        )
+
+        package = result.package
+        groups = [
+            group
+            for group in package.evidence_groups
+            if group["document_id"] == str(document.id)
+        ]
+        assert len(groups) == 1
+        group = groups[0]
+        assert group["role"] == "historical_context"
+        assert {item["fact_id"] for item in group["fact_refs"]} == {
+            str(fact.id) for fact in facts
+        }
+        for item in group["fact_refs"]:
+            assert item["evidence_ref"]["chunk_id"] == str(chunks[0].id)
+            assert item["unit"] == "percent"
+            assert item["conflict"] is False
+        assert package.coverage["fact_count"] == 1
+        assert session.get(EvidencePackage, package.id) is not None
+
+
+def test_semantic_document_without_facts_stays_selectable(engine, monkeypatch):
+    """MP-02: an empty Fact set must not block semantic selection."""
+
+    import stocks.research.service as research_service
+
+    with Session(engine) as session:
+        run = create_run(session, "mp02-no-facts")
+        document, chunks = add_document_with_chunks(
+            session, dedupe_key="no-facts"
+        )
+        add_change(session, document)
+        watermark = current_watermark(session)
+        window = ChangeWindow(
+            start=watermark,
+            end=watermark,
+            task_id=run.task_id,
+            fingerprint=scope_fingerprint(run.task_id, run.scope),
+            resume=False,
+        )
+        monkeypatch.setattr(
+            research_service,
+            "semantic_search",
+            lambda *args, **kwargs: semantic_result(
+                search_hit(document, chunks[0])
+            ),
+        )
+        result = select_evidence(
+            session,
+            make_config(),
+            embedding_targets(),
+            ModelClient({}),
+            run_id=run.id,
+            objective=run.objective,
+            scope=run.scope,
+            as_of=run.created_at,
+            queries=("inflation",),
+            limit_per_query=2,
+            max_tokens=30000,
+            change_window=window,
+            scan_query_snapshot=query_snapshot(),
+            embed=fake_embed,
+        )
+
+        group = next(
+            group
+            for group in result.package.evidence_groups
+            if group["document_id"] == str(document.id)
+        )
+        assert group["fact_refs"] == []
+        assert group["role"] == "historical_context"
+        assert result.package.coverage["fact_count"] == 0
+
+
+def test_semantic_document_keeps_conflicting_fact_flags(engine, monkeypatch):
+    """MP-02: stored disagreements stay flagged when reached semantically."""
+
+    import stocks.research.service as research_service
+
+    with Session(engine) as session:
+        run = create_run(session, "mp02-conflict-facts")
+        document, chunks = add_document_with_chunks(
+            session,
+            dedupe_key="conflict-facts",
+            chunk_texts=(
+                "Inflation was 2.4 percent.",
+                "Inflation reached 2.9 percent.",
+            ),
+        )
+        add_facts(session, document, chunks[0], values=(2.4,))
+        session.add(
+            Fact(
+                document_id=document.id,
+                fact_key="conflicting-position",
+                fact_type="macro_indicator",
+                origin_method="llm_extraction",
+                evidence_ref={
+                    "kind": "chunk",
+                    "chunk_id": str(chunks[1].id),
+                    "parse_batch_id": str(chunks[1].parse_batch_id),
+                    "position": chunks[1].position,
+                },
+                subject_name="US CPI",
+                metric_id="cpi_yoy",
+                statement="Inflation reached 2.9 percent.",
+                value=2.9,
+                unit="percent",
+                available_at=document.collected_at,
+                attributes={},
+                processor_version="test",
+                config_fingerprint="f" * 64,
+                created_at=document.collected_at,
+            )
+        )
+        session.commit()
+        add_change(session, document)
+        watermark = current_watermark(session)
+        window = ChangeWindow(
+            start=watermark,
+            end=watermark,
+            task_id=run.task_id,
+            fingerprint=scope_fingerprint(run.task_id, run.scope),
+            resume=False,
+        )
+        monkeypatch.setattr(
+            research_service,
+            "semantic_search",
+            lambda *args, **kwargs: semantic_result(
+                search_hit(document, chunks[0])
+            ),
+        )
+        result = select_evidence(
+            session,
+            make_config(),
+            embedding_targets(),
+            ModelClient({}),
+            run_id=run.id,
+            objective=run.objective,
+            scope=run.scope,
+            as_of=run.created_at,
+            queries=("inflation",),
+            limit_per_query=2,
+            max_tokens=30000,
+            change_window=window,
+            scan_query_snapshot=query_snapshot(),
+            embed=fake_embed,
+        )
+
+        group = next(
+            group
+            for group in result.package.evidence_groups
+            if group["document_id"] == str(document.id)
+        )
+        assert len(group["fact_refs"]) == 2
+        assert all(item["conflict"] is True for item in group["fact_refs"])
+        assert result.package.coverage["fact_count"] == 2
+
+
 def test_document_and_fact_merge_across_incremental_and_semantic_paths(
     engine, monkeypatch
 ):

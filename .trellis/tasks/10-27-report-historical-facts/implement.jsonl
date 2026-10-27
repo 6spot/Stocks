@@ -1,0 +1,4 @@
+{"file": "backend/src/stocks/research/service.py", "reason": "MP-02 修复目标：语义路径 add_hit 传入历史 Document 的既有 Facts 投影"}
+{"file": "backend/src/stocks/research/evidence.py", "reason": "EvidenceCollector/add_facts 去重与 mark_conflicting_facts 投影管线"}
+{"file": "backend/tests/test_incremental_evidence.py", "reason": "回归测试与可复用测试辅助函数"}
+{"file": "docs/research.md", "reason": "V1-06 证据选择契约归属文档"}
