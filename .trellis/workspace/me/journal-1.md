@@ -1118,3 +1118,25 @@ Completed isolated real-document Jev reprocess validation through existing Magpi
 
 - Close remaining real-run gaps: sustained scheduling/cron-timezone, live 429/budget termination, full Tavily supplement Run, late-commit application flow into evidence package.
 - MP-01/MP-02 remain known unfixed defects; do not treat parent archives as proof all real scenarios passed.
+
+
+## Session 36: MP-01 配置一致性修复与归档
+<!-- trellis-session: v=2 fp=d5a5120404ac9b97 -->
+
+**Date**: 2026-10-27
+**Task**: MP-01 配置一致性修复与归档
+**Branch**: `feat/research-article`
+
+### Summary
+
+Worker 与相关 CLI 的配置路径统一遵循显式参数 > Settings > 内置默认；Compose 移除固定 Worker 配置参数。指定测试服务器隔离环境 34 个定向回归、修复前后路径探针、新库初始化和结构检查、受控 API→Worker→Report 持久化链路及 Compose 配置检查通过，独立审查无发现。任务已归档到 archive/2026-10/10-27-report-config-consistency，临时容器和凭据已清理。用户授权提交推送；原有 AGENTS.md、路线图和其他规划记录未纳入提交。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `0432e6a` | fix(config): align Worker and CLI paths with Settings |
+
+### Status
+
+[OK] **Completed**
