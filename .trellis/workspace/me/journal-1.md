@@ -1037,3 +1037,44 @@ V2 任务列表已全部交付归档后，处理跨任务待验收登记中的 P
 
 - MP-01 自定义 Worker 配置路径与 MP-02 历史语义文档漏带已有 Fact 已复现，按原范围保留，未修复。
 - 真实来源与全部生成/向量模型联合闭环、浏览器、长期 Worker 及部署未验证；报告保留 no_background_selected，未声称新增 Scope 精确标签过滤。
+
+
+## Session 34: Tavily 远程 MCP 真实接入与查询参数凭据
+<!-- trellis-session: v=2 fp=f8fcc4b04fdce08e -->
+
+**Date**: 2026-10-27
+**Task**: Tavily 远程 MCP 真实接入与查询参数凭据
+**Branch**: `feat/research-article`
+
+### Summary
+
+接入真实 Tavily 远程 MCP：扩展 Tool 配置支持 URL 查询参数凭据注入，经生产客户端完成真实搜索调用，测试与文档同步。
+
+### Main Changes
+
+- ToolConfig 新增 query_credential（env+param，与 bearer_token_env 互斥），快照只记注入形态，不含变量名/参数名/值。
+- 客户端惰性读取凭据、百分号编码注入请求 URL，无 Authorization 头；错误码与 Bearer 一致且不回显凭据。
+- config/tools.yaml 接入 tavily_search（output_path 取 structuredContent.results[0]、max_calls 2），sources.yaml 加 tavily_web provenance Source，仅 research_writer 授权。
+- docs/execution.md 与 error-handling spec 补查询参数注入契约；任务证据归档。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `cd05fb5` | feat(tools): support query-parameter credentials for remote MCP |
+| `8441541` | docs(spec): record MCP query-credential contract and Tavily acceptance |
+
+### Testing
+
+- [OK] 测试服务器 tests/test_tools.py 81 passed；test_execution.py + test_research_supplement.py 52 passed / 33 skipped。
+- [OK] 真实调用：生产 McpClient 经 SSH 隧道完成 initialize → tools/list → tavily_search，4.184 秒返回真实 CSIS 半导体出口管制分析（1,367 字符），is_error=false，external_success=true；SSRF 校验全程开启。
+- [OK] 配置与授权快照实加载通过，断言快照无凭据、无参数名、无注入 URL。
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- 未验证：真实 Tavily 结果跑完整补证 Run 的入库/引用链路（既有受控测试覆盖）；Tavily content 是搜索结果摘要而非整页原文。
+- V2-01 真实远程 MCP 验收已完成；V1 剩余真机/ARM/公网 HTTPS 与 V2 费用端点等仍待 Owner 条件或范围收敛。
