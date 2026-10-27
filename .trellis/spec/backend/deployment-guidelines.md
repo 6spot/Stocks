@@ -5,11 +5,15 @@
 - Trigger：修改 `compose.yaml`、后端/前端 Dockerfile、Nginx 配置、发布端口或生产
   健康检查时适用。产品边界仍由 `docs/architecture.md`、`docs/interface.md` 与
   `docs/quickstart.md` 维护。
+- 调整 Worker/CLI 配置参数默认值时同时检查 Compose 启动命令；产品路径优先级与参数归属见
+  [执行契约](../../../docs/execution.md)。
 
 ## Signatures
 
 - 服务：`postgres`、`api`、`worker`、`web`。`api` 与 `worker` 使用同一后端镜像；
   `web` 是多阶段前端构建，运行阶段只保留 Nginx 与静态产物。
+- `WorkerContext.from_settings(**overrides)`：未显式覆盖的路径由同一 `Settings` 实例提供；
+  CLI parser 使用 `None` 区分未传参数与实际覆盖。
 - 唯一主机发布端口：
   `${WEB_BIND_ADDRESS:-0.0.0.0}:${WEB_PORT:-8080}:8080`。
 - 内部健康检查：API `GET http://127.0.0.1:8000/health`；Web
@@ -17,6 +21,9 @@
 
 ## Contracts
 
+- CLI 不得把内置配置文件名放入 parser 默认值后无条件传给 Worker，否则会覆盖部署设置。
+  只传实际提供的覆盖；在执行分支按需读取 Settings，保留 `--help` 与已有记录检查的惰性边界。
+  Compose 的 API/Worker 必须共用配置环境与可读挂载，不在 Worker command 固定文件名。
 - Nginx 必须提供 `/` 与 SPA fallback，并把 `/api/`、`/health` 代理到 `api:8000`；
   浏览器保持单源 Cookie 与 CSRF 语义，API 和数据库不得绕开认证直接暴露。
 - Nginx 必须按请求解析 `api` 的地址，不得只在启动时解析并缓存：Compose 重建 `api`
@@ -37,6 +44,8 @@
 
 | 条件 | 预期处理 |
 | --- | --- |
+| 自定义配置路径 | 核对 API/Worker 解析出的路径和持久 Run/模型调用身份，不能仅确认环境变量存在 |
+| CLI 显式覆盖、文件缺失或非法 | 显式路径优先；保留入口已有结构化错误码与退出码 |
 | 缺少数据库密码或配置 | Compose 解析失败，不启动只完成一半的服务栈 |
 | 前端资源缺失 | `/assets/` 返回 `404`，不得用 `index.html` 冒充脚本 |
 | 已认证的 SPA 深链接 | 返回应用入口，刷新不丢当前阅读上下文 |
@@ -49,6 +58,8 @@
 
 ## Good / Base / Bad Cases
 
+- 配置案例：Good 为自定义来源/任务/模型经 API 入队并由 Settings 构建的 Worker 持久化结果；
+  Base 为无覆盖时使用内置默认；Bad 为 `.env` 已配置却被 Compose 固定参数覆盖。
 - Good：全新卷执行 `alembic upgrade head` 与 `check` 后启动完整栈，以 Web 端口完成
   health、登录、CSRF、报告/原件和 SPA smoke，并从 `ss`/Compose 输出确认只有 Web 发布。
 - Base：无真实 Provider/S3 时仍验证受保护的读取与稳定失败边界，把真实外部接入标为 pending。
@@ -58,6 +69,9 @@
 
 ## Tests Required
 
+- 配置入口变更按影响选择 `test_worker_processing.py`、`test_execution.py`、
+  `test_collection.py`、`test_search_cli.py` 中的默认/显式覆盖、错误及惰性回归。
+  Compose config 需核对两服务最终路径、挂载与 Worker command；受控模型验收不能声称真实 Provider 成功。
 - `docker compose config --quiet`，并断言 API/PostgreSQL/Worker 无发布端口、只有 Web
   有绑定入口。
 - 在隔离数据库中跑新库初始化与 `alembic check`，然后启动完整栈执行 health、根页面、
@@ -90,3 +104,12 @@ web:
 ```
 
 API 只留在内部网络；浏览器通过 Web 同源代理访问。
+
+```python
+# Wrong：未传 CLI 参数仍覆盖 Settings
+parser.add_argument("--config", default="config/tasks.yaml")
+# Correct：缺省路径由 Settings 提供，仅传真实覆盖
+parser.add_argument("--config", default=None)
+overrides = {} if args.config is None else {"task_config_path": args.config}
+context = WorkerContext.from_settings(**overrides)
+```

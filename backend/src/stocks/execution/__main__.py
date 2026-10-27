@@ -30,6 +30,7 @@ from stocks.models import (
     TaskRun,
     TaskStepResult,
 )
+from stocks.settings import settings
 
 
 def _run_payload(
@@ -161,13 +162,27 @@ def _trigger(args: argparse.Namespace) -> int:
                 )
             )
             return 0
-        task, agents = _configured_task(args.config, args.task)
+        task, agents = _configured_task(
+            args.config if args.config is not None else settings().tasks_config_path,
+            args.task,
+        )
         claimed = create_or_get_run(
             session,
             task,
             agents,
-            config_path=args.models_config if agents else None,
-            tools_config_path=args.tools_config,
+            config_path=(
+                (
+                    args.models_config
+                    if args.models_config is not None
+                    else settings().models_config_path
+                )
+                if agents else None
+            ),
+            tools_config_path=(
+                args.tools_config
+                if args.tools_config is not None
+                else settings().tools_config_path
+            ),
             triggered_by="manual",
         )
         print(
@@ -317,18 +332,18 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--config",
-        default="config/tasks.yaml",
-        help="Path to the Task/Agent configuration YAML.",
+        default=None,
+        help="Path to the Task/Agent configuration YAML (default: Settings).",
     )
     parser.add_argument(
         "--models-config",
-        default="config/models.yaml",
-        help="Path to the Provider/model configuration YAML.",
+        default=None,
+        help="Path to the Provider/model configuration YAML (default: Settings).",
     )
     parser.add_argument(
         "--tools-config",
-        default="config/tools.yaml",
-        help="Path to the authorized Tool configuration YAML.",
+        default=None,
+        help="Path to the authorized Tool configuration YAML (default: Settings).",
     )
     commands = parser.add_subparsers(dest="command", required=True)
 

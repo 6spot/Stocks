@@ -41,8 +41,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     )
     parser.add_argument(
         "--config",
-        default="config/models.yaml",
-        help="Provider/model YAML configuration path.",
+        default=None,
+        help="Provider/model YAML configuration path (default: Settings).",
     )
     parser.add_argument("--source-id", action="append", dest="source_ids")
     parser.add_argument("--published-from", type=_timezone_aware)
@@ -90,7 +90,11 @@ def main(argv: Sequence[str] | None = None) -> int:
         )
         with session_factory()() as session:
             if args.query:
-                targets, client = load_embedding_client(args.config)
+                targets, client = load_embedding_client(
+                    args.config
+                    if args.config is not None
+                    else settings().models_config_path
+                )
                 result = semantic_search(
                     session,
                     settings(),

@@ -109,9 +109,9 @@ class WorkerContext:
         values = {
             "session_factory": session_factory(),
             "settings": config,
-            "task_config_path": "config/tasks.yaml",
-            "model_config_path": "config/models.yaml",
-            "sources_config_path": "config/sources.yaml",
+            "task_config_path": config.tasks_config_path,
+            "model_config_path": config.models_config_path,
+            "sources_config_path": config.sources_config_path,
             "max_concurrent_runs": config.worker_max_concurrent_runs,
             "max_concurrent_documents": config.worker_max_concurrent_documents,
         }
@@ -564,18 +564,18 @@ def main(argv: Sequence[str] | None = None) -> int:
     )
     parser.add_argument(
         "--config",
-        default="config/tasks.yaml",
-        help="Path to the Task/Agent configuration YAML.",
+        default=None,
+        help="Path to the Task/Agent configuration YAML (default: Settings).",
     )
     parser.add_argument(
         "--models-config",
-        default="config/models.yaml",
-        help="Path to the Provider/model configuration YAML.",
+        default=None,
+        help="Path to the Provider/model configuration YAML (default: Settings).",
     )
     parser.add_argument(
         "--sources-config",
-        default="config/sources.yaml",
-        help="Path to the Source configuration YAML.",
+        default=None,
+        help="Path to the Source configuration YAML (default: Settings).",
     )
     parser.add_argument(
         "--once",
@@ -683,11 +683,13 @@ def main(argv: Sequence[str] | None = None) -> int:
         )
         return 2
     try:
-        overrides: dict = {
-            "task_config_path": args.config,
-            "model_config_path": args.models_config,
-            "sources_config_path": args.sources_config,
-        }
+        overrides: dict = {}
+        if args.config is not None:
+            overrides["task_config_path"] = args.config
+        if args.models_config is not None:
+            overrides["model_config_path"] = args.models_config
+        if args.sources_config is not None:
+            overrides["sources_config_path"] = args.sources_config
         if concurrency is not None:
             overrides["max_concurrent_runs"] = concurrency
         if document_concurrency is not None:

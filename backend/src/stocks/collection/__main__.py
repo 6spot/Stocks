@@ -18,8 +18,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     )
     parser.add_argument(
         "--config",
-        default="config/sources.yaml",
-        help="Path to the source configuration YAML.",
+        default=None,
+        help="Path to the source configuration YAML (default: Settings).",
     )
     parser.add_argument(
         "--source",
@@ -30,10 +30,25 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     try:
-        configured = load_sources(args.config)
+        configured = load_sources(
+            args.config if args.config is not None else settings().sources_config_path
+        )
         selected = select_sources(configured, args.source_ids)
     except CollectionError as exc:
         print(json.dumps({"error": exc.to_dict()}, ensure_ascii=False), file=sys.stderr)
+        return 2
+    except (ValueError, OSError):
+        print(
+            json.dumps(
+                {
+                    "error": {
+                        "code": "DATABASE_UNAVAILABLE",
+                        "message": "Database session could not be initialized",
+                    }
+                }
+            ),
+            file=sys.stderr,
+        )
         return 2
 
     output: dict[str, object] = {"sources": []}

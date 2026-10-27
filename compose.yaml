@@ -55,18 +55,7 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-    command:
-      [
-        "python",
-        "-m",
-        "stocks.worker",
-        "--config",
-        "config/tasks.yaml",
-        "--models-config",
-        "config/models.yaml",
-        "--sources-config",
-        "config/sources.yaml",
-      ]
+    command: ["python", "-m", "stocks.worker"]
     networks: [internal]
 
   web:

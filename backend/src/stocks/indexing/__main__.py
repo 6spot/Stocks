@@ -30,8 +30,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     )
     parser.add_argument(
         "--config",
-        default="config/models.yaml",
-        help="Provider/model YAML configuration path.",
+        default=None,
+        help="Provider/model YAML configuration path (default: Settings).",
     )
     parser.add_argument(
         "--document-id",
@@ -99,7 +99,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     executions, errors = run_stages_for_documents(
         session_factory(),
         settings(),
-        build_stage_registry(args.config),
+        build_stage_registry(
+            args.config if args.config is not None else settings().models_config_path
+        ),
         targets,
         [STAGE_INDEX],
         reprocess=args.reindex,

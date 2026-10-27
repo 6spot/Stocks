@@ -372,6 +372,18 @@ def test_cli_status_reports_capability_and_counts(monkeypatch, capsys):
             return False
 
     monkeypatch.setattr(cli, "session_factory", lambda: _SessionContext)
+    config = make_config(
+        models_config_path="custom/models.yaml",
+        sources_config_path="custom/sources.yaml",
+    )
+    monkeypatch.setattr(cli, "settings", lambda: config)
+    registry_paths = []
+
+    def configured_registry(model_path, *, sources_config_path):
+        registry_paths.append((model_path, sources_config_path))
+        return build_stage_registry(model_path, sources_config_path=sources_config_path)
+
+    monkeypatch.setattr(cli, "build_stage_registry", configured_registry)
     monkeypatch.setattr(
         cli,
         "describe_stages",
@@ -421,6 +433,7 @@ def test_cli_status_reports_capability_and_counts(monkeypatch, capsys):
     assert cli.main(["status"]) == 0
     payload = json.loads(capsys.readouterr().out)
     assert payload["counts"]["completed"] == 1
+    assert registry_paths == [(config.models_config_path, config.sources_config_path)]
     assert payload["counts"]["waiting_for_processor"] == 1
     assert payload["available_stages"] == sorted(
         build_stage_registry("config/models.yaml").available_stages()
@@ -836,3 +849,133 @@ def test_manual_index_without_ids_targets_only_actionable_documents(
     # Only the parsed Document has an actionable index stage.
     assert targets == [parsed.id]
     assert unparsed.id not in targets
+
+
+@pytest.mark.parametrize("explicit", [False, True])
+def test_worker_cli_configuration_paths_reach_processing(monkeypatch, capsys, explicit):
+    config = make_config(
+        tasks_config_path="deployment/tasks.yaml",
+        models_config_path="deployment/models.yaml",
+        sources_config_path="deployment/sources.yaml",
+    )
+    monkeypatch.setattr(worker, "settings", lambda: config)
+    monkeypatch.setattr(worker, "session_factory", lambda: object())
+    paths = []
+    registry = StageRegistry()
+
+    def build_registry(model_path, **kwargs):
+        paths.append((model_path, kwargs["sources_config_path"]))
+        return registry
+
+    def run_once(context):
+        prefix = "override" if explicit else "deployment"
+        assert context.settings is config
+        assert context.task_config_path == f"{prefix}/tasks.yaml"
+        assert context.processing_registry() is registry
+        return {"scheduler": [], "executed": None, "processing": None}
+
+    monkeypatch.setattr(worker, "build_stage_registry", build_registry)
+    monkeypatch.setattr(worker, "run_once", run_once)
+    arguments = ["--once"]
+    if explicit:
+        arguments += [
+            "--config", "override/tasks.yaml",
+            "--models-config", "override/models.yaml",
+            "--sources-config", "override/sources.yaml",
+        ]
+    assert worker.main(arguments) == 0
+    prefix = "override" if explicit else "deployment"
+    assert paths == [(f"{prefix}/models.yaml", f"{prefix}/sources.yaml")]
+    capsys.readouterr()
+
+
+def test_worker_from_settings_keeps_builtin_defaults_and_explicit_overrides(monkeypatch):
+    config = make_config()
+    monkeypatch.setattr(worker, "settings", lambda: config)
+    monkeypatch.setattr(worker, "session_factory", lambda: object())
+    context = worker.WorkerContext.from_settings()
+    assert context.task_config_path == "config/tasks.yaml"
+    assert context.model_config_path == "config/models.yaml"
+    assert context.sources_config_path == "config/sources.yaml"
+    context = worker.WorkerContext.from_settings(model_config_path="explicit.yaml")
+    assert context.model_config_path == "explicit.yaml"
+    assert context.task_config_path == config.tasks_config_path
+
+
+@pytest.mark.parametrize("explicit", [False, True])
+def test_processing_retry_configuration_paths(monkeypatch, capsys, explicit):
+    from stocks.processing import __main__ as cli
+
+    config = make_config(
+        models_config_path="deployment/models.yaml",
+        sources_config_path="deployment/sources.yaml",
+    )
+    monkeypatch.setattr(cli, "settings", lambda: config)
+    monkeypatch.setattr(cli, "session_factory", lambda: object())
+    paths = []
+
+    def build_registry(model_path, *, sources_config_path):
+        paths.append((model_path, sources_config_path))
+        return StageRegistry()
+
+    monkeypatch.setattr(cli, "build_stage_registry", build_registry)
+    monkeypatch.setattr(cli, "run_stages_for_documents", lambda *a, **k: ([], []))
+    arguments = [
+        "retry", "--document-id", "00000000-0000-0000-0000-000000000001",
+        "--stage", "facts", "--execute",
+    ]
+    if explicit:
+        arguments += [
+            "--config", "override/models.yaml",
+            "--sources-config", "override/sources.yaml",
+        ]
+    assert cli.main(arguments) == 0
+    prefix = "override" if explicit else "deployment"
+    assert paths == [(f"{prefix}/models.yaml", f"{prefix}/sources.yaml")]
+    capsys.readouterr()
+
+
+@pytest.mark.parametrize("module", ["processing", "indexing"])
+@pytest.mark.parametrize("explicit", [False, True])
+def test_manual_index_configuration_path(monkeypatch, capsys, module, explicit):
+    from contextlib import nullcontext
+    from importlib import import_module
+
+    cli = import_module(f"stocks.{module}.__main__")
+    config = make_config(
+        models_config_path="deployment/models.yaml",
+        sources_config_path="deployment/sources.yaml",
+    )
+    monkeypatch.setattr(cli, "settings", lambda: config)
+    monkeypatch.setattr(cli, "session_factory", lambda: lambda: nullcontext(object()))
+    paths = []
+
+    def build_registry(model_path, **kwargs):
+        paths.append((model_path, kwargs.get("sources_config_path")))
+        return StageRegistry()
+
+    monkeypatch.setattr(cli, "build_stage_registry", build_registry)
+    monkeypatch.setattr(cli, "run_stages_for_documents", lambda *a, **k: ([], []))
+    arguments = ["index"] if module == "processing" else []
+    arguments += ["--document-id", "00000000-0000-0000-0000-000000000001"]
+    if explicit:
+        arguments += ["--config", "override/models.yaml"]
+        if module == "processing":
+            arguments += ["--sources-config", "override/sources.yaml"]
+    assert cli.main(arguments) == 0
+    prefix = "override" if explicit else "deployment"
+    assert paths == [
+        (f"{prefix}/models.yaml", f"{prefix}/sources.yaml" if module == "processing" else None)
+    ]
+    capsys.readouterr()
+
+
+def test_worker_configuration_failure_keeps_safe_error(monkeypatch, capsys):
+    def invalid_settings():
+        raise ValueError("private deployment detail")
+
+    monkeypatch.setattr(worker, "settings", invalid_settings)
+    assert worker.main(["--once"]) == 2
+    output = capsys.readouterr().err
+    assert json.loads(output)["error"]["code"] == "WORKER_CONFIG_UNAVAILABLE"
+    assert "private deployment detail" not in output

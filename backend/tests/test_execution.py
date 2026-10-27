@@ -93,6 +93,7 @@ def engine():
 
 @pytest.fixture
 def cli_session_factory(engine, monkeypatch):
+    monkeypatch.setattr(execution_cli, "settings", make_config)
     monkeypatch.setattr(
         execution_cli,
         "session_factory",
@@ -3096,6 +3097,10 @@ def test_cli_trigger_does_not_require_model_secret_when_active_run_exists(
             config_path=None,
         )
 
+    def unexpected_settings():
+        raise AssertionError("active Run inspection must not resolve Settings")
+
+    monkeypatch.setattr(execution_cli, "settings", unexpected_settings)
     code = execution_cli.main(
         [
             "--config",
@@ -3115,21 +3120,33 @@ def test_cli_trigger_does_not_require_model_secret_when_active_run_exists(
     assert output["status"] == "queued"
 
 
+@pytest.mark.parametrize("explicit", [False, True])
 def test_cli_trigger_queues_run_without_executing(
-    engine, tmp_path, cli_session_factory, capsys
+    engine, tmp_path, cli_session_factory, capsys, monkeypatch, explicit
 ):
     models_path = write_models_config(tmp_path)
-    code = execution_cli.main(
-        [
-            "--config",
-            write_config(tmp_path),
-            "--models-config",
-            models_path,
-            "trigger",
-            "--task",
-            "brief",
-        ]
+    tasks_path = write_config(tmp_path, tools=["research_search"])
+    tools_path = write_tools_config(tmp_path)
+    config = make_config(
+        tasks_config_path=tasks_path,
+        models_config_path=models_path,
+        tools_config_path=tools_path,
     )
+    if explicit:
+        config = make_config(
+            tasks_config_path=str(tmp_path / "missing-tasks.yaml"),
+            models_config_path=str(tmp_path / "missing-models.yaml"),
+            tools_config_path=str(tmp_path / "missing-tools.yaml"),
+        )
+    monkeypatch.setattr(execution_cli, "settings", lambda: config)
+    arguments = ["trigger", "--task", "brief"]
+    if explicit:
+        arguments = [
+            "--config", tasks_path,
+            "--models-config", models_path,
+            "--tools-config", tools_path,
+        ] + arguments
+    code = execution_cli.main(arguments)
     output = json.loads(capsys.readouterr().out)
     assert code == 0
     assert output["status"] == "queued"
@@ -3140,6 +3157,7 @@ def test_cli_trigger_queues_run_without_executing(
         run = session.get(TaskRun, UUID(output["run_id"]))
         assert run is not None
         assert run.process_token is None
+        assert run.model_snapshot["tools"]["researcher"][0]["tool_id"] == "research_search"
 
 
 def test_cli_reports_unknown_task_and_invalid_limit(

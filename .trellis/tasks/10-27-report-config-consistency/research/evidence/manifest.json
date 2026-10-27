@@ -1,0 +1,76 @@
+{
+  "status": "passed",
+  "stage": "complete",
+  "external_success": false,
+  "source_id": "mp_smoke_a5aa4df7addd",
+  "collection_task_id": "mp_collect_a5aa4df7addd",
+  "research_task_id": "mp_research_a5aa4df7addd",
+  "bucket": "stocks-mp-smoke-a5aa4df7addd",
+  "output_dir": "/tmp/stocks-mp01-config-consistency/.trellis/tasks/10-27-report-config-consistency/research/acceptance-v2",
+  "postgres": "real isolated PostgreSQL + pgvector",
+  "storage": "real isolated S3 put/get",
+  "external": "controlled HTTP/model transports",
+  "browser": "not exercised; API citation contracts only",
+  "config_paths": {
+    "tasks": "/tmp/stocks-mp01-config-consistency/.trellis/tasks/10-27-report-config-consistency/research/acceptance-v2/tasks.yaml",
+    "models": "/tmp/stocks-mp01-config-consistency/.trellis/tasks/10-27-report-config-consistency/research/acceptance-v2/models.yaml",
+    "sources": "/tmp/stocks-mp01-config-consistency/.trellis/tasks/10-27-report-config-consistency/research/acceptance-v2/sources.yaml"
+  },
+  "collection_run_id": "eecc250b-2be1-4c79-acfb-a53fed18354c",
+  "source_calls": {
+    "/feed.xml": 1,
+    "/article": 1
+  },
+  "model_calls": {
+    "embedding": 3,
+    "jev_native": 1,
+    "classification_entities": 1,
+    "fact_extraction": 1,
+    "research": 1
+  },
+  "document_id": "e7a6033a-802f-4be6-82a6-8ff2cdc2ed79",
+  "document_version": 1,
+  "content_hash": "ab0ba8cf559ed2a1f8efb9e8d159cf63bff25e45e074e8f1ed8635c38995eaf5",
+  "snapshot_key": "sources/mp_smoke_a5aa4df7addd/ab0ba8cf559ed2a1f8efb9e8d159cf63bff25e45e074e8f1ed8635c38995eaf5",
+  "processing": {
+    "classify": {
+      "status": "completed",
+      "attempts": 1,
+      "wait_reason": null,
+      "error_code": null
+    },
+    "facts": {
+      "status": "completed",
+      "attempts": 1,
+      "wait_reason": null,
+      "error_code": null
+    },
+    "index": {
+      "status": "completed",
+      "attempts": 1,
+      "wait_reason": null,
+      "error_code": null
+    },
+    "parse": {
+      "status": "completed",
+      "attempts": 1,
+      "wait_reason": null,
+      "error_code": null
+    }
+  },
+  "parse_batch_id": "1910f685-659a-44f5-a903-b674bc976573",
+  "chunk_ids": [
+    "51b7e395-3407-42bc-aece-d85a69320dcb"
+  ],
+  "fact_id": "d686ddf8-5124-4d46-be85-8988633c2a67",
+  "embedding_rows": 1,
+  "research_run_id": "e8b6cd94-1056-40e1-bd56-308cd5b40e76",
+  "persisted_model_names": [
+    "controlled-research"
+  ],
+  "evidence_package_id": "4503d6a4-e25b-47cf-be34-5363651c9314",
+  "analysis_id": "47d50235-25d4-4476-9014-fcda603632ce",
+  "report_id": "bacf3bb0-92d6-4975-989c-92304ce06232",
+  "cited_chunk_id": "51b7e395-3407-42bc-aece-d85a69320dcb",
+  "cleanup": "resources intentionally retained for main"
+}

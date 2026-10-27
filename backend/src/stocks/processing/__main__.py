@@ -32,8 +32,6 @@ from stocks.processing.stages import (
 from stocks.repository import list_parse_chunks
 from stocks.settings import settings
 
-DEFAULT_MODEL_CONFIG = "config/models.yaml"
-DEFAULT_SOURCES_CONFIG = "config/sources.yaml"
 
 
 def _configure_logging() -> None:
@@ -162,15 +160,15 @@ def _add_reopen_arguments(parser: argparse.ArgumentParser) -> None:
     )
     parser.add_argument(
         "--config",
-        default=DEFAULT_MODEL_CONFIG,
-        help="Provider/model YAML used only when a model-backed stage runs.",
+        default=None,
+        help="Provider/model YAML used only when a model-backed stage runs (default: Settings).",
     )
     parser.add_argument(
         "--sources-config",
-        default=DEFAULT_SOURCES_CONFIG,
+        default=None,
         help=(
             "Source YAML providing Source Mappers; used only when a facts "
-            "stage actually maps a structured response."
+            "stage actually maps a structured response (default: Settings)."
         ),
     )
 
@@ -195,15 +193,15 @@ def _add_execute_arguments(parser: argparse.ArgumentParser) -> None:
     )
     parser.add_argument(
         "--config",
-        default=DEFAULT_MODEL_CONFIG,
-        help="Provider/model YAML used only when a model-backed stage runs.",
+        default=None,
+        help="Provider/model YAML used only when a model-backed stage runs (default: Settings).",
     )
     parser.add_argument(
         "--sources-config",
-        default=DEFAULT_SOURCES_CONFIG,
+        default=None,
         help=(
             "Source YAML providing Source Mappers; used only when a facts "
-            "stage actually maps a structured response."
+            "stage actually maps a structured response (default: Settings)."
         ),
     )
 
@@ -249,8 +247,8 @@ def _status(args, document_ids: list[UUID] | None) -> int:
         return _fail(_error("LIMIT_INVALID", "limit must be between 1 and 200"))
     try:
         registry = build_stage_registry(
-            DEFAULT_MODEL_CONFIG,
-            sources_config_path=DEFAULT_SOURCES_CONFIG,
+            settings().models_config_path,
+            sources_config_path=settings().sources_config_path,
         )
         with session_factory()() as session:
             rows = describe_stages(
@@ -299,7 +297,12 @@ def _reopen(args, document_ids: list[UUID]) -> int:
         session_factory(),
         settings(),
         build_stage_registry(
-            args.config, sources_config_path=args.sources_config
+            args.config if args.config is not None else settings().models_config_path,
+            sources_config_path=(
+                args.sources_config
+                if args.sources_config is not None
+                else settings().sources_config_path
+            ),
         ),
         document_ids,
         args.stage,
@@ -358,7 +361,12 @@ def _execute(args, document_ids: list[UUID] | None, parser) -> int:
         session_factory(),
         settings(),
         build_stage_registry(
-            args.config, sources_config_path=args.sources_config
+            args.config if args.config is not None else settings().models_config_path,
+            sources_config_path=(
+                args.sources_config
+                if args.sources_config is not None
+                else settings().sources_config_path
+            ),
         ),
         targets,
         [stage],

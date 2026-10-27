@@ -584,6 +584,32 @@ rejected while the Task still has a queued or running Run.
 
 The Compose `worker` service runs the Worker continuously from the same image:
 
+API, Worker and manual commands use the same Settings paths. Set
+`SOURCES_CONFIG_PATH`, `TASKS_CONFIG_PATH`, `MODELS_CONFIG_PATH` and
+`TOOLS_CONFIG_PATH` in `.env` to select deployment configuration; their defaults
+are `config/sources.yaml`, `config/tasks.yaml`, `config/models.yaml` and
+`config/tools.yaml`. Both services mount `./config` at `/app/config`, so, for
+example, `TASKS_CONFIG_PATH=config/custom/tasks.yaml` requires the host file
+`./config/custom/tasks.yaml`. Keep every selected file readable at the same path
+in both containers. Files outside this mount require a shared Compose volume override.
+Recreate API and Worker after changing deployment environment values:
+
+```bash
+docker compose up -d --force-recreate api worker
+```
+
+An explicit existing CLI path flag overrides Settings for that invocation. Worker
+`--config` selects tasks, `--models-config` selects models and `--sources-config`
+selects sources. The execution CLI supports `--config`, `--models-config` and
+`--tools-config`; collection `--config` selects sources; processing/indexing/search
+`--config` selects models, with processing also accepting `--sources-config` on
+execution commands. Processing status uses the deployment Settings paths. These
+options only choose paths: model routes and credentials stay lazy, and `--help`
+does not require Settings. Stored Run/Facts inspection and exact/context search do
+not load models. Classification still uses the shared `config/taxonomy.yaml`.
+
+Start the Worker and follow its logs:
+
 ```bash
 docker compose up -d worker
 docker compose logs -f worker

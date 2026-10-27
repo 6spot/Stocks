@@ -2,6 +2,10 @@
 
 本篇只负责 Task / Run 的执行、触发、调度、模型配置和工具调用；研究语义及取材输出见 [研究设计](research.md)，数据模型见 [数据设计](data.md)。返回 [架构总览](architecture.md)。
 
+API、Worker 和手动 CLI 共用 `Settings` 中的配置路径：`SOURCES_CONFIG_PATH`、`TASKS_CONFIG_PATH`、`MODELS_CONFIG_PATH` 与 `TOOLS_CONFIG_PATH`。优先级为入口已有的显式 CLI 路径参数 > Settings 的环境变量 / `.env` > Settings 内置的 `config/sources.yaml`、`config/tasks.yaml`、`config/models.yaml`、`config/tools.yaml`。Worker 的 `--config` 指向 Task/Agent 配置；collection 的同名参数指向 Source 配置；processing、indexing、search 的同名参数指向模型配置。execution 另有 `--models-config`、`--tools-config`，Worker 另有 `--models-config`、`--sources-config`，processing 执行入口另有 `--sources-config`。只有已有参数接受覆盖，不新增词表设置，分类词表仍使用 `config/taxonomy.yaml`。
+
+路径选择不提前加载模型或凭据。`--help` 不构造 Settings；Run 列表、详情、cursor、已存在活跃 Run 的重复触发、已有 Facts 读取及精确/上下文检索不因路径默认值新增模型配置读取。processing status 使用 Settings 路径构建惰性 registry，只报告处理能力与持久状态。Compose 的 API 与 Worker 共用 `.env` 和配置挂载；自定义文件必须在两个容器内的同一路径可读，不能只在宿主机存在。
+
 **阶段边界：** V0 由 Owner 手动触发采集和一项研究，保存实际输入、引用和报告；查询当时已保存的资料，不使用“上次成功以来”的增量游标。V1 增加独立定时 Task、后台处理、可靠增量窗口及恢复。V2 增加研究中的授权外部补证和更丰富的模型/Tool 能力。下文定时与窗口规则从 V1 起适用。
 
 ## Task 执行契约

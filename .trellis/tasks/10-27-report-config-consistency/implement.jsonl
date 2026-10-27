@@ -1,0 +1,8 @@
+{"file":".trellis/spec/backend/quality-guidelines.md","reason":"最小相关验证与远程边界"}
+{"file":".trellis/spec/backend/testing-guidelines.md","reason":"远程任务隔离与资源清理"}
+{"file":".trellis/spec/backend/worker-guidelines.md","reason":"配置、惰性解析与Worker入口"}
+{"file":".trellis/spec/backend/error-handling.md","reason":"配置失败保持明确且脱敏"}
+{"file":".trellis/spec/backend/deployment-guidelines.md","reason":"Compose配置入口"}
+{"file":".trellis/spec/guides/agent-execution-guide.md","reason":"有界执行与反馈"}
+{"file":"docs/execution.md","reason":"执行契约"}
+{"file":"docs/quickstart.md","reason":"已有启动说明"}

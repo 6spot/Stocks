@@ -1,0 +1,1 @@
+{"status": "passed", "worker_command": ["python", "-m", "stocks.worker"], "shared_configuration_paths": {"TASKS_CONFIG_PATH": "/app/config/mp01-tasks.yaml", "SOURCES_CONFIG_PATH": "/app/config/mp01-sources.yaml", "MODELS_CONFIG_PATH": "/app/config/mp01-models.yaml", "TOOLS_CONFIG_PATH": "/app/config/mp01-tools.yaml"}, "shared_read_only_config_mount": true}

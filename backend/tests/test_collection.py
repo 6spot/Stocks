@@ -67,6 +67,31 @@ PDF_ARTICLE = (
 )
 
 
+@pytest.mark.parametrize("explicit", [False, True])
+@pytest.mark.parametrize("invalid", [False, True])
+def test_collection_cli_configuration_path_errors(
+    tmp_path, monkeypatch, capsys, explicit, invalid
+):
+    from stocks.collection import __main__ as cli
+    from stocks.settings import Settings
+
+    selected = tmp_path / "selected-sources.yaml"
+    if invalid:
+        selected.write_text("sources: invalid", encoding="utf-8")
+    config = Settings(
+        _env_file=None,
+        database_url="postgresql+psycopg://unused/unused",
+        sources_config_path=str(tmp_path / "wrong.yaml") if explicit else str(selected),
+    )
+    monkeypatch.setattr(cli, "settings", lambda: config)
+    arguments = ["--config", str(selected)] if explicit else []
+    assert cli.main(arguments) == 2
+    payload = json.loads(capsys.readouterr().err)
+    assert payload["error"]["code"] == (
+        "CONFIG_INVALID" if invalid else "CONFIG_UNAVAILABLE"
+    )
+
+
 def make_source(tmp_path, *, max_items=20, max_bytes=5_000_000, redirects=3):
     path = tmp_path / "sources.yaml"
     path.write_text(
