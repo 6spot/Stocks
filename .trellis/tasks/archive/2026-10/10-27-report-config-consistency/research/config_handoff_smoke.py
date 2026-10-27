@@ -28,7 +28,7 @@ ARTICLE = b"""<html><head><meta charset="utf-8"></head><body><article>
 <p>Acme Holdings (ACME) reported revenue of 42 million USD for 2026 Q3.</p>
 </article></body></html>"""
 STATEMENT = "Acme Holdings (ACME) reported revenue of 42 million USD for 2026 Q3."
-ROOT = Path(__file__).resolve().parents[4]
+ROOT = Path(__file__).resolve().parents[6]
 
 
 class SmokeFailure(Exception):
