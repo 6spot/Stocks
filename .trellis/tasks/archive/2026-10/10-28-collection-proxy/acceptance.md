@@ -20,12 +20,12 @@
   - 每个条目的 Reddit 文章 HTML 返回 `HTTP_STATUS 403`，按既有语义保存 Feed 标题与帖子正文为 `partial`，未写成完整原文；
   - 3 个 S3 原件均可读取，字节 SHA-256 与 `documents.content_hash` 前缀一致（`8f65b2cc19aa`、`d1be5a781223`、`20cdb01bb493`）。
 - 部署镜像重建：`stocks-api`/`stocks-worker` 从新镜像重建，api healthy；worker 内 `COLLECTION_PROXY_URL` 已加载，来源配置读取 8 项。
-- 下游处理状态：3 篇 `parse` 完成；`classify` 与 `index` 因测试环境 provider 连接失败（`MODEL_CONNECTION_FAILED` / `EMBEDDING_REQUEST_FAILED`）未完成，`facts` 仍 pending。该失败与代理无关，但意味着这 3 篇尚未进入可检索研究输入；未把它写成完整可用。
+- 下游处理状态：3 篇 `parse` 完成；恢复测试部署到本机 Magpie 的反向隧道后，Jev 分类调用与 Embedding index 已完成。`classify` 仍失败于实体抽取使用的 Tencent TokenHub chat key 被禁用（HTTP 401，`MODEL_AUTHENTICATION_FAILED`），`facts` 仍 pending。该失败与代理无关；未把 3 篇写成完整可检索。
 
 ## 限制
 
 - Reddit HTML 文章页返回 403；当前只保存 Feed 标题与帖子正文（`partial`），没有评论页全文。Owner 已于 2026-10-28 接受该 `partial` 粒度；`reddit_stocks` 默认关闭，测试部署为验收临时启用。
-- 3 篇 Reddit Document 的 classify/index 未完成（provider 连接失败），因此不能宣称论坛内容已可被研究检索。
+- 3 篇 Reddit Document 的 index 已完成，但 classify 因 chat key 被禁用未完成，因此不能宣称论坛内容已可被研究检索。
 - DoH 使用 Cloudflare `https://cloudflare-dns.com/dns-query`，经同一代理访问；代理不可达时该来源以 `DNS_FAILED` 失败。
 - 代理模式无法固定代理解析出的目标 IP；已在设计/文档中记录为受信代理取舍。
 - 未改 MCP/Tavily；未实现代理池、自动切换或代理认证管理。
