@@ -490,3 +490,30 @@ def test_embedding_rejects_an_unset_dimension_before_any_request():
         )
 
     assert seen == []
+
+
+def test_research_chat_repeats_schema_in_system_prompt():
+    seen: dict = {}
+
+    def handler(request):
+        seen.update(json.loads(request.content))
+        return httpx.Response(200, json=answer_payload({"total_tokens": 1}))
+
+    asyncio.run(
+        ModelClient(
+            answer_targets(), httpx.MockTransport(handler)
+        ).research_chat(
+            answer_routing(),
+            [
+                {"role": "system", "content": "base instructions"},
+                {"role": "user", "content": "hi"},
+            ],
+            schema_name="answer",
+            schema=ANSWER_SCHEMA,
+        )
+    )
+
+    assert seen["messages"][0]["role"] == "system"
+    assert "base instructions" in seen["messages"][0]["content"]
+    assert "JSON Schema" in seen["messages"][0]["content"]
+    assert seen["messages"][1] == {"role": "user", "content": "hi"}

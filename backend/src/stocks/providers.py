@@ -938,6 +938,25 @@ class ModelClient:
             or not isinstance(schema.get("properties"), dict)
         ):
             raise ValueError("Research output schema must be an object schema")
+        # Some OpenAI-compatible gateways accept response_format but ignore the
+        # embedded schema. Repeating it in the system prompt keeps the contract
+        # visible to the model; the response_format remains authoritative where
+        # the provider supports it. Keep the user message at index 1 for callers
+        # and tests that inspect the evidence payload.
+        schema_instruction = (
+            "Return only a JSON object matching this JSON Schema exactly:\n"
+            + json.dumps(schema, ensure_ascii=False)
+        )
+        messages = list(messages)
+        if messages and messages[0].get("role") == "system":
+            messages[0] = {
+                **messages[0],
+                "content": str(messages[0].get("content", ""))
+                + "\n\n"
+                + schema_instruction,
+            }
+        else:
+            messages.append({"role": "system", "content": schema_instruction})
         return await self._structured_call(
             routing,
             protocol="openai_compatible",

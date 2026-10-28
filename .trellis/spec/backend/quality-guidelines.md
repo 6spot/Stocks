@@ -61,6 +61,10 @@ ln -s /opt/stocks-test-runtime/tool-venvs/stock-tools .venv
 
 指纹包含版本、全局指令与完整有序候选语义；稳定 JSON 仅排序对象键，保留会影响模型输入的数组顺序。不包含凭据，不只 hash ID 或手工版本号。配置变更影响后续/显式重处理，不能悄悄重写已保存结果或报告证据。
 
+### 结构化输出
+
+OpenAI-compatible 网关可能接受 `response_format` 却忽略其中的 schema。`ModelClient.research_chat()` 在保留 `response_format` 的同时把 schema 重复写入 system prompt；调用方仍需按 schema 校验内容。测试保持 user message 在索引 1，避免证据输入被额外消息挤位。
+
 ### Validation & Error Matrix
 
 | 条件 | 检查 |
