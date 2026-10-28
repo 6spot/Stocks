@@ -1187,3 +1187,28 @@ Worker 与相关 CLI 的配置路径统一遵循显式参数 > Settings > 内置
 ### Status
 
 [OK] **Completed**（部署镜像已重建；PA-4 四项仍为未完成/待决定）
+
+## Session 38: 采集来源级代理与 Reddit 真实入库
+
+**Date**: 2026-10-28
+**Task**: 采集来源代理支持（已归档）
+**Branch**: `feat/research-article`
+
+### Summary
+
+为采集连接器增加来源级 `proxy_url`：`SourceConfig` 支持 `http`/`https` 代理与 `${ENV_NAME}` 注入，`SafeFetcher.fetch(proxy_url=...)` 在代理模式使用 `httpx.Client(proxy=...)`，无代理来源继续固定地址直连。代理模式下先用同一代理经 Cloudflare DoH 解析并校验目标，避免测试服务器 DNS 污染阻断；`collect_source` 把同一代理传给 feed、正文与结构化 API 请求。代理值不进入 Document、日志或错误详情；缺失/非法只使该来源失败。
+
+测试服务器隔离目录运行 `tests/test_collection.py` **62 passed**，覆盖配置解析/脱敏、`httpx.Client` 代理参数、feed 与 API 代理透传。真实 Reddit RSS 经测试部署代理 `http://172.20.0.1:7890` 入库 3 篇 `partial`（Document IDs `86451411…`、`089fa4f5…`、`4f39a2f4…`）；S3 原件字节与 SHA-256 核对一致，Reddit 文章 HTML 返回 403，未伪装为完整正文。3 篇 `parse` 完成，但 `classify`/`index` 因测试环境 provider 连接失败未完成，未宣称已可检索。
+
+测试部署 api/worker 已用离线 wheelhouse 重建，worker 内代理环境变量与 8 项来源配置可读。`reddit_stocks` 默认关闭，测试部署临时启用；真实代理地址仅在部署 `.env`，未提交。PA-4 更新为“代理已实现、论坛正文仍受限”。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `3b846d1` | feat(collection): add per-source proxy with DoH validation |
+| `2a29e6b` | chore(task): archive collection proxy support |
+
+### Status
+
+[OK] **Completed**（代理能力与真实 RSS 入库；评论页全文与下游处理仍受限）
