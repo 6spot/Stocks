@@ -113,9 +113,16 @@ def collect_source(
     """
 
     fetcher = fetcher or SafeFetcher()
+    proxy_url = source.resolved_proxy_url()
     if source.connector == "http_api":
         return _collect_structured_source(
-            session, config, source, fetcher=fetcher, store=store, clock=clock
+            session,
+            config,
+            source,
+            fetcher=fetcher,
+            proxy_url=proxy_url,
+            store=store,
+            clock=clock,
         )
     clock = clock or (lambda: datetime.now(timezone.utc))
     summary = CollectionSummary(source_id=source.source_id)
@@ -129,6 +136,7 @@ def collect_source(
         accept=FEED_ACCEPT,
         allowed_content_types=FEED_CONTENT_TYPES,
         user_agent=source.user_agent,
+        proxy_url=proxy_url,
     )
     discovery = parse_feed(feed_response.payload, source, feed_response.url)
 
@@ -198,6 +206,7 @@ def collect_source(
                     accept=ARTICLE_ACCEPT,
                     allowed_content_types=ARTICLE_CONTENT_TYPES,
                     user_agent=source.user_agent,
+                    proxy_url=proxy_url,
                 )
             except CollectionError as exc:
                 fetch_error = exc
@@ -349,6 +358,7 @@ def _collect_structured_source(
     source: SourceConfig,
     *,
     fetcher: SafeFetcher,
+    proxy_url: str | None,
     store: Callable[..., tuple[str, str]],
     clock: Callable[[], datetime] | None,
 ) -> CollectionSummary:
@@ -375,6 +385,7 @@ def _collect_structured_source(
             accept=STRUCTURED_ACCEPT,
             allowed_content_types=STRUCTURED_CONTENT_TYPES,
             user_agent=source.user_agent,
+            proxy_url=proxy_url,
         )
     except CollectionError as exc:
         summary.discovered = 1

@@ -10,6 +10,7 @@ from stocks.collection.errors import CollectionError, ConfigurationError
 from stocks.collection.feed import parse_feed
 from stocks.collection.http import (
     FEED_CONTENT_TYPES,
+    DohResolver,
     SafeFetcher,
 )
 from stocks.collection.service import collect_source
@@ -395,7 +396,7 @@ def test_unsafe_xml_entity_is_reported_as_invalid_feed(tmp_path):
     source = make_source(tmp_path)
     payload = b"""\
 <?xml version="1.0"?>
-<!DOCTYPE rss [<!ENTITY x "secret">]>
+<!DOCTYPE rss [<!ENTITY x "hunter2">]>
 <rss version="2.0"><channel><title>&x;</title></channel></rss>
 """
 
@@ -403,17 +404,17 @@ def test_unsafe_xml_entity_is_reported_as_invalid_feed(tmp_path):
         parse_feed(payload, source, "https://www.sec.gov/feed")
 
     assert captured.value.code == "INVALID_XML"
-    assert "secret" not in str(captured.value)
+    assert "hunter2" not in str(captured.value)
 
 
 def test_timeout_is_reported_without_raw_request_details():
     def handler(request):
-        raise httpx.ReadTimeout("secret response body", request=request)
+        raise httpx.ReadTimeout("hunter2 response body", request=request)
 
     fetcher = safe_fetcher(handler)
     with pytest.raises(CollectionError) as captured:
         fetcher.fetch(
-            "https://www.sec.gov/feed?token=secret",
+            "https://www.sec.gov/feed?token=hunter2",
             timeout_seconds=5,
             max_response_bytes=1024,
             max_redirects=0,
@@ -423,18 +424,18 @@ def test_timeout_is_reported_without_raw_request_details():
         )
     assert captured.value.code == "TIMEOUT"
     assert captured.value.to_dict()["url"] == "https://www.sec.gov/feed"
-    assert "secret" not in str(captured.value)
+    assert "hunter2" not in str(captured.value)
 
 
 def test_error_details_cannot_override_safe_identity_or_url():
     error = CollectionError(
         "REQUEST_FAILED",
         "Remote request failed",
-        url="https://www.sec.gov/feed?token=secret",
+        url="https://www.sec.gov/feed?token=hunter2",
         details={
             "code": "UNTRUSTED",
-            "message": "secret response body",
-            "url": "https://www.sec.gov/feed?token=secret",
+            "message": "hunter2 response body",
+            "url": "https://www.sec.gov/feed?token=hunter2",
             "attempt": 2,
         },
     )
@@ -772,14 +773,14 @@ def test_malformed_article_url_fails_only_its_own_feed_entry(tmp_path):
 def test_malformed_redirect_location_is_a_bounded_collection_error():
     def handler(request):
         if request.url.path == "/start":
-            return httpx.Response(301, headers={"Location": "https://[::1secret-host"})
+            return httpx.Response(301, headers={"Location": "https://[::1hunter2-host"})
         raise AssertionError("redirect target must not be requested")
 
     fetcher = safe_fetcher(handler)
 
     with pytest.raises(CollectionError) as caught:
         fetcher.fetch(
-            "https://www.sec.gov/start?token=secret",
+            "https://www.sec.gov/start?token=hunter2",
             timeout_seconds=5,
             max_response_bytes=1_000_000,
             max_redirects=3,
@@ -791,7 +792,7 @@ def test_malformed_redirect_location_is_a_bounded_collection_error():
     payload = caught.value.to_dict()
     assert payload["code"] == "REQUEST_FAILED"
     assert payload["url"] == "https://www.sec.gov/start"
-    assert "secret" not in str(payload)
+    assert "hunter2" not in str(payload)
 
 
 def test_declared_charset_survives_fetch_and_allow_list():
@@ -1160,7 +1161,7 @@ def test_collection_failure_saves_partial_content_and_retries(
     failed_article = CollectionError(
         "HTTP_STATUS",
         "Remote server returned an unsuccessful status",
-        url="https://www.sec.gov/news/release-1?credential=secret",
+        url="https://www.sec.gov/news/release-1?credential=hunter2",
         details={"status": 503},
     )
     fetcher = StubFetcher(
@@ -1958,3 +1959,195 @@ def test_structured_collection_never_stores_the_request_query(
     assert "api_key" not in document.original_url
     for item in summary.items:
         assert "api_key" not in (item.url or "")
+
+
+def test_source_proxy_resolves_environment_and_rejects_invalid_values(
+    tmp_path, monkeypatch
+):
+    path = tmp_path / "sources.yaml"
+    path.write_text(
+        SOURCE_YAML.replace(
+            "user_agent:",
+            "proxy_url: ${COLLECTION_PROXY_URL}\n    user_agent:",
+        ),
+        encoding="utf-8",
+    )
+    source = load_sources(path)[0]
+
+    monkeypatch.delenv("COLLECTION_PROXY_URL", raising=False)
+    with pytest.raises(ConfigurationError) as missing:
+        source.resolved_proxy_url()
+    assert missing.value.code == "SOURCE_PROXY_UNAVAILABLE"
+    assert "proxy.example" not in str(missing.value.to_dict())
+
+    monkeypatch.setenv(
+        "COLLECTION_PROXY_URL", "http://user:hunter2@proxy.example:3128"
+    )
+    assert source.resolved_proxy_url() == "http://user:hunter2@proxy.example:3128"
+
+    monkeypatch.setenv("COLLECTION_PROXY_URL", "http://user:hunter2@")
+    with pytest.raises(ConfigurationError) as invalid:
+        source.resolved_proxy_url()
+    assert invalid.value.code == "SOURCE_PROXY_INVALID"
+    assert "hunter2" not in str(invalid.value.to_dict())
+
+    path.write_text(
+        SOURCE_YAML.replace(
+            "user_agent:", "proxy_url: socks5://proxy.example:1080\n    user_agent:"
+        ),
+        encoding="utf-8",
+    )
+    with pytest.raises(ConfigurationError):
+        load_sources(path)
+
+
+def test_safe_fetcher_uses_configured_proxy(monkeypatch):
+    captured: dict[str, object] = {}
+
+    class Stop(Exception):
+        pass
+
+    class FakeClient:
+        def __init__(self, **kwargs):
+            captured.update(kwargs)
+            raise Stop()
+
+    monkeypatch.setattr("stocks.collection.http.DohResolver", lambda proxy_url: public_resolver)
+    monkeypatch.setattr(httpx, "Client", FakeClient)
+    with pytest.raises(Stop):
+        SafeFetcher(resolver=public_resolver).fetch(
+            "https://example.com/feed",
+            timeout_seconds=5,
+            max_response_bytes=1024,
+            max_redirects=1,
+            accept="application/rss+xml",
+            allowed_content_types=["application/rss+xml"],
+            user_agent=TEST_USER_AGENT,
+            proxy_url="http://proxy.example:3128",
+        )
+
+    assert captured["proxy"] == "http://proxy.example:3128"
+    assert "transport" not in captured
+
+
+def test_invalid_proxy_is_rejected_without_echoing_credentials():
+    with pytest.raises(CollectionError) as invalid:
+        SafeFetcher(resolver=public_resolver).fetch(
+            "https://example.com/feed",
+            timeout_seconds=5,
+            max_response_bytes=1024,
+            max_redirects=1,
+            accept="application/rss+xml",
+            allowed_content_types=["application/rss+xml"],
+            user_agent=TEST_USER_AGENT,
+            proxy_url="socks5://user:hunter2@proxy.example:1080",
+        )
+
+    assert invalid.value.code == "PROXY_INVALID"
+    assert "hunter2" not in str(invalid.value.to_dict())
+
+
+def test_collect_source_passes_proxy_to_feed_fetch(tmp_path, monkeypatch):
+    path = tmp_path / "sources.yaml"
+    path.write_text(
+        SOURCE_YAML.replace(
+            "user_agent:",
+            "proxy_url: http://proxy.example:3128\n    user_agent:",
+        ),
+        encoding="utf-8",
+    )
+    source = load_sources(path)[0]
+    seen: list[str | None] = []
+
+    class Fetcher:
+        def fetch(self, url, **kwargs):
+            seen.append(kwargs.get("proxy_url"))
+            raise CollectionError("STOP", "stop before storage")
+
+    monkeypatch.setattr("stocks.collection.service.sync_source", lambda *args: None)
+    with pytest.raises(CollectionError):
+        collect_source(
+            object(),
+            Settings(
+                _env_file=None,
+                database_url="postgresql+psycopg://unused/unused",
+            ),
+            source,
+            fetcher=Fetcher(),
+        )
+
+    assert seen == ["http://proxy.example:3128"]
+
+
+def test_doh_resolver_reads_a_and_aaaa():
+    def handler(request):
+        record_type = request.url.params["type"]
+        data = (
+            {"Status": 0, "Answer": [{"type": 1, "data": "93.184.216.34"}]}
+            if record_type == "A"
+            else {"Status": 0, "Answer": [{"type": 28, "data": "2606:2800:220:1:248:1893:25c8:1946"}]}
+        )
+        return httpx.Response(200, json=data)
+
+    resolver = DohResolver(
+        "http://proxy.example:3128",
+        transport=httpx.MockTransport(handler),
+    )
+    assert resolver("example.com", 443) == [
+        "93.184.216.34",
+        "2606:2800:220:1:248:1893:25c8:1946",
+    ]
+
+
+def test_structured_collection_passes_proxy_to_api_fetch(monkeypatch):
+    from stocks.collection.config import SourceConfig
+    from stocks.collection.service import _collect_structured_source
+
+    source = SourceConfig(
+        source_id="test_api",
+        name="Test API",
+        connector="http_api",
+        publisher="Test",
+        trust_tier="T1",
+        api_url="https://api.example.com/data",
+        mapper={
+            "id": "test",
+            "fields": [
+                {
+                    "kind": "numeric",
+                    "pointer": "/value",
+                    "fact_type": "metric",
+                    "unit": "index",
+                }
+            ],
+        },
+        timeout_seconds=10,
+        max_response_bytes=1024,
+        max_redirects=1,
+        max_items=1,
+        user_agent=TEST_USER_AGENT,
+        proxy_url="http://proxy.example:3128",
+    )
+    seen: list[str | None] = []
+
+    class Fetcher:
+        def fetch(self, url, **kwargs):
+            seen.append(kwargs.get("proxy_url"))
+            raise CollectionError("STOP", "stop before storage")
+
+    monkeypatch.setattr("stocks.collection.service.sync_source", lambda *args: None)
+    summary = _collect_structured_source(
+        object(),
+        Settings(
+            _env_file=None,
+            database_url="postgresql+psycopg://unused/unused",
+        ),
+        source,
+        fetcher=Fetcher(),
+        proxy_url=source.resolved_proxy_url(),
+        store=lambda **kwargs: ("key", "hash"),
+        clock=None,
+    )
+
+    assert summary.failed == 1
+    assert seen == ["http://proxy.example:3128"]

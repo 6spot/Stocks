@@ -9,7 +9,7 @@ from urllib.parse import urljoin
 
 import httpx
 
-from stocks.collection.config import CONTACT_USER_AGENT
+from stocks.collection.config import CONTACT_USER_AGENT, validate_proxy_url
 from stocks.collection.errors import CollectionError
 from stocks.collection.urls import validate_https_url, validate_resolved_addresses
 
@@ -59,6 +59,78 @@ def resolve_host(host: str, port: int) -> list[str]:
     return list(dict.fromkeys(record[4][0] for record in records))
 
 
+class DohResolver:
+    """Resolve a target through DoH over the configured proxy.
+
+    A proxy source may sit behind a poisoned local resolver. The proxy can still
+    reach the target, but validating a poisoned local answer would reject it.
+    Resolving through the same trusted proxy keeps the destination check while
+    letting the proxy perform the final connection.
+    """
+
+    endpoint = "https://cloudflare-dns.com/dns-query"
+
+    def __init__(
+        self,
+        proxy_url: str,
+        *,
+        transport: httpx.BaseTransport | None = None,
+        timeout: float = 8,
+    ) -> None:
+        self.proxy_url = proxy_url
+        self.transport = transport
+        self.timeout = timeout
+
+    def __call__(self, host: str, port: int) -> list[str]:
+        addresses: list[str] = []
+        for record_type in ("A", "AAAA"):
+            client_kwargs: dict[str, object] = {"timeout": self.timeout}
+            if self.transport is not None:
+                client_kwargs["transport"] = self.transport
+            else:
+                client_kwargs["proxy"] = self.proxy_url
+            try:
+                with httpx.Client(**client_kwargs) as client:
+                    response = client.get(
+                        self.endpoint,
+                        params={"name": host, "type": record_type},
+                        headers={"accept": "application/dns-json"},
+                    )
+                    response.raise_for_status()
+                    payload = response.json()
+            except (httpx.HTTPError, ValueError) as exc:
+                raise CollectionError(
+                    "DNS_FAILED",
+                    "Host could not be resolved through the configured proxy",
+                    url=f"https://{host}/",
+                ) from exc
+            if not isinstance(payload, dict) or payload.get("Status") != 0:
+                raise CollectionError(
+                    "DNS_FAILED",
+                    "Host could not be resolved through the configured proxy",
+                    url=f"https://{host}/",
+                )
+            answers = payload.get("Answer", [])
+            if not isinstance(answers, list):
+                continue
+            for answer in answers:
+                if not isinstance(answer, dict):
+                    continue
+                if answer.get("type") not in (1, 28):
+                    continue
+                data = answer.get("data")
+                if isinstance(data, str) and data:
+                    addresses.append(data)
+        unique = list(dict.fromkeys(addresses))
+        if not unique:
+            raise CollectionError(
+                "DNS_FAILED",
+                "Host could not be resolved through the configured proxy",
+                url=f"https://{host}/",
+            )
+        return unique
+
+
 class SafeFetcher:
     def __init__(
         self,
@@ -79,7 +151,20 @@ class SafeFetcher:
         accept: str,
         allowed_content_types: Iterable[str],
         user_agent: str,
+        proxy_url: str | None = None,
     ) -> FetchedResponse:
+        if proxy_url is not None:
+            try:
+                validate_proxy_url(proxy_url)
+            except ValueError as exc:
+                raise CollectionError(
+                    "PROXY_INVALID",
+                    "Configured proxy URL is invalid",
+                    url=url,
+                ) from exc
+        validation_resolver: Resolver = self.resolver
+        if proxy_url is not None and self.transport is None:
+            validation_resolver = DohResolver(proxy_url)
         if (
             any(ord(char) < 32 or ord(char) == 127 for char in user_agent)
             or CONTACT_USER_AGENT.fullmatch(user_agent) is None
@@ -98,7 +183,7 @@ class SafeFetcher:
             if current_url in visited:
                 raise CollectionError("REDIRECT_LOOP", "Redirect loop detected", url=current_url)
             visited.add(current_url)
-            self._validate_destination(current_url)
+            self._validate_destination(current_url, resolver=validation_resolver)
             remaining = deadline - time.monotonic()
             if remaining <= 0:
                 raise CollectionError("TIMEOUT", "Request exceeded its total timeout", url=current_url)
@@ -115,6 +200,11 @@ class SafeFetcher:
                 }
                 if self.transport is not None:
                     client_kwargs["transport"] = self.transport
+                elif proxy_url is not None:
+                    # The proxy resolves the target, so the pinned-IP transport
+                    # cannot be used. The destination is still resolved and
+                    # validated above; the proxy must be trusted infrastructure.
+                    client_kwargs["proxy"] = proxy_url
                 else:
                     client_kwargs["transport"] = _PinnedTransport(self.resolver)
                 with httpx.Client(**client_kwargs) as client:
@@ -183,11 +273,11 @@ class SafeFetcher:
             url=current_url,
         )
 
-    def _validate_destination(self, url: str) -> None:
+    def _validate_destination(self, url: str, *, resolver: Resolver | None = None) -> None:
         parsed = validate_https_url(url)
         host = parsed.hostname or ""
         try:
-            addresses = self.resolver(host, 443)
+            addresses = (resolver or self.resolver)(host, 443)
         except CollectionError as exc:
             if exc.code != "DNS_FAILED":
                 raise

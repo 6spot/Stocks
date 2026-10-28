@@ -45,6 +45,8 @@ ln -s /opt/stocks-test-runtime/tool-venvs/stock-tools .venv
 
 声明联系身份是真实来源访问契约的一部分。SEC 对缺少联系邮箱的自动客户端返回 `HTTP_STATUS` 403；配置 `user_agent` 必须采用 `Client/Version (contact@example.com)` 形式，并在真实运行前替换示例邮箱。遇到真实来源状态变化时，先区分反爬/访问政策、网络边界和代码缺陷，再决定修复。
 
+来源级代理只作用于显式配置 `proxy_url` 的 Source，不得静默改变其他来源的直连路径。代理模式下目标地址仍先经同一代理的 DoH 解析并校验；但最终连接由代理解析，不能宣称固定 IP 防重绑定。代理值、userinfo 和真实环境变量不得进入 Document、日志、错误详情或测试快照；缺失/非法代理只使该来源失败。真实代理验收需核对来源、`partial`/`complete`、S3 字节与哈希，并记录目标站点对正文的访问限制（例如 Reddit HTML 403），不能把 Feed 摘要写成完整正文。
+
 ## 配置语义与模型输入
 
 ### Scope / Trigger

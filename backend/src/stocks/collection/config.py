@@ -3,6 +3,7 @@ from __future__ import annotations
 import re
 from pathlib import Path
 from typing import Literal
+from urllib.parse import urlsplit
 
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
@@ -16,6 +17,34 @@ MAX_CONFIG_BYTES = 1_000_000
 CONTACT_USER_AGENT = re.compile(
     r"^[^\s()]+/\S+\s+\([^\s()]+@[^\s()]+\.[^\s()]+\)$"
 )
+_ENV_PLACEHOLDER = re.compile(r"\$\{[A-Za-z_][A-Za-z0-9_]*\}")
+
+
+def validate_proxy_url(value: str) -> None:
+    """Validate an HTTP(S) proxy URL without resolving it.
+
+    Credentials may be embedded as userinfo but are never echoed by callers.
+    A proxy URL is not a fetch target, so it may use plain HTTP and must not
+    carry a path, query or fragment.
+    """
+
+    if not value or len(value) > 2048:
+        raise ValueError("proxy_url must be between 1 and 2048 characters")
+    if any(ord(char) < 32 or ord(char) == 127 for char in value) or any(
+        char.isspace() for char in value
+    ):
+        raise ValueError("proxy_url must not contain whitespace or control characters")
+    parsed = urlsplit(value)
+    if parsed.scheme not in {"http", "https"}:
+        raise ValueError("proxy_url must use http or https")
+    if not parsed.hostname:
+        raise ValueError("proxy_url must include a host")
+    try:
+        parsed.port
+    except ValueError as exc:
+        raise ValueError("proxy_url has an invalid port") from exc
+    if parsed.path not in {"", "/"} or parsed.query or parsed.fragment:
+        raise ValueError("proxy_url must not include a path, query or fragment")
 
 
 def validate_user_agent(value: str) -> str:
@@ -53,6 +82,9 @@ class SourceConfig(BaseModel):
     trust_tier: Literal["T1", "T2", "T3", "T4"]
     feed_url: str | None = Field(default=None, min_length=1, max_length=2048)
     api_url: str | None = Field(default=None, min_length=1, max_length=2048)
+    # Optional HTTP(S) proxy for this source. A ``${ENV_NAME}`` placeholder is
+    # resolved when the source is used, so credentials never live in YAML.
+    proxy_url: str | None = Field(default=None, min_length=1, max_length=2048)
     query: dict[str, str] = Field(default_factory=dict)
     mapper: SourceMapper | None = None
     timeout_seconds: float = Field(ge=1, le=120)
@@ -70,6 +102,21 @@ class SourceConfig(BaseModel):
             validate_https_url(value)
         except CollectionError as exc:
             raise ValueError(exc.message) from exc
+        return value
+
+    @field_validator("proxy_url")
+    @classmethod
+    def validate_proxy_field(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        value = value.strip()
+        if not value:
+            raise ValueError("proxy_url must not be empty")
+        if not _ENV_PLACEHOLDER.fullmatch(value):
+            try:
+                validate_proxy_url(value)
+            except ValueError as exc:
+                raise ValueError(str(exc)) from exc
         return value
 
     @field_validator("mapper", mode="before")
@@ -112,6 +159,33 @@ class SourceConfig(BaseModel):
                     details={"source_id": self.source_id},
                 ) from exc
         return resolved
+
+    def resolved_proxy_url(self) -> str | None:
+        """Return this source's proxy URL with ``${ENV_NAME}`` resolved.
+
+        The value is deliberately not stored in the Source row or collection
+        summary. A missing variable or an invalid URL fails only this source.
+        """
+
+        if self.proxy_url is None:
+            return None
+        try:
+            value = resolve_env(self.proxy_url)
+        except ValueError as exc:
+            raise ConfigurationError(
+                "SOURCE_PROXY_UNAVAILABLE",
+                "Configured source proxy environment variable is not set",
+                details={"source_id": self.source_id},
+            ) from exc
+        try:
+            validate_proxy_url(value)
+        except ValueError as exc:
+            raise ConfigurationError(
+                "SOURCE_PROXY_INVALID",
+                "Configured source proxy URL is invalid",
+                details={"source_id": self.source_id},
+            ) from exc
+        return value
 
     def model_post_init(self, __context: object, /) -> None:
         if self.expected_freshness is not None:

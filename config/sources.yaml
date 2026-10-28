@@ -186,8 +186,24 @@ sources:
     max_items: 10
     user_agent: StocksIntelligence/0.1 (6spot07@gmail.com)
 
-  # Reddit subreddit RSS is intentionally not configured: from the current test
-  # server network the local resolver returns poisoned answers for reddit hosts
-  # (a non-public Teredo AAAA plus a third-party A record), which the standard
-  # entry refuses as UNSAFE_ADDRESS. Revisit with a trusted resolver or a known
-  # egress before adding a discussion source.
+  # Reddit r/stocks RSS. The test server cannot reach Reddit directly: plain DNS
+  # returns poisoned answers and the container network blocks the target, while
+  # the configured host proxy can fetch it. The proxy is optional per source and
+  # never changes direct SEC/Fed/CNBC/FRED collection. If COLLECTION_PROXY_URL is
+  # unset this source fails alone with SOURCE_PROXY_UNAVAILABLE. Disabled by
+  # default because Reddit returns 403 for article HTML: enabling it stores the
+  # feed title and post text as `partial`, not a full discussion page.
+  - source_id: reddit_stocks
+    name: Reddit r/stocks
+    connector: rss
+    enabled: false
+    publisher: Reddit
+    trust_tier: T3
+    feed_url: https://www.reddit.com/r/stocks/.rss
+    proxy_url: ${COLLECTION_PROXY_URL}
+    expected_freshness: 1h
+    timeout_seconds: 30
+    max_response_bytes: 2000000
+    max_redirects: 3
+    max_items: 20
+    user_agent: StocksIntelligence/0.1 (6spot07@gmail.com)

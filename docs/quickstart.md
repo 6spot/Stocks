@@ -94,6 +94,8 @@ The standalone `stocks.collection` CLI is still available for a one-off manual c
 
 An `http_api` source reads structured responses the same way. Query values may be `${ENV_NAME}` placeholders: the real request resolves them from the environment, the stored configuration keeps the placeholder, and a registered `Document` records the endpoint without the query string so a credential never enters provenance or a Run payload. A missing environment variable fails the source as `SOURCE_CREDENTIAL_UNAVAILABLE` before any request. After collection, run `stocks.processing facts --sources-config config/sources.yaml --document-id <id>` to map the stored response onto Facts through the source's `mapper`.
 
+A source may also set `proxy_url` (for example `${COLLECTION_PROXY_URL}`) when it cannot be reached directly. The proxy applies to that source's feed, article and structured API requests only; sources without it keep the direct pinned-address path. Set `COLLECTION_PROXY_URL` in `.env` to an HTTP(S) proxy reachable from the containers. A missing or invalid proxy fails only that source (`SOURCE_PROXY_UNAVAILABLE` / `SOURCE_PROXY_INVALID`), and the value is never stored in a Document or error payload. The target URL is still resolved and checked before the request, but the proxy performs the final connection; use only a trusted proxy.
+
 ## Document processing backlog, manual parsing and indexing
 
 Documents enter a unified background-processing backlog automatically: the

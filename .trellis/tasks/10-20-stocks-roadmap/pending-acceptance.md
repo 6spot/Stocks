@@ -134,11 +134,11 @@ Fed XML 真实字节的 parser 定位。详见 [V2 本轮记录](../10-20-stocks
 
 ## PA-4：真实来源到报告闭环的剩余项（2026-10-28）
 
-**已完成：** 六项子任务均已归档；真实四来源采集 → Jev 分类 → 检索 → 市场与 SpaceX 报告 → 真实 Tavily 补证引用已形成联合证据，详见[集成复核](../archive/2026-10/10-27-real-source-report-loop/acceptance.md)。**部署镜像已重建：** 2026-10-28 以离线 wheelhouse 构建 api/worker、重建 web，容器从新镜像重建后源码标记在位、health 200；此前 `docker cp` 热修随容器重建丢失的风险已解除。
+**已完成：** 六项子任务均已归档；真实四来源采集 → Jev 分类 → 检索 → 市场与 SpaceX 报告 → 真实 Tavily 补证引用已形成联合证据，详见[集成复核](../archive/2026-10/10-27-real-source-report-loop/acceptance.md)。**部署镜像已重建：** 2026-10-28 以离线 wheelhouse 构建 api/worker、重建 web，容器从新镜像重建后源码标记在位、health 200；此前 `docker cp` 热修随容器重建丢失的风险已解除。来源级代理已实现并完成 Reddit RSS 真实入库（3 篇 `partial`），见[代理验收](../archive/2026-10/10-28-collection-proxy/acceptance.md)（归档后路径）。
 
 | 剩余项 | 现状与缺口 | 后续条件 |
 | --- | --- | --- |
-| 论坛/讨论来源 | 2026-10-28 复核：DNS 污染（`31.13.92.37`/`2001::1`）只是第一层；容器直连 Reddit/Fastly 仍被出网限制（TLS 超时或 `Network is unreachable`）。经宿主 `172.20.0.1:7890` 代理可 200 取得 Reddit RSS，但 `SafeFetcher` 的固定地址 transport 不读取代理环境变量。仅换 DNS 不足以接入；当前没有接入任何真实讨论来源，这是范围缩减，不是通过 | Owner 选择：为采集增加显式代理支持（需要代码与测试），或改接可直连的讨论源；未决定前保持未接入 |
+| 论坛/讨论来源 | 2026-10-28 已实现来源级代理并完成 Reddit RSS 真实入库：测试部署经代理保存 3 篇 `partial`（Feed 标题+帖子正文），S3 原件哈希核对一致；Reddit 文章 HTML 返回 403，未取得评论页全文。`reddit_stocks` 默认关闭，测试部署临时启用；3 篇 parse 完成但 classify/index 因测试环境 provider 连接失败未完成 | Owner 决定是否接受 `partial` 粒度或改进正文/评论获取；启用需 `COLLECTION_PROXY_URL`，并需可用的分类/Embedding provider；未完成前不宣称论坛全文或可检索覆盖 |
 | 增量窗口续扫 | `(0, 644]` 每个 Run 只扫描 1/7 页，`change_scan_completed=false`，报告以 `retrieval_truncated` 明示 | 连续续扫 Run 覆盖完整窗口，并核对证据包与报告缺口 |
 | CNBC facts 超时 | 3 份 CNBC 文档的 facts 阶段 `MODEL_TIMEOUT`，尚未重试 | 重试并确认 facts 状态与数据；未完成前不宣称这 3 份已抽取完成 |
 | 行情/价格来源 | 未配置任何 quote 源。2026-10-28 验证现有 `TWELVE_DATA_API_KEY` 可用：basic 计划 8 次/分钟、800 次/天，SPY 日线与 NVDA quote 成功；当前 `SourceMapper` 只按固定 pointer 读取单个字段，日线数组需要扩展映射或每 symbol 一个来源 | Owner 确定首批数据范围（指数/板块/关注股日线、宏观利率、公司行动等）；未接入前不把市场表现或涨跌归因写成已覆盖 |
