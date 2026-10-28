@@ -1212,3 +1212,28 @@ Worker 与相关 CLI 的配置路径统一遵循显式参数 > Settings > 内置
 ### Status
 
 [OK] **Completed**（代理能力与真实 RSS 入库；评论页全文与下游处理仍受限）
+
+## Session 39: 语义预算保留与 Reddit 证据入选
+
+**Date**: 2026-10-28
+**Task**: 证据预算保留与 partial 文本清理（已归档）
+**Branch**: `feat/research-article`
+
+### Summary
+
+排查 SK Hynix 定向 Run 未选中 Reddit 的原因：不是关键词。查询 `SK Hynix` 时 Reddit chunk 语义排名第 1（0.559），`SK Hynix earnings...` 排名第 3（0.626）；但增量变更先选中 122 个 chunk（SEC 64、Fed 37、CNBC 21）并耗尽 30k 预算，两个语义查询均 `selected_count=0`、缺口 `token_budget`。同时 Reddit partial 内容以 `{"summary": "<!-- SC_OFF -->..."}` JSON/HTML 保存，chunk 文本噪声大。
+
+修复：`select_evidence` 保留 20% 预算给语义查询（30k 中 6k），增量最多 24k；选择策略版本升至 v1.1 并在 `selection_budget` 记录保留额度。`_partial_payload` 改为 HTML 正文，content type 为 `text/html`，解析后不再有 JSON 包装。远程隔离库 `test_collection` 62、`test_incremental_evidence` 11、`test_research` 9 passed；新增“增量页占满时 direct 语义仍入选”回归。
+
+真实 SK Hynix Run `45aa0738` 成功：Evidence Package 100 chunks，语义查询分别选中 8 和 1，Reddit 文档 `4f39a2f4…` 入选；报告 `4c449b9b` 引用 `[E94]`，区分 Reddit 转述、CNBC 报道与无法核验的价格。重新采集 Reddit 生成干净 partial 新版本遇 429，现有 v1 仍为旧 JSON；facts 仍有 1 篇失败，均记录为剩余项。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `15b4389` | fix(research): reserve semantic budget and clean partial payloads |
+| `46aac93` | chore(task): archive evidence budget and partial fix |
+
+### Status
+
+[OK] **Completed**（预算与选择修复已验证；partial 新版本受 429 阻塞）
