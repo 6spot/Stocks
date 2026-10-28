@@ -1,0 +1,18 @@
+{"file": "AGENTS.md", "reason": "通用边界、初始开发不迁移不兼容及最小必要验证"}
+{"file": "docs/architecture.md", "reason": "architecture 领域契约及阶段边界，设计不等于实现"}
+{"file": "docs/research.md", "reason": "research 领域契约：Evidence Selection、Research Agent 与证据引用"}
+{"file": "docs/execution.md", "reason": "execution 领域契约：Task/Run 配置"}
+{"file": "docs/validation.md", "reason": "原型范围与完成条件"}
+{"file": ".trellis/tasks/10-27-report-research-scope/prd.md", "reason": "本任务需求：市场简报与 SpaceX 公司研究口径"}
+{"file": "config/tasks.yaml", "reason": "现有 Task 配置：collect_enabled_sources、fed_policy_brief、nvidia_research 示例"}
+{"file": "backend/src/stocks/research/service.py", "reason": "研究 Run 现状与配置解析"}
+{"file": "backend/src/stocks/research/evidence.py", "reason": "Evidence Selection 现状"}
+{"file": "backend/src/stocks/execution/config.py", "reason": "Task 配置模型与校验"}
+{"file": "backend/src/stocks/execution/service.py", "reason": "Run 触发与执行现状"}
+{"file": ".trellis/tasks/10-27-report-real-sources/prd.md", "reason": "同批来源选型决定：SpaceX=SPCX 与首批来源边界"}
+{"file": ".trellis/spec/backend/index.md", "reason": "后端实现/数据库/错误与必要验证约定"}
+{"file": ".trellis/spec/backend/directory-structure.md", "reason": "后端实现/数据库/错误与必要验证约定"}
+{"file": ".trellis/spec/backend/database-guidelines.md", "reason": "后端实现/数据库/错误与必要验证约定"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "后端实现/数据库/错误与必要验证约定"}
+{"file": ".trellis/spec/backend/testing-guidelines.md", "reason": "远程 Python 3.12、pgvector 隔离验证及清理"}
+{"file": ".trellis/spec/guides/code-reuse-thinking-guide.md", "reason": "复用同一研究流程，不开发两套引擎"}

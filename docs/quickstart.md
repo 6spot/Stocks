@@ -280,6 +280,25 @@ mentions NVIDIA. Neither this Task nor its scope supplies stock candidates to th
 classifier. Add another Task to reuse the saved repository without reclassifying it
 against an aggregate list of watched companies.
 
+Two real calibers (Owner decision 2026-10-27) live beside the examples in
+`config/tasks.yaml`:
+
+- `market_intelligence_brief` — a US market intelligence update over macro, policy
+  and market-sentiment material. Its scope deliberately has no companies/symbols, so
+  every explicit query gets a direct retrieval role. The objective makes the report
+  separate this window's new material from historical background, carry macro Facts
+  with their observation period (never as the research time), and state missing
+  market-quote coverage instead of inventing price moves.
+- `spacex_company_research` — company research for SpaceX (Nasdaq SPCX, CIK
+  0001181412). The first query names `SpaceX SPCX` explicitly (direct); the others
+  retrieve launch-industry, policy and space-economy material as background. Company
+  findings require the material to name the company or SPCX — an aerospace hit alone
+  stays background. Filing and market-quote Sources are not configured yet, so missing
+  company coverage and missing quotes are reported as gaps.
+
+A trading-day recap caliber is intentionally not configured; enabling one is a separate
+Owner decision.
+
 For validation, run the following only on `100.120.14.84` in the current task's isolated
 deployment. Configure enabled Sources, storage and model routes first, including a real
 contact email where required. The default SEC/Fed feeds may contain no NVIDIA company
@@ -305,8 +324,9 @@ coverage must remain visible in the report.
 3. If label meanings changed, explicitly reclassify the selected completed Documents:
    `docker compose run --rm api python -m stocks.processing reprocess --document-id <document-uuid> --stage classify --execute`.
    This records the new semantic fingerprint; editing YAML alone does not rerun them.
-4. Queue the manual example with
-   `docker compose run --rm api python -m stocks.execution trigger --task nvidia_research`.
+4. Queue one real caliber with
+   `docker compose run --rm api python -m stocks.execution trigger --task market_intelligence_brief`
+   or `--task spacex_company_research` (the `nvidia_research` example remains available).
    Inspect `stocks.execution show --run-id <research-run-id>` for the Evidence Package,
    selected inputs, query roles, coverage and safe errors. A queued Run still needs
    the Worker. Continued incremental scans are visible in `change_scan_completed`;

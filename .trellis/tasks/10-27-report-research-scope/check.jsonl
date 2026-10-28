@@ -1,0 +1,5 @@
+{"file": "AGENTS.md", "reason": "通用边界与最小必要验证；禁止以本机结果代替远程测试"}
+{"file": "docs/research.md", "reason": "研究契约：口径、引用与缺口呈现"}
+{"file": ".trellis/tasks/10-27-report-research-scope/prd.md", "reason": "验收标准：两类报告口径与取材边界"}
+{"file": ".trellis/spec/backend/testing-guidelines.md", "reason": "远程隔离验证要求"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "质量门槛"}

@@ -418,6 +418,57 @@ def test_config_loads_manual_nvidia_research_with_company_and_background_queries
     assert task.steps[1].research_agent.agent == "research_writer"
 
 
+def test_config_loads_real_market_and_company_calibers():
+    """The two real report calibers load with their retrieval-role boundaries."""
+
+    from stocks.research.service import _normalize_queries
+
+    path = Path(__file__).resolve().parents[2] / "config" / "tasks.yaml"
+    config = load_task_configuration(str(path))
+
+    brief = next(
+        task for task in config.tasks if task.id == "market_intelligence_brief"
+    )
+    assert brief.type == "research"
+    assert brief.trigger.kind == "manual"
+    assert brief.strategy == "evidence_first"
+    # An intelligence-update brief names no subject, so no company/symbol scope:
+    # every explicit query is a direct retrieval role.
+    assert "companies" not in brief.scope and "symbols" not in brief.scope
+    roles, queries = _normalize_queries(
+        brief.objective, brief.scope, brief.steps[0].select_evidence.queries
+    )
+    assert roles == ["direct"] * len(queries)
+    assert queries == brief.steps[0].select_evidence.queries
+
+    spacex = next(
+        task for task in config.tasks if task.id == "spacex_company_research"
+    )
+    assert spacex.trigger.kind == "manual"
+    assert spacex.scope["companies"] == ["SpaceX"]
+    assert spacex.scope["symbols"] == ["SPCX"]
+    roles, queries = _normalize_queries(
+        spacex.objective, spacex.scope, spacex.steps[0].select_evidence.queries
+    )
+    # Only the first query names the company/ticker; industry and policy
+    # questions stay background even when they concern the company's market.
+    assert roles == ["direct", "background", "background"]
+    # A background query that describes the company's segment without the name
+    # keeps the background role; the name match is word-boundary based.
+    roles, _ = _normalize_queries(
+        spacex.objective,
+        spacex.scope,
+        ["commercial space launch industry competition demand satellites"],
+    )
+    assert roles == ["background"]
+    # A name-only match (no ticker) is still a direct retrieval role; whether a
+    # source actually mentions the company is decided by evidence, not the role.
+    roles, _ = _normalize_queries(spacex.objective, spacex.scope, ["SpaceX"])
+    assert roles == ["direct"]
+    # No trading-day recap task exists until the Owner explicitly enables one.
+    assert all("recap" not in task.id and "复盘" not in task.name for task in config.tasks)
+
+
 def test_config_accepts_whitelisted_condition(tmp_path):
     path = write_config(
         tmp_path,

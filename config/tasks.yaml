@@ -82,6 +82,102 @@ tasks:
           agent: research_writer
           input: evidence
 
+  # Real market-intelligence brief (Owner caliber 2026-10-27): an
+  # intelligence-update report over macro, policy and market-sentiment material.
+  # The scope deliberately carries no companies/symbols, so every query gets a
+  # direct retrieval role — there is no separately nameable subject. Structured
+  # macro Facts (e.g. fred_cpiaucsl) enter through the incremental change path,
+  # not through semantic queries. No market-quote Source is configured yet: the
+  # objective makes the report state that gap instead of inventing price moves.
+  - id: market_intelligence_brief
+    name: 市场情报简报
+    type: research
+    trigger: manual
+    enabled: true
+    objective: >-
+      Produce a US market-intelligence update from the saved evidence: what
+      changed in monetary policy, financial regulation, market structure and
+      market sentiment in this run's window, each finding anchored to saved
+      evidence. Separate material that is new in this window from historical
+      background already in the repository, and describe sources' opinions as
+      their own. Structured macro indicator Facts carry their observation
+      period and availability time; never present an observation period as the
+      research time. No market-quote source is configured: when the evidence
+      contains no price or index data, say the market move is not covered by
+      saved evidence instead of inventing levels, moves or causes. If nothing
+      new was collected, write an honest update that says so.
+    strategy: evidence_first
+    scope:
+      regions: [US]
+      topics: [macro, policy, market_sentiment]
+    steps:
+      - id: evidence
+        select_evidence:
+          kind: select_evidence
+          queries:
+            - Federal Reserve monetary policy decisions FOMC statements interest rates inflation outlook
+            - US financial regulation SEC market structure enforcement market sentiment
+            - US macroeconomic indicators CPI inflation employment market conditions
+          limit_per_query: 8
+          max_tokens: 30000
+      - id: research
+        research_agent:
+          kind: research_agent
+          agent: research_writer
+          input: evidence
+
+  # Real company research (Owner caliber 2026-10-27): SpaceX (Space
+  # Exploration Technologies Corp, Nasdaq SPCX, CIK 0001181412 — source
+  # identity owned by the sources task, not duplicated here). The first query
+  # names the company and ticker explicitly; the others retrieve launch-
+  # industry, policy and space-economy background without naming it. The
+  # selector marks a query direct only when the scope's company/symbol tokens
+  # appear in it: an aerospace hit alone is background, never proof the
+  # company is mentioned. Filings and market-quote sources are not configured
+  # yet, so missing company coverage and missing quotes are reported as gaps.
+  - id: spacex_company_research
+    name: SpaceX 公司研究
+    type: research
+    trigger: manual
+    enabled: true
+    objective: >-
+      Research SpaceX (Space Exploration Technologies Corp) from the saved
+      evidence. Company findings require the material to explicitly name the
+      company or its ticker SPCX; aerospace, launch-industry or space-economy
+      material is background even when it is about the company's market, and
+      must not be presented as a statement about SpaceX. Keep quoted numbers
+      with their unit, observation period and availability time, and never
+      present an observation period as the research time. No SEC filings or
+      market-quote source is configured for this company yet: report missing
+      filings, quotes and company events as coverage gaps instead of inventing
+      them, and describe which parts of the picture the saved evidence cannot
+      answer.
+    strategy: evidence_first
+    # Scope describes research intent; it is not an exact taxonomy-label filter.
+    scope:
+      companies: [SpaceX]
+      symbols: [SPCX]
+      industries: [aerospace, space]
+      topics: [launch_industry, policy, market_structure]
+      regions: [US]
+    steps:
+      - id: evidence
+        select_evidence:
+          kind: select_evidence
+          queries:
+            # Explicit company tokens make the first query direct; the others
+            # receive background retrieval roles.
+            - SpaceX SPCX company announcements launch vehicles Starship commercial contracts
+            - commercial space launch industry competition demand satellites market outlook
+            - space policy regulation launch licensing national security space programs
+          limit_per_query: 8
+          max_tokens: 30000
+      - id: research
+        research_agent:
+          kind: research_agent
+          agent: research_writer
+          input: evidence
+
   - id: saved_evidence_brief
     name: Saved Evidence Brief
     type: research

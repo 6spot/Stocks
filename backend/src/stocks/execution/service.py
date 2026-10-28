@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 from copy import deepcopy
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -14,6 +15,7 @@ from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
 from stocks.execution.config import (
+
     AgentConfig,
     StepCondition,
     TaskConfig,
@@ -141,6 +143,7 @@ TRIGGER_RETRY = "retry"
 MODEL_CALL_RESEARCH = "research"
 MODEL_CALL_TOOL_PLAN = "tool_plan"
 MODEL_CALL_PURPOSES = frozenset({MODEL_CALL_RESEARCH, MODEL_CALL_TOOL_PLAN})
+logger = logging.getLogger(__name__)
 MAX_UNFINISHED_SCAN_CANDIDATES = 100
 ENDED_BY_OWNER = {
     "code": "RUN_ENDED_BY_OWNER",
@@ -931,6 +934,14 @@ def execute_claimed_run(
                 # failure; the old execution has to stop writing.
                 raise
             except Exception:
+                # A typed failure keeps its own safe diagnostic; a generic
+                # exception must still leave its traceback in the Worker log,
+                # otherwise "failed unexpectedly" is undebuggable.
+                logger.exception(
+                    "Task step failed unexpectedly: run=%s step=%s",
+                    run.id,
+                    step.id,
+                )
                 terminal_error = {
                     "code": "STEP_FAILED",
                     "message": "Task step failed unexpectedly",
