@@ -1,11 +1,15 @@
-import { useResource } from "@/hooks/use-resource";
+import { useState } from "react";
+import { ApiError } from "@/api/client";
 import { dashboardApi } from "@/api/dashboard";
+import { ClassificationCard } from "@/components/classification-card";
+import { useResource } from "@/hooks/use-resource";
 import { EmptyPanel, ErrorPanel, LoadingPanel } from "@/components/async-state";
 import { FactTable } from "@/components/fact-list";
 import { OriginalLinks } from "@/components/original-links";
 import { ProcessingStages } from "@/components/processing-stages";
 import { StatusBadge } from "@/components/status-badge";
 import { Badge } from "@/components/ui/badge";
+import { ConfirmStopDialog } from "@/components/confirm-stop-dialog";
 import { Separator } from "@/components/ui/separator";
 import {
   Table,
@@ -16,6 +20,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { formatDateTime, formatValue, shortId } from "@/lib/format";
+import { useNoticeStore } from "@/state/ui-store";
 
 function LocatorDetails({ locator }: { locator: unknown }) {
   if (locator === null || locator === undefined) {
@@ -51,6 +56,47 @@ export function DocumentDetails({
     (signal) => dashboardApi.documentFacts(documentId, signal),
     [documentId],
   );
+  const notify = useNoticeStore((state) => state.notify);
+  const [retryPendingStage, setRetryPendingStage] = useState<string | null>(
+    null,
+  );
+  const [confirmStoppedStage, setConfirmStoppedStage] = useState<
+    string | null
+  >(null);
+
+  async function retryStage(stage: string, confirmStopped = false) {
+    setRetryPendingStage(stage);
+    try {
+      const result = await dashboardApi.retryProcessing(
+        documentId,
+        [stage],
+        confirmStopped,
+      );
+      if (result.accepted) {
+        notify("阶段已重新排队，等待 Worker 执行。", "success");
+        setConfirmStoppedStage(null);
+        detail.refresh();
+        return;
+      }
+      const entry = result.errors[0];
+      const code = entry?.error?.code;
+      if (code === "OWNER_CONFIRMATION_REQUIRED" && !confirmStopped) {
+        setConfirmStoppedStage(stage);
+        return;
+      }
+      notify(
+        entry?.error?.message ?? entry?.error?.code ?? "阶段未被接受。",
+        "error",
+      );
+    } catch (error) {
+      notify(
+        error instanceof ApiError ? error.message : "处理阶段重试失败。",
+        "error",
+      );
+    } finally {
+      setRetryPendingStage(null);
+    }
+  }
 
   if (detail.loading) {
     return <LoadingPanel label="正在读取 Document 详情" />;
@@ -131,7 +177,11 @@ export function DocumentDetails({
             “已采集”不等于“可搜索”。解析、分类、事实抽取和索引分别记录。
           </p>
         </div>
-        <ProcessingStages stages={data.processing_stages} />
+        <ProcessingStages
+          stages={data.processing_stages}
+          retryPendingStage={retryPendingStage}
+          onRetry={(stage) => retryStage(stage)}
+        />
         <Table>
           <TableHeader>
             <TableRow>
@@ -192,6 +242,13 @@ export function DocumentDetails({
           </TableBody>
         </Table>
       </section>
+
+      <Separator />
+
+      <ClassificationCard
+        classification={document.classification}
+        stages={data.processing_stages}
+      />
 
       <Separator />
 
@@ -259,6 +316,24 @@ export function DocumentDetails({
           <FactTable facts={facts.data?.items ?? []} />
         )}
       </section>
+      <ConfirmStopDialog
+        open={confirmStoppedStage !== null}
+        title="释放处理阶段所有权"
+        description="该阶段仍标记为运行中。确认旧进程停止后，才能重新打开并排队。"
+        confirmLabel="确认停止并重试"
+        pending={retryPendingStage !== null}
+        onConfirm={() => {
+          if (confirmStoppedStage !== null) {
+            void retryStage(confirmStoppedStage, true);
+            setConfirmStoppedStage(null);
+          }
+        }}
+        onOpenChange={(open) => {
+          if (!open) {
+            setConfirmStoppedStage(null);
+          }
+        }}
+      />
     </article>
   );
 }

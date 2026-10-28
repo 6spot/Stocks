@@ -1,0 +1,6 @@
+{"file": "AGENTS.md", "reason": "通用边界与最小必要验证；禁止以本机结果代替远程测试"}
+{"file": "docs/interface.md", "reason": "界面契约：文档详情与证据交互"}
+{"file": ".trellis/tasks/10-27-report-classification-visibility/prd.md", "reason": "验收标准：依据可见性与状态表达"}
+{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "前端质量门槛"}
+{"file": ".trellis/spec/frontend/type-safety.md", "reason": "类型安全：不得展示推断代码"}
+{"file": ".trellis/spec/backend/testing-guidelines.md", "reason": "远程验证要求"}

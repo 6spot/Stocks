@@ -1,4 +1,6 @@
+import { RotateCcw } from "lucide-react";
 import type { ProcessingStage } from "@/api/schemas";
+import { Button } from "@/components/ui/button";
 import {
   Table,
   TableBody,
@@ -12,8 +14,12 @@ import { stageLabel } from "@/lib/labels";
 
 export function ProcessingStages({
   stages,
+  onRetry,
+  retryPendingStage = null,
 }: {
   stages: ProcessingStage[];
+  onRetry?: (stage: string) => void;
+  retryPendingStage?: string | null;
 }) {
   return (
     <Table>
@@ -22,6 +28,7 @@ export function ProcessingStages({
           <TableHead>阶段</TableHead>
           <TableHead>状态</TableHead>
           <TableHead>详情</TableHead>
+          {onRetry ? <TableHead className="w-16">操作</TableHead> : null}
         </TableRow>
       </TableHeader>
       <TableBody>
@@ -49,6 +56,21 @@ export function ProcessingStages({
                 </span>
               ) : null}
             </TableCell>
+            {onRetry ? (
+              <TableCell>
+                {stage.status === "failed" ? (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={retryPendingStage !== null}
+                    onClick={() => onRetry(stage.stage)}
+                  >
+                    <RotateCcw aria-hidden="true" />
+                    {retryPendingStage === stage.stage ? "排队中…" : "重试"}
+                  </Button>
+                ) : null}
+              </TableCell>
+            ) : null}
           </TableRow>
         ))}
       </TableBody>
