@@ -13,6 +13,6 @@ SK Hynix 定向 Run 的 Evidence Package 未选中 Reddit 文档。排查确认�
 
 - [x] 增量路径最多使用 `max_tokens - max_tokens//5`；语义查询仍可使用未用预算。真实 Run `45aa0738` 中语义 direct 查询从 0 选中变为 8 选中。
 - [x] 有大量增量候选时，direct 语义查询选中了 Reddit SK Hynix 文档（Evidence Package 100 chunks，报告 `4c449b9b` 引用 `E94`）。
-- [x] `partial` payload 改为 HTML 正文；`tests/test_collection.py` 62 passed，断言不含 `{"summary"`。真实重新采集因 Reddit 429 未完成，现有 v1 仍是旧 JSON，未冒充已清理。
-- [x] 远程定向回归通过（test_collection 62、test_incremental_evidence 10、test_research 9）；重跑 SK Hynix Run `45aa0738`，Reddit 进入 Evidence Package 并被报告引用。
+- [x] `partial` payload 改为 HTML 正文；`tests/test_collection.py` 62 passed，断言不含 `{"summary"`。重新采集后 3 篇 v2 chunk 已无 JSON/HTML 包装，SK Hynix v2 被 Run `f726f3e0` 选中。
+- [x] 远程定向回归通过（test_collection 62、test_incremental_evidence 11、test_research 9）；Run `f726f3e0` 选中 Reddit v2，报告 `87a74b0b` 引用 Reddit 讨论。
 - [x] 总预算仍为 30k，增量使用 24k、语义保留 6k；未取消来源/文档边界，partial 仍为 partial。
