@@ -4,6 +4,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+from collections import defaultdict
 from copy import deepcopy
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -2057,28 +2058,59 @@ def _agent_evidence(
             fact_refs_by_document.setdefault(document_id, []).append(fact)
     evidence: list[dict] = []
     fact_documents_emitted: set[str] = set()
+    citable_by_document: dict[str, set[str]] = defaultdict(set)
+    for chunk_id, document_id in allowed_refs:
+        citable_by_document[document_id].add(chunk_id)
     for key, item in allowed_refs.items():
         merged = merged_by_key.get(key, {})
         item["origin"] = merged.get("origin", "initial")
         timing = merged.get("timing")
         if timing:
             item["timing"] = list(timing)
+        citable = citable_by_document[item["document_id"]]
         group = groups_by_document.get(item["document_id"])
         if group is not None:
             # Attach the reported role to the readable Chunk the Agent already
-            # cites, so one evidence chain arrives once.
+            # cites, so one evidence chain arrives once. Only selected Chunks of
+            # this Document stay listed: a group may mention Chunks the token
+            # budget dropped, and the Agent may not cite those.
             item["evidence_role"] = group.get("role")
             item["kinds"] = deepcopy(group.get("kinds", []))
             item["reasons"] = deepcopy(group.get("reasons", []))
-            item["chunk_ids"] = deepcopy(group.get("chunk_ids", []))
+            item["chunk_ids"] = [
+                chunk_id
+                for chunk_id in group.get("chunk_ids", [])
+                if isinstance(chunk_id, str) and chunk_id in citable
+            ]
         facts = fact_refs_by_document.get(item["document_id"])
         # A Document is one citation unit: its Facts travel with its first
         # readable Chunk instead of repeating on every Chunk of that Document.
         if facts and item["document_id"] not in fact_documents_emitted:
             fact_documents_emitted.add(item["document_id"])
-            item["fact_refs"] = deepcopy(facts)
+            item["fact_refs"] = [
+                _citable_fact_projection(fact, citable) for fact in facts
+            ]
         evidence.append(item)
     return allowed_refs, evidence
+
+
+def _citable_fact_projection(fact: dict, citable_chunk_ids: set[str]) -> dict:
+    """Drop a source pointer the report is not allowed to cite.
+
+    A frozen Fact keeps the Chunk it was extracted from, which can be a
+    different Chunk of the same Document version than the one this Run
+    selected. The Agent may only cite selected Chunks, so that uncitable id is
+    removed from the model-facing projection; the saved Fact and the Evidence
+    Package keep the real pointer.
+    """
+
+    projection = deepcopy(fact)
+    evidence_ref = projection.get("evidence_ref")
+    if isinstance(evidence_ref, dict):
+        chunk_id = evidence_ref.get("chunk_id")
+        if isinstance(chunk_id, str) and chunk_id not in citable_chunk_ids:
+            evidence_ref.pop("chunk_id", None)
+    return projection
 
 
 def _final_coverage(

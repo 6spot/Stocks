@@ -23,13 +23,12 @@ from uuid import UUID, uuid4
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from stocks.collection.config import load_sources, select_sources
+from stocks.collection.config import load_sources
 from stocks.collection.errors import CollectionError
 from stocks.collection.service import sync_source
 from stocks.collection.urls import canonical_url, validate_https_url
 from stocks.facts import facts_for_documents
 from stocks.models import (
-    Document,
     DocumentChunk,
     DocumentParseState,
     DocumentProcessingState,
@@ -909,15 +908,22 @@ def _ingest_and_process(
 ) -> ProcessedContent:
     """Register the retrieved original, then process only that Document."""
 
-    try:
-        source = select_sources(
-            load_sources(sources_config_path), [tool.source_id]
-        )[0]
-    except (CollectionError, IndexError) as exc:
+    # A Tool's Source is a provenance identity, not a collection channel: the
+    # configured entry may stay disabled so the collection loop never fetches
+    # it, while a granted Tool still registers its originals under it.
+    source = next(
+        (
+            item
+            for item in load_sources(sources_config_path)
+            if item.source_id == tool.source_id
+        ),
+        None,
+    )
+    if source is None:
         raise SupplementError(
             GAP_SUPPLEMENT_SOURCE_UNAVAILABLE,
             "The Tool's configured Source is not available",
-        ) from exc
+        )
     dedupe_key = canonical_url(normalized["url"])
     item = DocumentInput(
         source_id=tool.source_id,

@@ -45,10 +45,14 @@ agents:
       # much larger than one classification or one extraction, and reasoning
       # models spend part of the budget thinking. Measured on the live deployment,
       # 60s timed out twice at exactly the limit while classification (30s) and
-      # fact extraction (60s) succeeded on the same model. This is a capacity
+      # fact extraction (60s) succeeded on the same model. A later measurement on
+      # the same deployment with a larger evidence package (49-122 selected
+      # chunks) hit 300s repeatedly: successful research calls took 89s and 225s
+      # and one attempt per Run timed out at the old limit, so 300s was not a
+      # usable capacity for the configured evidence budget. This is a capacity
       # value, not a relaxed safety bound: the limit stays hard, and the loader
       # still rejects anything above 600s.
-      timeout_seconds: 300
+      timeout_seconds: 600
       retries: 1
       retry_backoff_seconds: 0
   # Jev uses native /systemone choice/noul questions derived from the taxonomy.

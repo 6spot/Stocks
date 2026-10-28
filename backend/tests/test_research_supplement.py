@@ -4,6 +4,7 @@ import json
 import os
 from datetime import UTC, datetime
 from hashlib import sha256
+from pathlib import Path
 from types import SimpleNamespace
 from uuid import uuid4
 
@@ -572,6 +573,69 @@ def test_tool_content_is_ingested_and_appended_before_it_can_be_cited(
         # The initial selection snapshot is never rewritten by an append.
         assert package.selected_chunks == []
         assert package.selected_count == 0
+
+
+def test_disabled_tool_source_still_registers_the_original(
+    engine, tmp_path, snapshot_store
+):
+    """A Tool's Source is provenance, not a collection channel.
+
+    The configured entry stays disabled so the collection loop never fetches it;
+    a granted Tool still has to register what it retrieved under that Source.
+    """
+
+    objects, _store, _read = snapshot_store
+    sources_path = write_sources_config(tmp_path)
+    disabled = (
+        Path(sources_path)
+        .read_text(encoding="utf-8")
+        .replace("enabled: true", "enabled: false")
+    )
+    Path(sources_path).write_text(disabled, encoding="utf-8")
+    content = "<html><body><p>Rates held steady.</p></body></html>"
+    client = _FakeToolClient(
+        result=_result(
+            {
+                "title": "Policy statement",
+                "url": "https://www.example.gov/releases/statement",
+                "content": content,
+                "content_type": "text/html; charset=utf-8",
+            }
+        )
+    )
+    tool = _tool()
+    with Session(engine) as session:
+        run, package = _make_run_and_package(session)
+        runtime = _runtime(engine, snapshot_store, client, tool)
+        outcome = execute_plan(
+            session,
+            make_config(),
+            run,
+            package,
+            _plan(_request()),
+            runtime=runtime,
+            budget=SupplementBudget(),
+            sources_config_path=sources_path,
+            as_of=package.as_of,
+            now=datetime.now(UTC),
+            round_index=1,
+            process_token=PROCESS_TOKEN,
+        )
+
+        assert outcome.appended and len(outcome.appended) == 1
+        assert list(objects.values()) == [content.encode("utf-8")]
+        session.expire_all()
+        document = session.scalar(select(Document))
+        assert document is not None
+        assert document.source_id == SOURCE_ID
+        assert [
+            entry.get("code")
+            for entry in run.research_inputs
+            if entry["kind"] == "gap"
+        ] == [
+            "supplement_classify_unavailable",
+            "supplement_facts_unavailable",
+        ]
 
 
 def test_summary_only_result_is_a_gap_and_cannot_be_cited(

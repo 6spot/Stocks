@@ -2047,6 +2047,136 @@ def test_agent_receives_appended_facts_and_their_comparison(
         assert saved_package.metric_comparisons == []
 
 
+def test_agent_evidence_hides_uncitable_fact_source_chunks(engine, tmp_path):
+    """A Fact's origin Chunk may be one this Run did not select.
+
+    The Agent may only cite selected Chunks, so the model-facing projection must
+    not carry an unselected origin id; a selected origin id stays exact. The
+    saved Fact keeps its real pointer either way.
+    """
+
+    from stocks.facts import FactInput, persist_facts
+    from stocks.models import Fact
+    from stocks.research.evidence import fact_selection_ref
+
+    unselected_chunk_id = "00000000-0000-0000-0000-000000000004"
+    config = _make_task_config(tmp_path)
+    task = config.tasks[0]
+    models_path = write_models_config(tmp_path)
+    with Session(engine) as session:
+        claimed = create_or_get_run(
+            session,
+            task,
+            list(config.agents),
+            config_path=models_path,
+        )
+        run_id = claimed.run.id
+        assert claim_run(session, run_id, process_token=PROCESS_A)
+        _add_saved_evidence(session)
+        session.add(
+            DocumentChunk(
+                id=UUID(unselected_chunk_id),
+                document_id=UUID(EVIDENCE_DOCUMENT_ID),
+                parse_batch_id=UUID(EVIDENCE_BATCH_ID),
+                position=1,
+                text="A later paragraph of the same release.",
+                locator={},
+            )
+        )
+        session.commit()
+        run = session.get(TaskRun, run_id)
+        selected = _selected_evidence_chunk()
+        output, refs = _evidence_selection_result(
+            session,
+            run,
+            selected_chunks=[selected],
+            gaps=[],
+        )
+        persist_facts(
+            session,
+            UUID(EVIDENCE_DOCUMENT_ID),
+            [
+                FactInput(
+                    fact_type="macro_indicator",
+                    origin_method="llm_extraction",
+                    evidence_ref={
+                        "kind": "chunk",
+                        "chunk_id": unselected_chunk_id,
+                        "parse_batch_id": EVIDENCE_BATCH_ID,
+                        "position": 1,
+                    },
+                    subject_name="US CPI",
+                    metric_id="cpi_yoy",
+                    statement="US CPI was 2.4.",
+                    value=2.4,
+                    unit="percent",
+                ),
+                FactInput(
+                    fact_type="macro_indicator",
+                    origin_method="llm_extraction",
+                    evidence_ref={
+                        "kind": "chunk",
+                        "chunk_id": EVIDENCE_CHUNK_ID,
+                        "parse_batch_id": EVIDENCE_BATCH_ID,
+                        "position": 0,
+                    },
+                    subject_name="US CPI",
+                    metric_id="cpi_mom",
+                    statement="US CPI rose 0.2 percent.",
+                    value=0.2,
+                    unit="percent",
+                ),
+            ],
+            processor_version="test",
+            config_fingerprint="f" * 64,
+            created_at=datetime.now(UTC),
+        )
+        session.commit()
+        stored = list(
+            session.scalars(
+                select(Fact)
+                .where(Fact.document_id == UUID(EVIDENCE_DOCUMENT_ID))
+                .order_by(Fact.metric_id)
+            ).all()
+        )
+        package = session.scalar(
+            select(EvidencePackage).where(EvidencePackage.run_id == run_id)
+        )
+        assert package is not None
+        package.evidence_groups = [
+            {
+                "document_id": EVIDENCE_DOCUMENT_ID,
+                "chunk_ids": [EVIDENCE_CHUNK_ID, unselected_chunk_id],
+                "fact_refs": [fact_selection_ref(fact) for fact in stored],
+                "role": "new_information",
+                "kinds": ["document_ingested"],
+                "reasons": ["new_information"],
+            }
+        ]
+        session.commit()
+
+        _allowed, evidence = execution_service._agent_evidence(
+            session, run, package
+        )
+        assert evidence[0]["chunk_ids"] == [EVIDENCE_CHUNK_ID]
+        by_metric = {
+            fact["metric_id"]: fact for fact in evidence[0]["fact_refs"]
+        }
+        assert "chunk_id" not in by_metric["cpi_yoy"]["evidence_ref"]
+        assert by_metric["cpi_yoy"]["evidence_ref"]["position"] == 1
+        assert (
+            by_metric["cpi_mom"]["evidence_ref"]["chunk_id"]
+            == EVIDENCE_CHUNK_ID
+        )
+        # The stored projection is untouched.
+        session.expire_all()
+        saved = session.scalar(
+            select(Fact).where(Fact.metric_id == "cpi_yoy")
+        )
+        assert saved is not None
+        assert saved.evidence_ref["chunk_id"] == unselected_chunk_id
+
+
 def test_second_planning_round_continues_the_attempt_sequence(engine, tmp_path):
     """A later planning round adds cost rows instead of hiding round one."""
 
