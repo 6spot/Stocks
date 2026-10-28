@@ -40,7 +40,7 @@
 - [x] 真实 Tavily MCP 客户端独立任务已归档，见 [验证记录](../archive/2026-10/10-27-v2-real-mcp-tavily/verification/README.md)，不冒充完整研究 Run。
 - [x] 隔离 Magpie 单文档分类重处理已通过（3.429 秒，实际 jev-1.14.0），见 [收尾验收记录](../archive/2026-10/10-27-final-acceptance-closeout/acceptance.md)；不凭 `decision_model` 宣称原生 Jev，不宣称生产 41 篇已运行当前原生协议。
 - [ ] 完整真实补证 Run、长期调度/cron/时区、应用 429/预算耗尽终止，以及晚提交经应用变化流入包仍缺真实证据；容器 uptime 不关闭这些要求。
-- [x] MP-01/MP-02 作为已确认未修复的范围外问题保留。本轮条件未满足，三个父任务不归档；提交推送由主会话执行，不将未勾选项改写为通过。
+- [x] MP-01/MP-02 已于 2026-10-28 修复并归档，见 [配置一致性验收](../archive/2026-10/10-27-report-config-consistency/verification.md) 与 [历史 Facts 修复](../archive/2026-10/10-27-report-historical-facts/prd.md)。报告闭环的剩余项（论坛来源、增量续扫、CNBC facts 重试、行情源）登记在 [PA-4](pending-acceptance.md)；路线图/V1/V2 三个父任务仍不归档，提交推送由主会话执行，不将未勾选项改写为通过。
 
 父任务和收尾任务使用当前活动路径，已归档叶任务使用实际 `archive/2026-10` 路径。初始规划 AC 是历史事实，当前交付状态以各自 task.json 与归档记录为准。
 

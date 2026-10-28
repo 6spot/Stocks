@@ -27,7 +27,7 @@
 - 分类为当前 JSONB 状态：成功重处理覆盖当前 classification，失败保留前次成功 classification；不会创建新的 parse batch。旧 parse/Chunk/报告证据保留的契约，不能写成旧 classification 自动另存新批次。
 - 容器 36 小时 uptime 只能说明容器运行时长。长期采集/研究调度、cron/时区真实触发、应用在 429 与预算耗尽下的有界终止仍缺相应运行证据，未被上述六项决定移出范围。
 - 完整真实 Tavily 补证 Run 仍未验证；V1 晚提交只验证 SQL 可见性，未证明经应用变化流进入后续证据包。保留受控测试与真实证据的区别。
-- [既有审查](../archive/2026-10/10-26-application-pipeline-audit/audit.md) 的 MP-01（自定义 API/Worker 配置路径不一致）、MP-02（历史语义文档漏带已有 Fact）均未修复，明确不在本轮修复范围。
+- [既有审查](../archive/2026-10/10-26-application-pipeline-audit/audit.md) 的 MP-01（自定义 API/Worker 配置路径不一致）、MP-02（历史语义文档漏带已有 Fact）已于 2026-10-28 修复并归档，不再属于未修复范围；见[配置一致性验收](../archive/2026-10/10-27-report-config-consistency/verification.md)与[历史 Facts 修复](../archive/2026-10/10-27-report-historical-facts/prd.md)。
 
 ## 归档口径
 

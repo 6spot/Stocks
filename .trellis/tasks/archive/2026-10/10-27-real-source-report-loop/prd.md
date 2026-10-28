@@ -8,14 +8,14 @@
 
 现有代码具备 RSS/基础 HTTP API 采集、原文保存、原生 Jev 标签判断、独立实体抽取、结构化数据、语义检索以及报告和引用回溯。默认来源以 SEC/美联储为主，不能据此宣称市场覆盖完整。已有受控完整流程及部分真实依赖验证，但未完成本轮要求的真实市场和个股报告联合验收。
 
-MP-01 与 MP-02 是已知未修复缺陷，见[既有审查](../archive/2026-10/10-26-application-pipeline-audit/audit.md)。真实 Jev、Tavily 的独立成功不得替代本任务验收；此前范围排除仍适用。
+MP-01 与 MP-02 是当时的已知未修复缺陷，现已修复并归档，见[配置一致性](../10-27-report-config-consistency/verification.md)、[历史 Facts](../10-27-report-historical-facts/prd.md)与[既有审查](../10-26-application-pipeline-audit/audit.md)。真实 Jev、Tavily 的独立成功不得替代本任务验收；此前范围排除仍适用。
 
 ## 子任务与需求归属
 
 | 优先级 | 子任务 | 独立交付 |
 | --- | --- | --- |
-| P1 | [配置一致性](../archive/2026-10/10-27-report-config-consistency/prd.md) | 修复 MP-01，确保新增来源和模型使用同一组配置 |
-| P1 | [历史 Facts 完整性](../archive/2026-10/10-27-report-historical-facts/prd.md) | 修复 MP-02，历史语义证据带入已有结构化数据 |
+| P1 | [配置一致性](../10-27-report-config-consistency/prd.md) | 修复 MP-01，确保新增来源和模型使用同一组配置 |
+| P1 | [历史 Facts 完整性](../10-27-report-historical-facts/prd.md) | 修复 MP-02，历史语义证据带入已有结构化数据 |
 | P1 | [首批真实来源](../10-27-report-real-sources/prd.md) | 选型并接入真实 RSS、API 和讨论来源，明示限制 |
 | P1 | [报告口径与取材](../10-27-report-research-scope/prd.md) | 明确并配置市场情报与个股研究目标、时间和覆盖 |
 | P2 | [分类依据可见性](../10-27-report-classification-visibility/prd.md) | 可以检查标签、公司/代码、依据及处理状态 |
@@ -77,4 +77,4 @@ MP-01 与 MP-02 是已知未修复缺陷，见[既有审查](../archive/2026-10/
 
 2026-10-27 已定：免费来源（允许免费 API key）；首批报告口径为市场情报简报与 SpaceX 公司研究；目标公司 SpaceX 为 Nasdaq 上市公司（SPCX，CIK 0001181412，上市状态当日经 SEC EDGAR 核实）；首批来源候选与凭据申请清单见[来源子任务](../10-27-report-real-sources/prd.md)。仍待定：交易日复盘是否启用；均在对应子任务规划中解决，不阻塞本轮任务登记。复杂子任务的 design.md、implement.md 及所需上下文将在进入实现前补齐，本轮不宣称规划已收敛。
 
-上级：[Stocks 路线图](../10-20-stocks-roadmap/prd.md)。领域规范沿用 [数据](../../../docs/data.md)、[执行](../../../docs/execution.md)、[研究](../../../docs/research.md)及[界面](../../../docs/interface.md)，本任务不建立第二套规范。
+上级：[Stocks 路线图](../../../10-20-stocks-roadmap/prd.md)。领域规范沿用 [数据](../../../../../docs/data.md)、[执行](../../../../../docs/execution.md)、[研究](../../../../../docs/research.md)及[界面](../../../../../docs/interface.md)，本任务不建立第二套规范。

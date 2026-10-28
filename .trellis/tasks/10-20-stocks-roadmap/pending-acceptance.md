@@ -116,7 +116,7 @@ Fed XML 真实字节的 parser 定位。详见 [V2 本轮记录](../10-20-stocks
 | 长期调度、限流与预算终止 | **仍待验证，未移出范围**；到期执行、活跃 Run 去重、失败游标不推进有证据 | 真实持续调度、cron/时区与应用 429/预算耗尽观察；36h uptime 不能关闭 |
 | 当前词表/原生 Jev 的真实文档重处理 | **单文档隔离 Magpie 重处理通过：jev-1.14.0，词表 2026-10-27**，不宣称 41 篇已使用原生 Jev | 见 [收尾验收记录](../archive/2026-10/10-27-final-acceptance-closeout/acceptance.md)；`decision_model` 本身不证明模型/协议身份 |
 
-六项范围收敛已获 Owner 授权，不再索取对应硬件/供应商条件。完整 Tavily 补证 Run、长期调度/限流/预算终止仍未验证，不能被容器运行时长关闭。V1 晚提交仅验证 SQL 可见性，未证明应用变化流进入后续证据包。MP-01/MP-02 已确认未修复且不在本轮修复范围，见 [既有审查](../archive/2026-10/10-26-application-pipeline-audit/audit.md)。当前无需重新提供 chat/embedding 凭据或联系邮箱。
+六项范围收敛已获 Owner 授权，不再索取对应硬件/供应商条件。完整 Tavily 补证 Run、长期调度/限流/预算终止仍未验证，不能被容器运行时长关闭。V1 晚提交仅验证 SQL 可见性，未证明应用变化流进入后续证据包。MP-01/MP-02 已于 2026-10-28 修复并归档，见 [配置一致性](../archive/2026-10/10-27-report-config-consistency/verification.md) 与 [历史 Facts](../archive/2026-10/10-27-report-historical-facts/prd.md)；原始记录仍见 [既有审查](../archive/2026-10/10-26-application-pipeline-audit/audit.md)。当前无需重新提供 chat/embedding 凭据或联系邮箱。
 本轮 Fed PDF 请求超时，未算通过；此前 V2-02 的真实 PDF 证据另有记录。
 
 **范围收敛（2026-10-24）：** 上表两项标注「不在范围」的条目经 Owner 确认不再作为验收目标，
@@ -131,6 +131,19 @@ Fed XML 真实字节的 parser 定位。详见 [V2 本轮记录](../10-20-stocks
 本轮验收库 `stocks_v2_acceptance` 和 bucket `stocks-v2-acceptance` 独立保留，不新增容器；
 远程结果在 `/tmp/stocks-v2-acceptance-20261023`。清理四条手工 Acme Fact 前已备份真实库，
 不把其无效 Chunk 引用算作真实来源证据。凭据、数据库备份及行内容不提交到仓库。
+
+## PA-4：真实来源到报告闭环的剩余项（2026-10-28）
+
+**已完成：** 六项子任务均已归档；真实四来源采集 → Jev 分类 → 检索 → 市场与 SpaceX 报告 → 真实 Tavily 补证引用已形成联合证据，详见[集成复核](../archive/2026-10/10-27-real-source-report-loop/acceptance.md)。**部署镜像已重建：** 2026-10-28 以离线 wheelhouse 构建 api/worker、重建 web，容器从新镜像重建后源码标记在位、health 200；此前 `docker cp` 热修随容器重建丢失的风险已解除。
+
+| 剩余项 | 现状与缺口 | 后续条件 |
+| --- | --- | --- |
+| 论坛/讨论来源 | Reddit 在测试服务器被 DNS 投毒，标准入口的 SSRF 校验拒绝；当前没有接入任何真实讨论来源。这是范围缩减，不是通过 | Owner 决定引入可信 DNS/DoH 或代理出口，或改接可访问的讨论源；接入后按标准入口验证正文、时间与意见属性 |
+| 增量窗口续扫 | `(0, 644]` 每个 Run 只扫描 1/7 页，`change_scan_completed=false`，报告以 `retrieval_truncated` 明示 | 连续续扫 Run 覆盖完整窗口，并核对证据包与报告缺口 |
+| CNBC facts 超时 | 3 份 CNBC 文档的 facts 阶段 `MODEL_TIMEOUT`，尚未重试 | 重试并确认 facts 状态与数据；未完成前不宣称这 3 份已抽取完成 |
+| 行情/价格来源 | 未配置任何 quote 源；市场与个股报告均声明无法回答价格、估值和涨跌原因 | Owner 决定是否接入行情源；未接入前不把市场表现或涨跌归因写成已覆盖 |
+
+真实同源转载/冲突样例仍按 2026-10-24 决定移出范围，不因本清单重新登记。
 
 ## 复用说明
 
