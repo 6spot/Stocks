@@ -27,12 +27,47 @@ MP-01 与 MP-02 是已知未修复缺陷，见[既有审查](../archive/2026-10/
 
 ## 跨任务验收
 
-- [ ] MP-01/MP-02 有对应远程回归证据。
-- [ ] 首批来源、目标公司及报告时间口径已明确；不能用默认示例冒充 Owner 已选定的产品配置。
-- [ ] 手动完成真实资料获取、保存、Jev 分类、检索及市场和个股报告；保存可核对的来源与 Run/Document/Report 标识。
-- [ ] 报告区分事实、来源观点与推断，数字的单位/期间明确，引用可回原文；缺失的行情或资料如实呈现。
-- [ ] 来源摘要/全文、实体识别限制、重复/冲突及关键遗漏均有实际检查记录；受限项列明，不计通过。
-- [ ] 最终集成复核汇总各子任务证据与剩余问题，不因单个真实模型或 MCP 成功而宣布全链路验收。
+- [x] MP-01/MP-02 有对应远程回归证据。
+  MP-01：commit `0432e6a`，Worker/CLI 路径统一到 Settings，远程回归通过。
+  MP-02：commit `be6764c`，语义路径经 `facts_for_documents` + 去重/冲突标记携带 Facts，3 个回归测试；
+  本轮真实 Run `62fa1697` 复核：13 个 `historical_context` 背景组中 9 组携带 `fact_refs`。
+- [x] 首批来源、目标公司及报告时间口径已明确；不能用默认示例冒充 Owner 已选定的产品配置。
+  `config/sources.yaml`：`sec_press_releases`、`fed_press_releases`、`cnbc_markets`、`fred_cpiaucsl`（均 enabled）；
+  `config/tasks.yaml`：`market_intelligence_brief`（无 companies/symbols）与 `spacex_company_research`（SpaceX/SPCX，
+  首条查询 direct）。commit `d2c0fd8`，`docs/research.md` 记录两类口径。
+- [x] 手动完成真实资料获取、保存、Jev 分类、检索及市场和个股报告；保存可核对的来源与 Run/Document/Report 标识。
+  采集 `c49fdf96`；市场简报 `e3a6b8fe` → report `fe3ea7e6`；SpaceX `62fa1697` → report `d1546495`；
+  Tavily 补证 `fcfc59c4` → report `ca8e39e4`。证据包、Document 版本与 `/original` 均可回查。
+- [x] 报告区分事实、来源观点与推断，数字的单位/期间明确，引用可回原文；缺失的行情或资料如实呈现。
+  逐条核对：FOMC 25bp/3.75%-4%/12–0、SEC DERA 208 宗 IPO/$137B、CNBC CPI 3.7%/核心 2.6%、
+  SEC 2026-98 近 $3,000,000（基金层面、指控阶段）、CNBC "frontier models" 引语、NSSL $1.6B、
+  EDGAR S-8/S-1/Note 18。未配置行情来源时报告明确写“无法评估市场具体涨跌”，未编造价格。
+- [x] 来源摘要/全文、实体识别限制、重复/冲突及关键遗漏均有实际检查记录；受限项列明，不计通过。
+  分类可见性：SEC 4 公司实体 + 逐条原文引用、FRED 零实体不推断、CNBC 输入截断、失败保留旧结果与重试闭环。
+  研究侧：122 个入选 chunk 中仅 1 份含 "SpaceX"（直接信息与背景分离）；转载合并与同指标冲突在自然样本中
+  未出现，已在验收清单标为未覆盖；Tool 补充材料标 `collected_after_as_of`。
+- [x] 最终集成复核汇总各子任务证据与剩余问题，不因单个真实模型或 MCP 成功而宣布全链路验收。
+  见下节“集成复核结论”：两个真实缺陷（不可引用 Chunk 泄漏、Tool 来源被 enabled 拦住）在本轮修复并补回归；
+  仍受限项：增量窗口只扫 1/7 页、部署镜像未重建（热修随容器重建丢失）、3 份 CNBC facts 阶段超时、
+  转载/冲突未取得真实样本。
+
+## 集成复核结论
+
+| 子任务 | 状态 | 证据 |
+| --- | --- | --- |
+| 配置一致性（MP-01） | 通过 | `0432e6a` + 远程回归 |
+| 历史 Facts（MP-02） | 通过 | `be6764c` + 真实 Run `62fa1697` 的 `fact_refs` |
+| 首批真实来源 | 通过 | `018f4a3`/`5681b9e`，采集 `c49fdf96` 四来源 0 失败 |
+| 报告口径与取材 | 通过 | `d2c0fd8`，两份 Task 真实产出报告 |
+| 分类依据可见性 | 通过 | `b35acea`，真实页面核对 SEC/FRED/CNBC 与重试闭环 |
+| 真实质量验收 | 通过（含受限项） | `acceptance.md`，本轮 5 个真实 Run |
+
+修复缺陷：Fact 来源 Chunk 未入选时 `chunk_id` 泄漏进模型输入（导致 `MODEL_RESPONSE_INVALID`）；Tool 来源
+`enabled: false` 被补充入库拒绝（导致全部补证失败）。research 超时 300s→600s。
+
+剩余问题（不在本轮验收范围或需后续处理）：部署镜像仍是旧代码，本轮修复靠 `docker cp`；容器重建会回退，
+需要一次成功的 `compose build`。增量窗口 `(0,644]` 每个 Run 只扫一页，需续扫 Run 才覆盖完整窗口。
+同源转载合并与同指标冲突尚无真实样本。3 份 CNBC 文档 facts 阶段 `MODEL_TIMEOUT` 待重试。
 
 ## 不在范围内
 
