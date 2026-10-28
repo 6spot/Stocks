@@ -1140,3 +1140,25 @@ Worker 与相关 CLI 的配置路径统一遵循显式参数 > Settings > 内置
 ### Status
 
 [OK] **Completed**
+
+## 2026-10-28 — 真实来源到报告的端到端质量验收
+
+父任务 `10-27-real-source-report-loop` 的最后一个子任务，也是前四个子任务的联合验收。本轮全部在测试服务器部署实例 `/opt/stocks` 上以标准入口执行：采集 Run `c49fdf96`（SEC/Fed/CNBC/FRED，0 失败）、市场简报 `e3a6b8fe` → report `fe3ea7e6`、SpaceX 公司研究 `62fa1697` → report `d1546495`、真实 Tavily 补证 `fcfc59c4` → report `ca8e39e4`。报告关键结论逐条对回原文（FOMC 25bp/12–0、SEC DERA 208 宗 IPO/$137B、CNBC CPI 3.7%/核心 2.6%、SEC 2026-98 近 $3M、CNBC "frontier models" 引语、EDGAR S-8/Note 18），原件经 `/api/documents/{id}/original` 返回真实字节。
+
+执行中发现并修复两处真实缺陷：Fact 的来源 Chunk 若未入选，其 `chunk_id` 仍出现在模型可见的 `fact_refs` 中，模型据此引用后被 `allowed_refs` 拒绝，连续三个 Run 报 `MODEL_RESPONSE_INVALID`；`tavily_web` 按设计 `enabled: false`，但补充入库走 `select_sources()` 要求启用，导致全部补证以 `supplement_source_unavailable` 失败。同时把 research 超时 300s→600s（大证据包实测反复超时）。远程 89 + 54 用例通过、pyflakes clean，两处修复均有回归测试。
+
+遗留：部署镜像仍是旧代码，本轮修复靠 `docker cp`，容器重建会回退（需要一次成功的 `compose build`）；增量窗口 `(0,644]` 每个 Run 只扫一页，续扫未完成；同源转载合并与同指标冲突尚无真实样本；5 个 facts 阶段 `MODEL_TIMEOUT` 待重试。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `ce21eae` | docs(agents): inline-first helpers, no speculative complexity, minimal exception use |
+| `133c454` | fix(research): cite only selected chunks and register Tool sources that stay disabled |
+| `8fdd77d` | docs(task): end-to-end live quality acceptance record |
+| `0b3ee5a` | chore(task): archive 10-27-report-live-quality |
+| `e45da9f` | docs(task): parent integration review with per-subtask evidence and residual limits |
+
+### Status
+
+[OK] **Completed**（含已列明的受限项）
