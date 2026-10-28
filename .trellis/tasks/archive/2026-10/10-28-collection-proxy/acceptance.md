@@ -20,12 +20,12 @@
   - 每个条目的 Reddit 文章 HTML 返回 `HTTP_STATUS 403`，按既有语义保存 Feed 标题与帖子正文为 `partial`，未写成完整原文；
   - 3 个 S3 原件均可读取，字节 SHA-256 与 `documents.content_hash` 前缀一致（`8f65b2cc19aa`、`d1be5a781223`、`20cdb01bb493`）。
 - 部署镜像重建：`stocks-api`/`stocks-worker` 从新镜像重建，api healthy；worker 内 `COLLECTION_PROXY_URL` 已加载，来源配置读取 8 项。
-- 下游处理状态：3 篇 `parse` 完成；恢复测试部署到本机 Magpie 的反向隧道后，Jev 分类调用与 Embedding index 已完成。`classify` 仍失败于实体抽取使用的 Tencent TokenHub chat key 被禁用（HTTP 401，`MODEL_AUTHENTICATION_FAILED`），`facts` 仍 pending。该失败与代理无关；未把 3 篇写成完整可检索。
+- 下游处理状态：3 篇 `parse`、`classify`、`index` 均完成。Jev 实际模型 `jev-1.14.0`；实体抽取在测试部署改走本机 Magpie（`deepseek-v4.1-flash`）。facts：1 篇 completed（0 条）、1 篇 `NOT_APPLICABLE` skipped、1 篇 `MODEL_RESPONSE_INVALID` 失败（重试后仍失败）。
 
 ## 限制
 
 - Reddit HTML 文章页返回 403；当前只保存 Feed 标题与帖子正文（`partial`），没有评论页全文。Owner 已于 2026-10-28 接受该 `partial` 粒度；`reddit_stocks` 默认关闭，测试部署为验收临时启用。
-- 3 篇 Reddit Document 的 index 已完成，但 classify 因 chat key 被禁用未完成，因此不能宣称论坛内容已可被研究检索。
+- 3 篇 Reddit Document 已完成文本检索索引与分类；1 篇 facts 抽取失败，未宣称事实抽取完整。测试部署的 chat 路由已切到 Magpie，生产官方配置未改。
 - DoH 使用 Cloudflare `https://cloudflare-dns.com/dns-query`，经同一代理访问；代理不可达时该来源以 `DNS_FAILED` 失败。
 - 代理模式无法固定代理解析出的目标 IP；已在设计/文档中记录为受信代理取舍。
 - 未改 MCP/Tavily；未实现代理池、自动切换或代理认证管理。
