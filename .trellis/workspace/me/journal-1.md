@@ -1162,3 +1162,28 @@ Worker 与相关 CLI 的配置路径统一遵循显式参数 > Settings > 内置
 ### Status
 
 [OK] **Completed**（含已列明的受限项）
+
+## Session 37: 报告闭环收尾：推送、镜像重建与遗留项登记
+
+**Date**: 2026-10-28
+**Task**: 真实来源驱动的市场与个股报告闭环（收尾）
+**Branch**: `feat/research-article`
+
+### Summary
+
+把 `10-27-real-source-report-loop` 的 14 个本地提交推送到 `origin/feat/research-article`（`507d31f..2f42dbf`），解决“交付只在本地”的问题。
+
+测试部署 `/opt/stocks` 原先仍运行旧代码，修复只存在于 `docker cp` 热修。同步当前 `backend/src`、`frontend/src`、`config`、`compose.yaml` 后，常规 `docker compose build` 因外网 pip 下载约 13 kB/s 在 850 秒超时；`web` 已在首轮成功构建。后端改为在测试服务器用 `pip wheel` 生成 39 个离线 wheel，临时离线 Dockerfile 执行 `docker compose build api worker`（exit 0），随后恢复原 Dockerfile 并删除 wheelhouse。`stocks-api`/`stocks-worker` 镜像 ID `03ab4c6bcd67`，api/worker/web 容器均从新镜像重建并 healthy；容器内 MP-01/MP-02 源码标记在位，`/health` 200，配置加载 7 个来源、4 个启用，Web 资源含“分类与实体”文案。未重建数据库，`.env` 与持久卷未动。
+
+父任务六项子任务全部归档后，补写 `acceptance.md` 并归档父任务；路线图/V1/V2 仍保持 planning。新增 PA-4 登记四项剩余：论坛来源（Reddit 在测试服务器被 DNS 投毒，SSRF 拒绝）、增量窗口仅扫 1/7 页、3 份 CNBC facts `MODEL_TIMEOUT` 未重试、无行情/价格来源。同步修正路线图、`final-acceptance-scope.md`、`docs/validation.md` 中“MP-01/MP-02 未修复”的过期表述，并给 MP-02 归档执行计划补执行说明。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `2f42dbf` | chore: record journal |
+| `a9e92cd` | chore(task): archive report loop and register residual acceptance |
+
+### Status
+
+[OK] **Completed**（部署镜像已重建；PA-4 四项仍为未完成/待决定）
