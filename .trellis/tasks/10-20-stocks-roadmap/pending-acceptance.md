@@ -138,7 +138,7 @@ Fed XML 真实字节的 parser 定位。详见 [V2 本轮记录](../10-20-stocks
 
 | 剩余项 | 现状与缺口 | 后续条件 |
 | --- | --- | --- |
-| 论坛/讨论来源 | 2026-10-28 已实现来源级代理并完成 Reddit RSS 真实入库：测试部署经代理保存 3 篇 `partial`（Feed 标题+帖子正文），S3 原件哈希核对一致；Reddit 文章 HTML 返回 403，未取得评论页全文。`reddit_stocks` 默认关闭，测试部署临时启用；3 篇 parse 完成但 classify/index 因测试环境 provider 连接失败未完成 | Owner 决定是否接受 `partial` 粒度或改进正文/评论获取；启用需 `COLLECTION_PROXY_URL`，并需可用的分类/Embedding provider；未完成前不宣称论坛全文或可检索覆盖 |
+| 论坛/讨论来源 | 2026-10-28 Owner **接受 `partial` 粒度**（Feed 标题+帖子正文；Reddit HTML 403，无评论页全文）。来源级代理已实现并完成 3 篇真实入库，S3 原件哈希核对一致；`reddit_stocks` 默认关闭，测试部署启用。3 篇 parse 完成但 classify/index 因测试环境 provider 连接失败未完成 | 粒度决策已关闭；启用需 `COLLECTION_PROXY_URL`。剩余条件是分类/Embedding provider 可用后重试，未完成前不宣称论坛内容已可检索 |
 | 增量窗口续扫 | `(0, 644]` 每个 Run 只扫描 1/7 页，`change_scan_completed=false`，报告以 `retrieval_truncated` 明示 | 连续续扫 Run 覆盖完整窗口，并核对证据包与报告缺口 |
 | CNBC facts 超时 | 3 份 CNBC 文档的 facts 阶段 `MODEL_TIMEOUT`，尚未重试 | 重试并确认 facts 状态与数据；未完成前不宣称这 3 份已抽取完成 |
 | 行情/价格来源 | 未配置任何 quote 源。2026-10-28 验证现有 `TWELVE_DATA_API_KEY` 可用：basic 计划 8 次/分钟、800 次/天，SPY 日线与 NVDA quote 成功；当前 `SourceMapper` 只按固定 pointer 读取单个字段，日线数组需要扩展映射或每 symbol 一个来源 | Owner 确定首批数据范围（指数/板块/关注股日线、宏观利率、公司行动等）；未接入前不把市场表现或涨跌归因写成已覆盖 |

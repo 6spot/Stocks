@@ -24,7 +24,7 @@
 
 ## 限制
 
-- Reddit HTML 文章页返回 403；当前只保存 Feed 标题与帖子正文（`partial`），没有评论页全文。是否接受该粒度需 Owner 决定；`reddit_stocks` 默认关闭，测试部署为验收临时启用。
+- Reddit HTML 文章页返回 403；当前只保存 Feed 标题与帖子正文（`partial`），没有评论页全文。Owner 已于 2026-10-28 接受该 `partial` 粒度；`reddit_stocks` 默认关闭，测试部署为验收临时启用。
 - 3 篇 Reddit Document 的 classify/index 未完成（provider 连接失败），因此不能宣称论坛内容已可被研究检索。
 - DoH 使用 Cloudflare `https://cloudflare-dns.com/dns-query`，经同一代理访问；代理不可达时该来源以 `DNS_FAILED` 失败。
 - 代理模式无法固定代理解析出的目标 IP；已在设计/文档中记录为受信代理取舍。
