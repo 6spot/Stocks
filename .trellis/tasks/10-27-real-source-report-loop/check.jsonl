@@ -1,0 +1,4 @@
+{"file": "AGENTS.md", "reason": "通用边界与最小必要验证；禁止以本机结果代替远程测试"}
+{"file": ".trellis/tasks/10-27-real-source-report-loop/prd.md", "reason": "跨任务验收：逐项核对通过/失败/未覆盖"}
+{"file": ".trellis/tasks/10-27-report-live-quality/prd.md", "reason": "集成复核输入：联合验收清单结果"}
+{"file": ".trellis/spec/guides/agent-execution-guide.md", "reason": "Agent 执行边界与阶段返回"}

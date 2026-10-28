@@ -1,0 +1,15 @@
+{"file": "AGENTS.md", "reason": "通用边界与最小必要验证；禁止以本机结果代替远程测试"}
+{"file": "docs/architecture.md", "reason": "architecture 领域契约与系统边界"}
+{"file": "docs/data.md", "reason": "data 领域契约：来源、原件与证据可追溯"}
+{"file": "docs/research.md", "reason": "research 领域契约：证据选择、引用与缺口呈现"}
+{"file": "docs/execution.md", "reason": "execution 领域契约：Task/Run 身份与记录"}
+{"file": "docs/validation.md", "reason": "原型范围与完成条件"}
+{"file": ".trellis/tasks/10-27-real-source-report-loop/prd.md", "reason": "父任务跨任务验收清单与集成复核要求"}
+{"file": ".trellis/tasks/10-27-report-real-sources/prd.md", "reason": "子任务：首批来源选型决定与凭据状态"}
+{"file": ".trellis/tasks/10-27-report-research-scope/prd.md", "reason": "子任务：市场简报与 SpaceX 公司研究口径"}
+{"file": ".trellis/tasks/10-27-report-classification-visibility/prd.md", "reason": "子任务：分类与实体依据可见性"}
+{"file": ".trellis/tasks/10-27-report-live-quality/prd.md", "reason": "子任务：端到端质量验收清单"}
+{"file": ".trellis/tasks/archive/2026-10/10-27-report-config-consistency/prd.md", "reason": "已归档子任务：MP-01 配置一致性修复证据"}
+{"file": ".trellis/tasks/archive/2026-10/10-27-report-historical-facts/prd.md", "reason": "已归档子任务：MP-02 历史 Facts 修复证据"}
+{"file": ".trellis/spec/backend/testing-guidelines.md", "reason": "远程隔离验证与清理要求"}
+{"file": ".trellis/spec/guides/agent-execution-guide.md", "reason": "Agent 执行边界与阻塞交回"}

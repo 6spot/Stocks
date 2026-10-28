@@ -1,0 +1,33 @@
+{
+  "id": "real-source-report-loop",
+  "name": "real-source-report-loop",
+  "title": "真实来源驱动的市场与个股报告闭环",
+  "description": "按整体评估修复配置与取材缺陷，接入真实来源，明确市场及个股报告口径并完成手动触发的真实质量验收；不含定时调度",
+  "status": "planning",
+  "dev_type": null,
+  "scope": null,
+  "package": null,
+  "priority": "P1",
+  "creator": "me",
+  "assignee": "me",
+  "createdAt": "2026-10-27",
+  "completedAt": null,
+  "branch": null,
+  "base_branch": "main",
+  "worktree_path": null,
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [
+    "10-27-report-config-consistency",
+    "10-27-report-historical-facts",
+    "10-27-report-real-sources",
+    "10-27-report-research-scope",
+    "10-27-report-classification-visibility",
+    "10-27-report-live-quality"
+  ],
+  "parent": "10-20-stocks-roadmap",
+  "relatedFiles": [],
+  "notes": "",
+  "meta": {}
+}

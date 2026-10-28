@@ -1,0 +1,5 @@
+{"file": "AGENTS.md", "reason": "通用边界与最小必要验证；禁止以本机结果代替远程测试"}
+{"file": "docs/research.md", "reason": "研究契约：事实/观点/推断区分与引用可回溯"}
+{"file": ".trellis/tasks/10-27-report-live-quality/prd.md", "reason": "联合验收清单与前置条件"}
+{"file": ".trellis/tasks/10-27-real-source-report-loop/prd.md", "reason": "父任务跨任务验收与集成复核要求"}
+{"file": ".trellis/spec/backend/testing-guidelines.md", "reason": "远程隔离验证要求"}

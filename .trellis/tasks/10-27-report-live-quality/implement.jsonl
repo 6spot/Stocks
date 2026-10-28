@@ -1,0 +1,14 @@
+{"file": "AGENTS.md", "reason": "通用边界与最小必要验证；禁止以本机结果代替远程测试"}
+{"file": "docs/architecture.md", "reason": "architecture 领域契约及阶段边界"}
+{"file": "docs/data.md", "reason": "data 领域契约：来源、原件与证据可追溯"}
+{"file": "docs/research.md", "reason": "research 领域契约：证据选择、引用与缺口呈现"}
+{"file": "docs/execution.md", "reason": "execution 领域契约：Run 身份与 usage 记录"}
+{"file": "docs/validation.md", "reason": "原型范围与完成条件"}
+{"file": ".trellis/tasks/10-27-report-live-quality/prd.md", "reason": "本任务验收标准：联合证据与内容核查清单"}
+{"file": "backend/src/stocks/research/service.py", "reason": "研究 Run 产生身份与记录的现状"}
+{"file": "backend/src/stocks/repository.py", "reason": "Run/Document/Report 记录查询入口"}
+{"file": "config/tasks.yaml", "reason": "两类报告 Task 配置（依赖 research-scope 产出）"}
+{"file": "config/sources.yaml", "reason": "首批来源配置（依赖 real-sources 产出）"}
+{"file": ".trellis/spec/backend/testing-guidelines.md", "reason": "远程隔离验证与清理要求"}
+{"file": ".trellis/spec/backend/logging-guidelines.md", "reason": "证据记录与脱敏要求"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "质量门槛"}
