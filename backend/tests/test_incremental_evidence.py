@@ -1118,3 +1118,73 @@ def test_conflicting_facts_are_retained_and_marked():
     assert [item["value"] for item in projected] == [2.4, 2.7]
     assert all(item["conflict"] is True for item in projected)
     assert len({item["fact_id"] for item in projected}) == 2
+
+
+def test_semantic_direct_query_keeps_budget_when_incremental_page_is_full(
+    engine, monkeypatch
+):
+    """A large change page must not starve the task's direct semantic query."""
+
+    import stocks.research.service as research_service
+
+    with Session(engine) as session:
+        run = create_run(session, "budget-reserve")
+        for index in range(4):
+            document, _ = add_document_with_chunks(
+                session,
+                dedupe_key=f"changed-{index}",
+                chunk_texts=("x" * 1200,),
+            )
+            add_change(session, document)
+
+        target, target_chunks = add_document_with_chunks(
+            session,
+            dedupe_key="semantic-target",
+            title="SK Hynix earnings",
+            chunk_texts=("SK Hynix reported record quarterly profit.",),
+        )
+        window = change_window(session, run)
+        monkeypatch.setattr(
+            research_service,
+            "semantic_search",
+            lambda *args, **kwargs: semantic_result(
+                search_hit(target, target_chunks[0])
+            ),
+        )
+
+        result = select_evidence(
+            session,
+            make_config(),
+            embedding_targets(),
+            ModelClient({}),
+            run_id=run.id,
+            objective=run.objective,
+            scope={"companies": ["SK Hynix"]},
+            as_of=run.created_at,
+            queries=("SK Hynix",),
+            limit_per_query=2,
+            max_tokens=1000,
+            change_window=window,
+            scan_query_snapshot={
+                "queries": ["SK Hynix"],
+                "source_ids": [],
+                "limit_per_query": 2,
+                "max_tokens": 1000,
+                "page_limit": 100,
+            },
+            embed=fake_embed,
+        )
+
+        package = result.package
+        assert package.selection_budget["semantic_reserve_tokens"] == 200
+        assert package.selection_budget["incremental_budget_tokens"] == 800
+        target_groups = [
+            group
+            for group in package.evidence_groups
+            if group["document_id"] == str(target.id)
+        ]
+        assert len(target_groups) == 1
+        assert target_groups[0]["role"] == "historical_context"
+        assert target_groups[0]["match_role"] == "direct"
+        assert package.queries[0]["selected_count"] == 1
+        assert package.selected_count >= 1

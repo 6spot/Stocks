@@ -1298,11 +1298,12 @@ def test_collection_failure_saves_partial_content_and_retries(
     assert state.latest_document_id == document.id
     assert state.completeness == "partial"
     assert state.fetch_error["status"] == 503
-    partial_payload = json.loads(objects[document.snapshot_key])
-    assert partial_payload == {
-        "title": "SEC announces unrelated policy action",
-        "summary": "Policy summary.",
-    }
+    partial_payload = objects[document.snapshot_key].decode("utf-8")
+    assert partial_payload.startswith("<article><h1>")
+    assert "SEC announces unrelated policy action" in partial_payload
+    assert "Policy summary." in partial_payload
+    assert '{"summary"' not in partial_payload
+    assert document.content_type == "text/html; charset=utf-8"
 
     fetcher.responses["https://www.sec.gov/news/release-1"] = FetchedResponse(
         url="https://www.sec.gov/news/release-1",

@@ -50,7 +50,7 @@ from stocks.repository import SearchFilters, SearchHit
 from stocks.search.service import semantic_search
 from stocks.settings import Settings
 
-EVIDENCE_SELECTION_POLICY_VERSION = "v1.0"
+EVIDENCE_SELECTION_POLICY_VERSION = "v1.1"
 # Version of the fields and normalization the Evidence Package snapshot hash
 # covers. Changing either requires a new value, so an old ledger entry cannot be
 # silently compared against a differently shaped snapshot.
@@ -210,6 +210,10 @@ def select_evidence(
     query_records: list[dict] = []
     selected: list[dict] = []
     selected_tokens = 0
+    # Reserve a bounded share for semantic queries so a large incremental page
+    # cannot consume the whole package before the Task's direct queries run.
+    semantic_reserve = max_tokens // 5
+    incremental_budget = max_tokens - semantic_reserve
     # A candidate is one distinct Document+Chunk. A Document reached by both
     # the incremental and semantic paths still contributes each of its Chunks
     # once; ``evidence_group_count`` is the smaller, merged chain count.
@@ -311,10 +315,10 @@ def select_evidence(
             kept = False
             for hit in hits:
                 tokens = estimate_tokens(hit.text)
-                if selected_tokens + tokens > max_tokens:
-                    # The candidate was screened, but its text cannot enter this
-                    # Run input under the stated budget. Record it as excluded
-                    # material; the candidate pool itself stays known.
+                if selected_tokens + tokens > incremental_budget:
+                    # The candidate was screened, but its text cannot enter the
+                    # incremental share. The semantic reserve stays available
+                    # for the Task's direct queries.
                     incremental_gap_reasons.add("token_budget")
                     examined_chunks.add(hit.chunk_id)
                     discovered_candidates.add((hit.document_id, hit.chunk_id))
@@ -563,6 +567,8 @@ def select_evidence(
         selection_policy_version=EVIDENCE_SELECTION_POLICY_VERSION,
         selection_budget={
             "max_tokens": max_tokens,
+            "semantic_reserve_tokens": semantic_reserve,
+            "incremental_budget_tokens": incremental_budget,
             "limit_per_query": limit_per_query,
             "change_page_limit": (
                 scan_page_limit if change_window is not None else None

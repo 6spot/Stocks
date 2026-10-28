@@ -138,7 +138,7 @@ Fed XML 真实字节的 parser 定位。详见 [V2 本轮记录](../10-20-stocks
 
 | 剩余项 | 现状与缺口 | 后续条件 |
 | --- | --- | --- |
-| 论坛/讨论来源 | 2026-10-28 Owner **接受 `partial` 粒度**（Feed 标题+帖子正文；Reddit HTML 403，无评论页全文）。来源级代理已实现并完成 3 篇真实入库，S3 原件哈希核对一致；`reddit_stocks` 默认关闭，测试部署启用。3 篇 parse/classify/index 均完成；Jev 实际 `jev-1.14.0`，实体抽取走测试 Magpie（`deepseek-v4.1-flash`）。facts：1 篇 completed（0 条）、1 篇 `NOT_APPLICABLE` skipped、1 篇 `MODEL_RESPONSE_INVALID` 失败。市场简报 Run `d3000569` 已成功生成报告，但 Evidence Package 未选中 Reddit 文档；SK Hynix 定向 Run `61df76f4` 同样未选中，且研究步骤遇 provider 400 | 粒度决策已关闭；启用需 `COLLECTION_PROXY_URL`。剩余是 facts 1 篇失败，以及 Reddit 未被 Evidence Selection 选中的原因待排查；未完成前不宣称论坛内容已进入报告 |
+| 论坛/讨论来源 | 2026-10-28 Owner **接受 `partial` 粒度**（Feed 标题+帖子正文；Reddit HTML 403，无评论页全文）。来源级代理已实现并完成 3 篇真实入库，S3 原件哈希核对一致；`reddit_stocks` 默认关闭，测试部署启用。3 篇 parse/classify/index 均完成；Jev 实际 `jev-1.14.0`，实体抽取走测试 Magpie（`deepseek-v4.1-flash`）。预算保留修复后，SK Hynix Run `45aa0738` 选中 Reddit 文档并生成报告 `4c449b9b`（引用 `E94`）；此前 Run `61df76f4` 的 30k 预算被增量变更占满，语义查询零选中。facts：1 篇 completed（0 条）、1 篇 skipped、1 篇 `MODEL_RESPONSE_INVALID` 失败 | 粒度决策已关闭；启用需 `COLLECTION_PROXY_URL`。剩余是 facts 1 篇失败，以及 Reddit 重新采集生成干净 partial 版本遇 429；现有 v1 仍是旧 JSON，待限流恢复后重试 |
 | 增量窗口续扫 | `(0, 644]` 每个 Run 只扫描 1/7 页，`change_scan_completed=false`，报告以 `retrieval_truncated` 明示 | 连续续扫 Run 覆盖完整窗口，并核对证据包与报告缺口 |
 | CNBC facts 超时 | 3 份 CNBC 文档的 facts 阶段 `MODEL_TIMEOUT`，尚未重试 | 重试并确认 facts 状态与数据；未完成前不宣称这 3 份已抽取完成 |
 | 行情/价格来源 | 未配置任何 quote 源。2026-10-28 验证现有 `TWELVE_DATA_API_KEY` 可用：basic 计划 8 次/分钟、800 次/天，SPY 日线与 NVDA quote 成功；当前 `SourceMapper` 只按固定 pointer 读取单个字段，日线数组需要扩展映射或每 symbol 一个来源 | Owner 确定首批数据范围（指数/板块/关注股日线、宏观利率、公司行动等）；未接入前不把市场表现或涨跌归因写成已覆盖 |

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-import json
+import html
 import logging
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -193,7 +193,7 @@ def collect_source(
                 details={"dedupe_key": item.dedupe_key},
             )
             payload = _partial_payload(item)
-            content_type = "text/plain; charset=utf-8"
+            content_type = "text/html; charset=utf-8"
             collected_at = clock()
             completeness = "partial"
         else:
@@ -211,7 +211,7 @@ def collect_source(
             except CollectionError as exc:
                 fetch_error = exc
                 payload = _partial_payload(item)
-                content_type = "text/plain; charset=utf-8"
+                content_type = "text/html; charset=utf-8"
                 collected_at = clock()
                 completeness = "partial"
             else:
@@ -227,7 +227,7 @@ def collect_source(
                         url=article.url,
                     )
                     payload = _partial_payload(item)
-                    content_type = "text/plain; charset=utf-8"
+                    content_type = "text/html; charset=utf-8"
                     completeness = "partial"
 
         if fetch_error is not None:
@@ -339,16 +339,11 @@ def _should_recheck(
 
 
 def _partial_payload(item: FeedItem) -> bytes:
-    payload = {
-        "title": item.title,
-        "summary": item.summary or "",
-    }
-    return json.dumps(
-        payload,
-        ensure_ascii=False,
-        sort_keys=True,
-        separators=(",", ":"),
-    ).encode("utf-8")
+    # Keep the Feed title and summary as readable HTML instead of a JSON wrapper;
+    # the normal HTML parser can then produce clean chunks without `summary`
+    # keys or feed-only comment markers polluting retrieval text.
+    title = html.escape(item.title)
+    return f"<article><h1>{title}</h1>{item.summary or ''}</article>".encode("utf-8")
 
 
 
